@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(clasp push *)",
+      "Bash(python3 -)",
+      "Bash(clasp deploy *)",
+      "Bash(grep -n \"maps.googleapis\\\\|initMap\\\\|new google\\\\|elitile\\\\|tile\\\\|mapbox\\\\|mapId\\\\|Map\\(\" \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-titankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/智慧物流系統/Index.html\" | head -20 *)",
+      "Bash(clasp deployments *)",
+      "Bash(sed -n '175,180p' \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-tiankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/喜助派車系統/Code.js\")",
+      "Bash(sed -n '175,180p' \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-titankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/喜助派車系統/Code.js\")",
+      "Bash(ls \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-titankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/\" | grep -i 喜)",
+      "Bash(find \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-titankou2002@gmail.com/我的雲端硬碟/BT/\" -name \"Admin.html\" 2>/dev/null | head -5)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(mkdir -p \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-titankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/外部工作/喜助派車系統/.claude\")",
+      "Bash(BASE=\"/Users/titankou2002/Library/CloudStorage/GoogleDrive-tiankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/外部工作/喜助派車系統\" 2>/dev/null)",
+      "mcp__visualize__read_me",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(ulimit -n 4096)",
+      "mcp__claude-in-chrome__read_page",
+      "Bash(pkill -f \"Google Chrome\")",
+      "Bash(cd \"/Users/titankou2002/Library/CloudStorage/GoogleDrive-tiankou2002@gmail.com/我的雲端硬碟/BT/Antigravity/智慧物流系統\" && clasp deploy -i AKfycbzFtZiyiag60kx8GDkJZx4PNQ3jmmgDXG1vPOz8ybzkaUReOoBtjV_yt1z9pmCAtVmP1A -d \"v0708.5 行程足跡時間格式修復\")",
+      "Bash(head -n -32 Code.js)",
+      "Bash(mv Code.js.tmp Code.js)"
+    ]
+  }
+}

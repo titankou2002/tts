@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading 元件預覽</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Noto+Sans+TC:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a1628;
+  --surface: #0f1e35;
+  --cyan: #38bdf8;
+  --green: #22c55e;
+  --warning: #fbbf24;
+  --danger: #ef4444;
+  --border: rgba(56,189,248,0.15);
+  --text: rgba(255,255,255,0.85);
+  --muted: rgba(255,255,255,0.35);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--text);
+  padding: 32px 20px;
+  min-height: 100vh;
+}
+
+/* ── 預覽佈局 ── */
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+@media (max-width: 700px) { .preview-grid { grid-template-columns: 1fr; } }
+
+.section-title {
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--cyan);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.demo-btn {
+  background: rgba(56,189,248,0.08);
+  border: 1px solid var(--border);
+  color: var(--cyan);
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: .2s;
+  display: block;
+  width: 100%;
+  margin-bottom: 16px;
+}
+.demo-btn:hover { background: rgba(56,189,248,0.15); }
+
+/* ════════════════════════════════════════
+   A. 結案送出 Loading Overlay
+════════════════════════════════════════ */
+#submitOverlay {
+  position: fixed; inset: 0;
+  background: rgba(8,14,26,0.97);
+  backdrop-filter: blur(16px);
+  z-index: 99999;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+#submitOverlay::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(56,189,248,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56,189,248,.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* 角落裝飾 */
+.cf { position: absolute; width: 52px; height: 52px; pointer-events: none; }
+.cf::before,.cf::after { content:''; position:absolute; background:rgba(56,189,248,0.4); }
+.cf::before { width:100%; height:1px; top:0; left:0; }
+.cf::after  { width:1px; height:100%; top:0; left:0; }
+.cf-tl{top:20px;left:20px} .cf-tr{top:20px;right:20px;transform:scaleX(-1)}
+.cf-bl{bottom:20px;left:20px;transform:scaleY(-1)} .cf-br{bottom:20px;right:20px;transform:scale(-1,-1)}
+
+.submit-body {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 32px;
+  width: 100%; max-width: 420px; padding: 20px;
+}
+
+/* 中央圖示 */
+.submit-icon {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: rgba(56,189,248,0.08);
+  border: 1px solid rgba(56,189,248,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px;
+  position: relative;
+}
+.submit-icon::before {
+  content: '';
+  position: absolute; inset: -8px;
+  border-radius: 50%;
+  border: 1px solid rgba(56,189,248,0.15);
+  animation: iconPulse 2s ease-in-out infinite;
+}
+.submit-icon::after {
+  content: '';
+  position: absolute; inset: -16px;
+  border-radius: 50%;
+  border: 1px solid rgba(56,189,248,0.07);
+  animation: iconPulse 2s ease-in-out infinite .5s;
+}
+@keyframes iconPulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.08); opacity: 0.5; }
+}
+
+/* 標題 */
+.submit-title {
+  font-family: 'Rajdhani', monospace;
+  font-size: 20px; font-weight: 700;
+  color: #fff; letter-spacing: 4px;
+  text-align: center;
+}
+.submit-subtitle {
+  font-size: 12px; color: var(--muted);
+  letter-spacing: 1px; text-align: center;
+  margin-top: 4px;
+}
+
+/* 步驟列表 */
+.steps { width: 100%; display: flex; flex-direction: column; gap: 0; }
+
+.step-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  position: relative;
+}
+.step-item:last-child { border-bottom: none; }
+
+/* 左側連接線 */
+.step-item::before {
+  content: '';
+  position: absolute;
+  left: 15px; top: 50%; bottom: -100%;
+  width: 1px;
+  background: rgba(255,255,255,0.06);
+}
+.step-item:last-child::before { display: none; }
+
+.step-icon {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  position: relative; z-index: 1;
+  transition: .4s;
+}
+.step-icon.waiting {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--muted);
+}
+.step-icon.running {
+  background: rgba(56,189,248,0.12);
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  animation: stepPulse .8s ease-in-out infinite alternate;
+}
+.step-icon.done {
+  background: rgba(34,197,94,0.12);
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+.step-icon.error {
+  background: rgba(239,68,68,0.12);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+@keyframes stepPulse {
+  from { box-shadow: 0 0 0 0 rgba(56,189,248,0.4); }
+  to   { box-shadow: 0 0 0 8px rgba(56,189,248,0); }
+}
+
+.step-info { flex: 1; }
+.step-name {
+  font-size: 13px; font-weight: 700;
+  color: rgba(255,255,255,0.8);
+  transition: .3s;
+}
+.step-name.active { color: #fff; }
+.step-desc {
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px; color: var(--muted);
+  letter-spacing: 1px; margin-top: 2px;
+  transition: .3s;
+}
+.step-desc.active { color: var(--cyan); }
+
+.step-time {
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px; color: var(--muted);
+  letter-spacing: 1px;
+  min-width: 40px; text-align: right;
+}
+
+/* 整體進度條 */
+.overall-prog { width: 100%; }
+.op-meta {
+  display: flex; justify-content: space-between;
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px; color: var(--muted);
+  letter-spacing: 2px; margin-bottom: 8px;
+}
+#submitPct { color: var(--cyan); font-weight: 700; }
+.op-track {
+  width: 100%; height: 3px;
+  background: rgba(255,255,255,0.06); border-radius: 2px;
+}
+#submitBar {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #0ea5e9, var(--cyan));
+  border-radius: 2px;
+  box-shadow: 0 0 8px var(--cyan);
+  transition: width .6s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* 完成成功動畫 */
+.success-flash {
+  position: fixed; inset: 0; z-index: 100000;
+  background: rgba(34,197,94,0.08);
+  display: none;
+  animation: flashIn .4s ease;
+  pointer-events: none;
+}
+@keyframes flashIn { from{opacity:0} to{opacity:1} }
+
+
+/* ════════════════════════════════════════
+   B. 讀取任務 Skeleton
+════════════════════════════════════════ */
+.skeleton-demo {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 頂部工具列 skeleton */
+.sk-toolbar {
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.sk-badge { width: 72px; height: 24px; border-radius: 12px; }
+.sk-badge-sm { width: 48px; height: 24px; border-radius: 12px; }
+.sk-spacer { flex: 1; }
+.sk-btn { width: 80px; height: 32px; border-radius: 6px; }
+
+/* 任務卡片 skeleton */
+.sk-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sk-row { display: flex; align-items: center; gap: 8px; }
+.sk-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.sk-line { height: 10px; border-radius: 4px; }
+.sk-line-sm { height: 8px; border-radius: 4px; }
+
+/* Shimmer 動畫 */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(56,189,248,0.08) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* 狀態列 */
+.sk-status {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: rgba(56,189,248,0.04);
+  border: 1px solid rgba(56,189,248,0.1);
+  border-radius: 6px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px;
+  color: rgba(56,189,248,0.5);
+  letter-spacing: 2px;
+}
+.sk-status .pulse-dot {
+  width: 6px; height: 6px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--cyan);
+  animation: blink 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* 真實資料載入後的淡入 */
+.task-card-real {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeInUp .4s ease forwards;
+}
+.task-card-real.show { display: flex; }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tcr-header { display: flex; align-items: center; gap: 8px; }
+.tcr-badge {
+  font-family: 'Rajdhani', monospace;
+  font-size: 10px; letter-spacing: 1px;
+  padding: 2px 8px; border-radius: 10px;
+  font-weight: 600;
+}
+.tcr-badge.pending {
+  background: rgba(251,191,36,0.12);
+  border: 1px solid rgba(251,191,36,0.3);
+  color: var(--warning);
+}
+.tcr-badge.transit {
+  background: rgba(56,189,248,0.12);
+  border: 1px solid rgba(56,189,248,0.3);
+  color: var(--cyan);
+}
+.tcr-name { font-size: 13px; font-weight: 700; color: #fff; }
+.tcr-addr { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.tcr-meta {
+  display: flex; gap: 12px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 11px; color: var(--muted); letter-spacing: 1px;
+}
+
+/* 切換按鈕 */
+.toggle-row {
+  display: flex; gap: 8px; margin-top: 4px;
+}
+.tog-btn {
+  flex: 1; padding: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  font-family: 'Rajdhani', monospace;
+  font-size: 12px; letter-spacing: 1px;
+  cursor: pointer; transition: .2s;
+}
+.tog-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.tog-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(56,189,248,0.08); }
+</style>
+</head>
+<body>
+
+<div class="preview-grid">
+
+  <!-- ══ A：結案送出 Loading ══ -->
+  <div>
+    <div class="section-title">A · 結案送出 Loading</div>
+    <button class="demo-btn" onclick="startSubmitDemo()">▶ 模擬結案送出</button>
+    <div style="font-size:12px; color:var(--muted); line-height:1.8;">
+      顯示每個步驟的即時狀態<br>
+      司機知道目前跑到哪一步<br>
+      不會以為程式當掉
+    </div>
+  </div>
+
+  <!-- ══ B：讀取任務 Skeleton ══ -->
+  <div>
+    <div class="section-title">B · 讀取任務 Skeleton</div>
+    <button class="demo-btn" onclick="startSkeletonDemo()">▶ 模擬任務載入</button>
+
+    <div class="skeleton-demo" id="skeletonDemo">
+      <!-- 狀態列 -->
+      <div class="sk-status">
+        <div class="pulse-dot"></div>
+        <span id="skStatusText">正在同步任務資料...</span>
+      </div>
+
+      <!-- 工具列 skeleton -->
+      <div class="sk-toolbar">
+        <div class="shimmer sk-badge"></div>
+        <div class="shimmer sk-badge-sm"></div>
+        <div class="sk-spacer"></div>
+        <div class="shimmer sk-btn"></div>
+      </div>
+
+      <!-- 3 張任務卡片 skeleton -->
+      <div class="sk-card" id="sk1">
+        <div class="sk-row">
+          <div class="shimmer sk-dot"></div>
+          <div class="shimmer sk-line" style="width:35%"></div>
+          <div style="flex:1"></div>
+          <div class="shimmer sk-line-sm" style="width:18%"></div>
+        </div>
+        <div class="shimmer sk-line" style="width:75%"></div>
+        <div class="sk-row" style="gap:12px">
+          <div class="shimmer sk-line-sm" style="width:22%"></div>
+          <div class="shimmer sk-line-sm" style="width:22%"></div>
+        </div>
+      </div>
+
+      <div class="sk-card" id="sk2">
+        <div class="sk-row">
+          <div class="shimmer sk-dot"></div>
+          <div class="shimmer sk-line" style="width:42%"></div>
+          <div style="flex:1"></div>
+          <div class="shimmer sk-line-sm" style="width:15%"></div>
+        </div>
+        <div class="shimmer sk-line" style="width:60%"></div>
+        <div class="sk-row" style="gap:12px">
+          <div class="shimmer sk-line-sm" style="width:20%"></div>
+          <div class="shimmer sk-line-sm" style="width:25%"></div>
+        </div>
+      </div>
+
+      <div class="sk-card" id="sk3">
+        <div class="sk-row">
+          <div class="shimmer sk-dot"></div>
+          <div class="shimmer sk-line" style="width:30%"></div>
+          <div style="flex:1"></div>
+          <div class="shimmer sk-line-sm" style="width:20%"></div>
+        </div>
+        <div class="shimmer sk-line" style="width:80%"></div>
+        <div class="sk-row" style="gap:12px">
+          <div class="shimmer sk-line-sm" style="width:18%"></div>
+          <div class="shimmer sk-line-sm" style="width:28%"></div>
+        </div>
+      </div>
+
+      <!-- 真實資料（載入後淡入替換） -->
+      <div class="task-card-real" id="real1">
+        <div class="tcr-header">
+          <div class="tcr-badge transit">配送中</div>
+          <div class="tcr-name">漢樺建材有限公司</div>
+        </div>
+        <div class="tcr-addr">📍 桃園市桃園區中山路 123 號</div>
+        <div class="tcr-meta">
+          <span>🚛 ABC-1234</span>
+          <span>⚖️ 1,250 KG</span>
+          <span>🕐 12:00前</span>
+        </div>
+      </div>
+
+      <div class="task-card-real" id="real2">
+        <div class="tcr-header">
+          <div class="tcr-badge pending">待派車</div>
+          <div class="tcr-name">高雅瓷業股份有限公司</div>
+        </div>
+        <div class="tcr-addr">📍 新竹市東區光復路二段 101 號</div>
+        <div class="tcr-meta">
+          <span>🚛 未指派</span>
+          <span>⚖️ 850 KG</span>
+          <span>🕐 16:00前</span>
+        </div>
+      </div>
+
+      <div class="task-card-real" id="real3">
+        <div class="tcr-header">
+          <div class="tcr-badge transit">配送中</div>
+          <div class="tcr-name">安帝嘉室內設計</div>
+        </div>
+        <div class="tcr-addr">📍 台中市西區民生路 88 號</div>
+        <div class="tcr-meta">
+          <span>🚛 XYZ-5678</span>
+          <span>⚖️ 620 KG</span>
+          <span>🕐 14:00前</span>
+        </div>
+      </div>
+
+    </div><!-- /skeleton-demo -->
+  </div>
+
+</div><!-- /preview-grid -->
+
+
+<!-- ══ 結案送出 Overlay ══ -->
+<div id="submitOverlay">
+  <div class="cf cf-tl"></div><div class="cf cf-tr"></div>
+  <div class="cf cf-bl"></div><div class="cf cf-br"></div>
+
+  <div class="submit-body">
+
+    <div class="submit-icon" id="submitIcon">📦</div>
+
+    <div>
+      <div class="submit-title" id="submitTitle">配送結案</div>
+      <div class="submit-subtitle" id="submitSubtitle">正在處理您的結案資料，請勿關閉頁面</div>
+    </div>
+
+    <!-- 步驟 -->
+    <div class="steps" id="stepList">
+      <!-- 由 JS 產生 -->
+    </div>
+
+    <!-- 整體進度 -->
+    <div class="overall-prog">
+      <div class="op-meta">
+        <span>OVERALL PROGRESS</span>
+        <span id="submitPct">0%</span>
+      </div>
+      <div class="op-track"><div id="submitBar"></div></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="success-flash" id="successFlash"></div>
+
+<script>
+/* ════════════════════════════════════════
+   A. 結案 Loading
+════════════════════════════════════════ */
+const STEPS = [
+  { icon: '📝', name: '記錄送達資訊',   desc: 'WRITING DELIVERY RECORD',  dur: 900  },
+  { icon: '📸', name: '上傳簽收照片',   desc: 'UPLOADING PHOTO TO DRIVE',  dur: 1800 },
+  { icon: '📡', name: '更新 GPS 位置',  desc: 'SYNCING LOCATION DATA',     dur: 600  },
+  { icon: '🔔', name: '通知倉庫系統',   desc: 'NOTIFYING WAREHOUSE',       dur: 500  },
+];
+
+function buildSteps() {
+  const list = document.getElementById('stepList');
+  list.innerHTML = STEPS.map((s, i) => `
+    <div class="step-item" id="step-${i}">
+      <div class="step-icon waiting" id="si-${i}">${s.icon}</div>
+      <div class="step-info">
+        <div class="step-name" id="sn-${i}">${s.name}</div>
+        <div class="step-desc" id="sd-${i}">${s.desc}</div>
+      </div>
+      <div class="step-time" id="st-${i}">—</div>
+    </div>
+  `).join('');
+}
+
+function setStepState(i, state, timeMs) {
+  const si = document.getElementById('si-'+i);
+  const sn = document.getElementById('sn-'+i);
+  const sd = document.getElementById('sd-'+i);
+  const st = document.getElementById('st-'+i);
+  si.className = 'step-icon ' + state;
+  if (state === 'running') {
+    si.textContent = '⟳';
+    sn.classList.add('active');
+    sd.classList.add('active');
+    sd.textContent = STEPS[i].desc + '...';
+  } else if (state === 'done') {
+    si.textContent = '✓';
+    sn.classList.remove('active');
+    sd.classList.remove('active');
+    sd.textContent = STEPS[i].desc;
+    if (timeMs) st.textContent = (timeMs/1000).toFixed(1) + 's';
+  } else if (state === 'error') {
+    si.textContent = '✕';
+  }
+}
+
+function updateProgress(pct) {
+  document.getElementById('submitPct').textContent = pct + '%';
+  document.getElementById('submitBar').style.width = pct + '%';
+}
+
+async function startSubmitDemo() {
+  buildSteps();
+  document.getElementById('submitOverlay').style.display = 'flex';
+  document.getElementById('submitTitle').textContent = '配送結案';
+  document.getElementById('submitSubtitle').textContent = '正在處理您的結案資料，請勿關閉頁面';
+  document.getElementById('submitIcon').textContent = '📦';
+  updateProgress(0);
+
+  const totalDur = STEPS.reduce((s, x) => s + x.dur, 0);
+  let elapsed = 0;
+
+  for (let i = 0; i < STEPS.length; i++) {
+    setStepState(i, 'running');
+    const start = Date.now();
+    await sleep(STEPS[i].dur);
+    const took = Date.now() - start;
+    setStepState(i, 'done', took);
+    elapsed += STEPS[i].dur;
+    updateProgress(Math.round((elapsed / totalDur) * 100));
+  }
+
+  // 完成
+  document.getElementById('submitIcon').textContent = '✅';
+  document.getElementById('submitTitle').textContent = '結案完成';
+  document.getElementById('submitSubtitle').textContent = '資料已成功上傳，感謝您的作業回報';
+  updateProgress(100);
+
+  // 綠光閃爍
+  const flash = document.getElementById('successFlash');
+  flash.style.display = 'block';
+  await sleep(600);
+  flash.style.display = 'none';
+
+  await sleep(1800);
+  document.getElementById('submitOverlay').style.display = 'none';
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+
+/* ════════════════════════════════════════
+   B. Skeleton 載入
+════════════════════════════════════════ */
+let skeletonShowing = true;
+
+function startSkeletonDemo() {
+  // 重置
+  ['sk1','sk2','sk3'].forEach(id => {
+    document.getElementById(id).style.display = 'flex';
+  });
+  ['real1','real2','real3'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('show');
+    el.style.display = 'none';
+  });
+  document.getElementById('skStatusText').textContent = '正在同步任務資料...';
+
+  // 依序替換
+  const skIds   = ['sk1','sk2','sk3'];
+  const realIds = ['real1','real2','real3'];
+  const delays  = [900, 1400, 1900];
+
+  delays.forEach((d, i) => {
+    setTimeout(() => {
+      // 隱藏 skeleton
+      document.getElementById(skIds[i]).style.display = 'none';
+      // 淡入真實卡片
+      const real = document.getElementById(realIds[i]);
+      real.style.display = 'flex';
+      real.classList.add('show');
+
+      if (i === delays.length - 1) {
+        document.getElementById('skStatusText').textContent = '✓ 已同步 3 筆任務';
+      }
+    }, d);
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鈦傳速｜AI 派車計算中</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+TC:wght@300;700&display=swap');
+  :root {
+    --bg: #0f172a;
+    --blue: #1a6fff;
+    --cyan: #00d4ff;
+    --purple: #a855f7;
+    --purple-dim: rgba(168,85,247,0.15);
+    --text: #c8e0ff;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100vh; overflow: hidden;
+    display: flex;
+  }
+
+  /* ── 模擬後台佈局 ── */
+  .sidebar {
+    width: 300px; flex-shrink:0;
+    background: #0f172a;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    display: flex; flex-direction: column;
+    padding: 16px;
+    gap: 10px;
+    z-index: 1;
+  }
+  .sidebar-title { font-size:11px; letter-spacing:3px; color:rgba(255,255,255,0.3); margin-bottom:4px; }
+  .fake-card {
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius:4px; padding:12px;
+    background:rgba(255,255,255,0.02);
+  }
+  .fake-card .fc-top { display:flex; justify-content:space-between; margin-bottom:6px; }
+  .fc-name { font-size:12px; color:#fff; font-family:'Noto Sans TC',sans-serif; }
+  .fc-tag { font-size:9px; padding:2px 6px; border-radius:2px; background:rgba(26,111,255,0.2); color:var(--cyan); letter-spacing:1px; }
+  .fc-addr { font-size:9px; color:rgba(255,255,255,0.3); margin-bottom:4px; }
+  .fc-weight { font-size:10px; color:rgba(255,255,255,0.2); }
+
+  /* 地圖區域 */
+  .map-area {
+    flex:1; position:relative;
+    background: #0a1628;
+    overflow: hidden;
+  }
+
+  /* 假地圖背景 */
+  .fake-map {
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(26,111,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26,111,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .fake-map::after {
+    content:''; position:absolute; inset:0;
+    background: radial-gradient(ellipse at 60% 50%, rgba(26,111,255,0.06), transparent 70%);
+  }
+
+  /* 假地圖標記點 */
+  .map-marker {
+    position:absolute; width:8px; height:8px;
+    border-radius:50%; opacity:0.4;
+  }
+
+  /* ── AI 派車遮罩（只覆蓋地圖） ── */
+  .ai-overlay {
+    position:absolute; inset:0; z-index:50;
+    background: rgba(10,16,35,0.92);
+    backdrop-filter: blur(3px);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    animation: overlayIn 0.4s ease both;
+  }
+  @keyframes overlayIn { from{opacity:0}to{opacity:1} }
+
+  /* 電路板 Canvas */
+  #aiCanvas { position:absolute; inset:0; z-index:0; opacity:0.4; }
+
+  /* 掃描線 */
+  .ai-scan {
+    position:absolute; left:0; right:0; height:1px;
+    background:linear-gradient(90deg,transparent,var(--purple),rgba(168,85,247,0.3),transparent);
+    box-shadow:0 0 15px var(--purple);
+    opacity:0; z-index:2;
+    animation:aiscan 2.5s linear infinite;
+  }
+  @keyframes aiscan { 0%{top:0;opacity:0}3%{opacity:0.5}97%{opacity:0.3}100%{top:100%;opacity:0} }
+
+  /* 主內容 */
+  .ai-content {
+    position:relative; z-index:10;
+    display:flex; flex-direction:column;
+    align-items:center; gap:0;
+  }
+
+  /* 神經網路動畫區 */
+  .neural-wrap {
+    width:200px; height:120px;
+    position:relative; margin-bottom:28px;
+  }
+  #neuralCanvas { width:100%; height:100%; }
+
+  /* AI 標題 */
+  .ai-title {
+    font-family:'Noto Sans TC',sans-serif;
+    font-size:18px; font-weight:700;
+    letter-spacing:4px; color:#fff;
+    text-shadow:0 0 20px rgba(168,85,247,0.6);
+    margin-bottom:6px;
+    animation:fiu 0.6s 0.2s ease both;
+  }
+  .ai-sub {
+    font-size:9px; letter-spacing:4px;
+    color:rgba(168,85,247,0.5);
+    margin-bottom:28px;
+    animation:fiu 0.6s 0.4s ease both;
+  }
+  @keyframes fiu { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
+
+  /* 計算步驟列表 */
+  .steps {
+    display:flex; flex-direction:column; gap:6px;
+    margin-bottom:28px; width:260px;
+    animation:fiu 0.6s 0.6s ease both; opacity:0;
+  }
+  .step {
+    display:flex; align-items:center; gap:10px;
+    font-size:10px; letter-spacing:1px;
+    color:rgba(168,85,247,0.3);
+    transition:all 0.4s ease;
+  }
+  .step.done { color:rgba(0,212,255,0.8); }
+  .step.active { color:rgba(168,85,247,0.9); }
+  .step-dot {
+    width:6px; height:6px; border-radius:50%;
+    background:rgba(168,85,247,0.2);
+    flex-shrink:0; transition:all 0.4s ease;
+  }
+  .step.done .step-dot { background:#00d4ff; box-shadow:0 0 6px #00d4ff; }
+  .step.active .step-dot { background:var(--purple); box-shadow:0 0 8px var(--purple); animation:sdot 0.8s ease-in-out infinite; }
+  @keyframes sdot { 0%,100%{transform:scale(1)}50%{transform:scale(1.5)} }
+
+  /* 進度條 */
+  .progress-wrap {
+    width:260px;
+    animation:fiu 0.6s 0.8s ease both; opacity:0;
+  }
+  .progress-meta { display:flex; justify-content:space-between; font-size:9px; letter-spacing:2px; color:rgba(168,85,247,0.3); margin-bottom:6px; }
+  .progress-track { width:100%; height:2px; background:rgba(168,85,247,0.08); overflow:visible; position:relative; }
+  .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--blue),var(--purple),var(--cyan)); box-shadow:0 0 8px var(--purple); transition:width 0.4s ease; position:relative; }
+  .progress-fill::after { content:''; position:absolute; right:-1px; top:-3px; width:8px; height:8px; background:var(--purple); border-radius:50%; box-shadow:0 0 10px var(--purple); }
+
+  /* 完成狀態 */
+  .ai-done {
+    display:none; flex-direction:column; align-items:center; gap:10px;
+    animation:fiu 0.6s ease both;
+  }
+  .done-icon { font-size:32px; color:#00d4ff; text-shadow:0 0 20px #00d4ff; }
+  .done-text { font-family:'Noto Sans TC',sans-serif; font-size:16px; letter-spacing:4px; color:#fff; }
+  .done-sub { font-size:9px; letter-spacing:3px; color:rgba(0,212,255,0.4); }
+  .done-btn {
+    margin-top:16px; padding:10px 32px;
+    border:1px solid rgba(0,212,255,0.3);
+    background:rgba(0,212,255,0.05);
+    color:var(--cyan); font-family:'Share Tech Mono',monospace;
+    font-size:11px; letter-spacing:3px; cursor:pointer;
+    transition:all 0.3s ease;
+  }
+  .done-btn:hover { background:rgba(0,212,255,0.1); box-shadow:0 0 20px rgba(0,212,255,0.2); }
+
+  /* 右上角關閉提示 */
+  .cancel-hint {
+    position:absolute; top:16px; right:16px; z-index:20;
+    font-size:9px; letter-spacing:2px; color:rgba(255,255,255,0.15);
+    cursor:pointer; transition:color 0.2s;
+  }
+  .cancel-hint:hover { color:rgba(255,255,255,0.4); }
+</style>
+</head>
+<body>
+
+<!-- 左側訂單面板（保持原樣） -->
+<div class="sidebar">
+  <div class="sidebar-title">訂單列表 (21)</div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">連驗國際</span><span class="fc-tag">派車中</span></div>
+    <div class="fc-addr">文化三路 330 KG</div>
+    <div class="fc-weight">#150226008</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">喜助</span><span class="fc-tag">高優先</span></div>
+    <div class="fc-addr">新市一路 600 KG</div>
+    <div class="fc-weight">#150226023</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">百碑</span><span class="fc-tag">急件</span></div>
+    <div class="fc-addr">水岸街 1503 KG</div>
+    <div class="fc-weight">#150226002</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">辰熙</span><span class="fc-tag">高優先</span></div>
+    <div class="fc-addr">木柵路 1877 KG</div>
+    <div class="fc-weight">#150226004</div>
+  </div>
+</div>
+
+<!-- 地圖區域 -->
+<div class="map-area">
+  <div class="fake-map"></div>
+  <!-- 假標記點 -->
+  <div class="map-marker" style="top:30%;left:55%;background:#00d4ff;"></div>
+  <div class="map-marker" style="top:45%;left:40%;background:#f59e0b;"></div>
+  <div class="map-marker" style="top:55%;left:62%;background:#a855f7;"></div>
+  <div class="map-marker" style="top:38%;left:48%;background:#00ff88;"></div>
+  <div class="map-marker" style="top:62%;left:35%;background:#00d4ff;"></div>
+
+  <!-- AI 派車遮罩 -->
+  <div class="ai-overlay" id="aiOverlay">
+    <canvas id="aiCanvas"></canvas>
+    <div class="ai-scan"></div>
+
+    <div class="cancel-hint" onclick="cancelAI()">✕ 取消計算</div>
+
+    <!-- 計算中畫面 -->
+    <div class="ai-content" id="aiComputing">
+
+      <!-- 神經網路動畫 -->
+      <div class="neural-wrap">
+        <canvas id="neuralCanvas"></canvas>
+      </div>
+
+      <div class="ai-title">AI 派車計算中</div>
+      <div class="ai-sub">OPTIMIZING ROUTE ASSIGNMENT</div>
+
+      <div class="steps" id="stepsList">
+        <div class="step" id="step0"><div class="step-dot"></div>分析今日 21 筆訂單</div>
+        <div class="step" id="step1"><div class="step-dot"></div>評估 3 輛車輛載重限制</div>
+        <div class="step" id="step2"><div class="step-dot"></div>計算最佳路線組合</div>
+        <div class="step" id="step3"><div class="step-dot"></div>考量時段與優先級</div>
+        <div class="step" id="step4"><div class="step-dot"></div>生成派車建議方案</div>
+      </div>
+
+      <div class="progress-wrap">
+        <div class="progress-meta"><span id="aiLabel">ANALYZING ORDERS</span><span id="aiPct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="aiFill"></div></div>
+      </div>
+    </div>
+
+    <!-- 完成畫面 -->
+    <div class="ai-done" id="aiDone">
+      <div class="done-icon">✓</div>
+      <div class="done-text">派車方案已生成</div>
+      <div class="done-sub">3 輛車 · 21 筆訂單 · 最佳化完成</div>
+      <button class="done-btn" onclick="applyResult()">套用建議方案</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 電路板背景
+const aiCanvas = document.getElementById('aiCanvas');
+const actx = aiCanvas.getContext('2d');
+function resizeAI(){ aiCanvas.width=aiCanvas.offsetWidth; aiCanvas.height=aiCanvas.offsetHeight; }
+resizeAI();
+const anodes=[];
+for(let i=0;i<50;i++) anodes.push({x:Math.random()*aiCanvas.width,y:Math.random()*aiCanvas.height,vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3,p:Math.random()*Math.PI*2,s:0.01+Math.random()*0.015});
+function drawAIBg(){
+  actx.clearRect(0,0,aiCanvas.width,aiCanvas.height);
+  anodes.forEach(n=>{n.x+=n.vx;n.y+=n.vy;n.p+=n.s;if(n.x<0||n.x>aiCanvas.width)n.vx*=-1;if(n.y<0||n.y>aiCanvas.height)n.vy*=-1;});
+  for(let i=0;i<anodes.length;i++)for(let j=i+1;j<anodes.length;j++){
+    const dx=anodes[i].x-anodes[j].x,dy=anodes[i].y-anodes[j].y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<100){const a=(1-d/100)*0.08;actx.beginPath();actx.moveTo(anodes[i].x,anodes[i].y);actx.lineTo(anodes[i].x,anodes[j].y);actx.lineTo(anodes[j].x,anodes[j].y);actx.strokeStyle=`rgba(100,50,200,${a})`;actx.lineWidth=0.6;actx.stroke();}
+  }
+  anodes.forEach(n=>{const g=Math.sin(n.p)*0.5+0.5;actx.beginPath();actx.arc(n.x,n.y,1.5,0,Math.PI*2);actx.fillStyle=`rgba(168,85,247,${0.1+g*0.2})`;actx.fill();});
+}
+setInterval(drawAIBg,40);
+
+// 神經網路動畫
+const nc = document.getElementById('neuralCanvas');
+const nctx = nc.getContext('2d');
+nc.width = 200; nc.height = 120;
+
+const layers = [
+  [{x:20,y:30},{x:20,y:60},{x:20,y:90}],
+  [{x:80,y:20},{x:80,y:45},{x:80,y:70},{x:80,y:95}],
+  [{x:140,y:30},{x:140,y:60},{x:140,y:90}],
+  [{x:185,y:50},{x:185,y:70}],
+];
+
+const signals = [];
+function addSignal(){
+  const li = Math.floor(Math.random()*(layers.length-1));
+  const from = layers[li][Math.floor(Math.random()*layers[li].length)];
+  const to   = layers[li+1][Math.floor(Math.random()*layers[li+1].length)];
+  signals.push({x:from.x,y:from.y,tx:to.x,ty:to.y,progress:0,speed:0.05+Math.random()*0.05});
+}
+setInterval(addSignal,120);
+
+function drawNeural(){
+  nctx.clearRect(0,0,200,120);
+  // 連線
+  layers.forEach((layer,li)=>{
+    if(li>=layers.length-1)return;
+    layer.forEach(a=>{
+      layers[li+1].forEach(b=>{
+        nctx.beginPath(); nctx.moveTo(a.x,a.y); nctx.lineTo(b.x,b.y);
+        nctx.strokeStyle='rgba(168,85,247,0.08)'; nctx.lineWidth=0.8; nctx.stroke();
+      });
+    });
+  });
+  // 信號粒子
+  for(let i=signals.length-1;i>=0;i--){
+    const s=signals[i]; s.progress+=s.speed;
+    if(s.progress>=1){signals.splice(i,1);continue;}
+    const px=s.x+(s.tx-s.x)*s.progress;
+    const py=s.y+(s.ty-s.y)*s.progress;
+    nctx.beginPath(); nctx.arc(px,py,2.5,0,Math.PI*2);
+    nctx.fillStyle=`rgba(168,85,247,${0.9*(1-s.progress*0.5)})`;
+    nctx.fill();
+    nctx.beginPath(); nctx.arc(px,py,5,0,Math.PI*2);
+    nctx.fillStyle=`rgba(168,85,247,${0.2*(1-s.progress)})`;
+    nctx.fill();
+  }
+  // 節點
+  layers.forEach((layer,li)=>{
+    layer.forEach(n=>{
+      const t=Date.now()/1000;
+      const pulse=Math.sin(t*2+n.y)*0.3+0.7;
+      nctx.beginPath(); nctx.arc(n.x,n.y,4,0,Math.PI*2);
+      const colors=['rgba(0,212,255','rgba(168,85,247','rgba(0,212,255','rgba(0,255,136'];
+      nctx.fillStyle=`${colors[li]},${pulse})`; nctx.fill();
+      nctx.beginPath(); nctx.arc(n.x,n.y,7,0,Math.PI*2);
+      nctx.fillStyle=`${colors[li]},${pulse*0.15})`; nctx.fill();
+    });
+  });
+}
+setInterval(drawNeural,30);
+
+// 計算步驟與進度
+const stepLabels = ['ANALYZING ORDERS','CHECKING CAPACITY','ROUTING ENGINE','PRIORITY SORT','GENERATING PLAN'];
+const stepTimes = [0, 18, 36, 58, 78]; // 每個步驟在幾%時觸發
+let pct=0;
+const fillEl=document.getElementById('aiFill');
+const pctEl=document.getElementById('aiPct');
+const labelEl=document.getElementById('aiLabel');
+
+function setStep(idx, state){
+  const el=document.getElementById('step'+idx);
+  if(!el)return;
+  el.className='step '+(state==='done'?'done':state==='active'?'active':'');
+}
+
+const timer=setInterval(()=>{
+  pct=Math.min(100,pct+Math.floor(Math.random()*3)+1);
+  fillEl.style.width=pct+'%';
+  pctEl.textContent=pct+'%';
+
+  const si=Math.floor((pct/100)*stepLabels.length);
+  labelEl.textContent=stepLabels[Math.min(si,stepLabels.length-1)];
+
+  // 步驟狀態更新
+  stepTimes.forEach((t,i)=>{
+    if(pct>=t && pct<(stepTimes[i+1]||100)){
+      setStep(i,'active');
+      for(let j=0;j<i;j++) setStep(j,'done');
+    }
+  });
+
+  if(pct>=100){
+    clearInterval(timer);
+    // 全部步驟完成
+    for(let i=0;i<5;i++) setStep(i,'done');
+    labelEl.textContent='COMPLETE';
+    setTimeout(showDone,600);
+  }
+},120);
+
+function showDone(){
+  document.getElementById('aiComputing').style.display='none';
+  const done=document.getElementById('aiDone');
+  done.style.display='flex';
+}
+
+function applyResult(){
+  document.getElementById('aiOverlay').style.opacity='0';
+  document.getElementById('aiOverlay').style.transition='opacity 0.6s ease';
+  setTimeout(()=>{ document.getElementById('aiOverlay').style.display='none'; },600);
+}
+
+function cancelAI(){
+  document.getElementById('aiOverlay').style.opacity='0';
+  document.getElementById('aiOverlay').style.transition='opacity 0.4s ease';
+  setTimeout(()=>{ document.getElementById('aiOverlay').style.display='none'; },400);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+**/*.md
+temp_v11/**
+temp_clone/**
+temp_clasp/**
+clasp_project/**
+PROTOCOL.md
+node_modules/**
+scratch/**
+**/*.py
+temp_*.js
+temp.js
+final_*.js
+gaoyaci_clasp/**
+庫存1號客戶版/**
+動畫/**
+

@@ -1,0 +1,2665 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>派送進度查詢</title>
+  <!-- ELITILE 鈦傳速高階專屬 3D 漸層 SVG 網頁圖標 (Favicon) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg viewBox='0 0 512 512' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M244.837 442H167.334V213.34H65V70H244.837V442Z M350.745 320.275H350.934V442H263.648V368.055H264.255L286.222 347.442V412.422H325.35V320.275L350.745 298.601V320.275Z M363.785 253.258L264.049 343.323L264.044 172.055L363.785 253.258Z M448 213.34H347.923L312.734 179.211H426.932V104.129H263.648V70H448V213.34Z' fill='url(%23logograd)'/><defs><linearGradient id='logograd' x1='65' y1='70' x2='448' y2='442' gradientUnits='userSpaceOnUse'><stop offset='0%25' stop-color='%2300aaff'/><stop offset='100%25' stop-color='%230044cc'/></linearGradient></defs></svg>">
+  
+  <!-- Google Fonts & Tailwind-like CSS variables but in vanilla CSS -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --accent-purple: #a855f7;
+      --accent-indigo: #6366f1;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --glass-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+    }
+
+    body {
+      background: var(--bg-gradient);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem;
+      overflow-x: hidden;
+    }
+
+    /* 💡 客戶端 (FREE 等級) 特色樣式：專屬客戶的卡片用綠框，即將抵達的用黃色呼吸框 */
+    body.is-free-grade .station.is-ours .station-content {
+      border: 1.5px solid #10b981 !important;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.3) !important;
+      background: rgba(16, 185, 129, 0.04) !important;
+    }
+
+    body.is-free-grade .station.current .station-content {
+      border: 1.5px solid #f59e0b !important;
+      background: rgba(245, 158, 11, 0.06) !important;
+      animation: yellow-glow-pulse 2s ease-in-out infinite !important;
+    }
+
+    /* 💡 如果又是專屬又是即將抵達，則用呼吸綠色框，給予最顯眼的專屬通知！ */
+    body.is-free-grade .station.is-ours.current .station-content {
+      border: 1.5px solid #10b981 !important;
+      background: rgba(16, 185, 129, 0.06) !important;
+      animation: green-glow-pulse 2s ease-in-out infinite !important;
+    }
+
+    @keyframes yellow-glow-pulse {
+      0%, 100% {
+        border-color: rgba(245, 158, 11, 0.4);
+        box-shadow: 0 0 6px rgba(245, 158, 11, 0.15);
+      }
+      50% {
+        border-color: rgba(245, 158, 11, 1);
+        box-shadow: 0 0 16px rgba(245, 158, 11, 0.5);
+      }
+    }
+
+    @keyframes green-glow-pulse {
+      0%, 100% {
+        border-color: rgba(16, 185, 129, 0.4);
+        box-shadow: 0 0 6px rgba(16, 185, 129, 0.15);
+      }
+      50% {
+        border-color: rgba(16, 185, 129, 1);
+        box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+      }
+    }
+
+    /* Container */
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      padding: 1rem 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-indigo));
+      padding: 0.5rem 1.25rem;
+      border-radius: 9999px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-size: 0.85rem;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      background: linear-gradient(to right, #ffffff, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .dealer-name-tag {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    /* Glassmorphic Cards */
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 1.25rem;
+      padding: 1.5rem;
+      box-shadow: var(--glass-glow);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Status Banner Card */
+    .status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 5px solid var(--accent-purple);
+    }
+
+    .status-info h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .status-info p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .status-icon {
+      font-size: 2rem;
+      color: var(--accent-purple);
+      text-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+    }
+
+    /* Timeline Section */
+    .timeline {
+      position: relative;
+      padding-left: 2rem;
+      margin: 1.5rem 0 0.5rem 0.5rem;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: 5px;
+      bottom: 5px;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-bottom: 2rem;
+    }
+
+    .timeline-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .timeline-badge {
+      position: absolute;
+      left: -2rem;
+      top: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #475569;
+      border: 3px solid #0f172a;
+      transition: all 0.3s ease;
+      z-index: 2;
+    }
+
+    .timeline-item.active .timeline-badge {
+      background: var(--accent-purple);
+      box-shadow: 0 0 10px var(--accent-purple);
+      transform: scale(1.2);
+    }
+
+    .timeline-item.completed .timeline-badge {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+
+    .timeline-content {
+      padding-left: 0.5rem;
+    }
+
+    .timeline-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .timeline-item.completed .timeline-title {
+      color: var(--accent-green);
+    }
+
+    .timeline-item.active .timeline-title {
+      color: var(--accent-purple);
+    }
+
+    .timeline-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+      line-height: 1.4;
+    }
+
+    /* Order Details List */
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.75rem;
+    }
+
+    .order-header h3 {
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .order-count {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .order-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .order-item {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 0.75rem;
+      padding: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .order-meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .order-dest {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .order-dest i {
+      color: var(--accent-indigo);
+      margin-top: 0.2rem;
+    }
+
+    .order-info-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      background: rgba(0, 0, 0, 0.15);
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    .grid-label {
+      color: var(--text-secondary);
+      margin-bottom: 0.15rem;
+    }
+
+    .grid-val {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .status-tag {
+      align-self: flex-start;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .tag-pending { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+    .tag-transit { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; }
+    .tag-finish { background: rgba(16, 185, 129, 0.15); color: #a7f3d0; }
+
+    /* Photo preview */
+    .photo-preview-btn {
+      align-self: flex-end;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-primary);
+      padding: 0.35rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .photo-preview-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Modal for Photo */
+    .modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .modal-content {
+      position: relative;
+      max-width: 100%;
+      max-height: 80%;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .modal-content img {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      height: auto;
+      max-height: 70vh;
+      object-fit: contain;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: -2.5rem;
+      right: 0;
+      color: white;
+      font-size: 1.5rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* Refresh Button */
+    .btn-refresh {
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-indigo));
+      border: none;
+      color: white;
+      padding: 0.85rem;
+      border-radius: 0.85rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .btn-refresh:active {
+      transform: scale(0.98);
+    }
+
+    .btn-refresh i.spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Loader */
+    .loader-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 4rem 2rem;
+      gap: 1rem;
+      text-align: center;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 5px solid rgba(255, 255, 255, 0.05);
+      border-top-color: var(--accent-purple);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .loader-text {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    /* Error card */
+    .error-card {
+      border-left: 5px solid var(--accent-red);
+      text-align: center;
+      padding: 2.5rem 1.5rem;
+    }
+
+    .error-card i {
+      font-size: 3rem;
+      color: var(--accent-red);
+      margin-bottom: 1rem;
+    }
+
+    .error-card h3 {
+      font-size: 1.15rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .error-card p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* Empty Card */
+    .empty-card {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .empty-card i {
+      font-size: 3rem;
+      color: var(--text-secondary);
+      opacity: 0.5;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 2rem 0;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    footer a {
+      color: var(--accent-indigo);
+      text-decoration: none;
+    }
+
+    /* --- NEW PREMIUM STYLES (PHASE 1 & 2) --- */
+    
+    /* 1. Pull to Refresh UI */
+    .pull-indicator {
+      text-align: center;
+      padding: 0.5rem 0;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.3s ease;
+      margin-top: -0.5rem;
+      margin-bottom: 0.5rem;
+      opacity: 0.8;
+    }
+
+    .pull-indicator i.spinning {
+      animation: spin 1s linear infinite;
+    }
+
+    /* 2. Skeleton Loader */
+    .skeleton-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 1.25rem;
+      padding: 1.5rem;
+      box-shadow: var(--glass-glow);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .skeleton-line {
+      height: 16px;
+      width: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, 
+        rgba(255, 255, 255, 0.03) 25%, 
+        rgba(255, 255, 255, 0.08) 50%, 
+        rgba(255, 255, 255, 0.03) 75%
+      );
+      background-size: 200% 100%;
+      animation: skeleton-loading 1.6s infinite;
+    }
+
+    .skeleton-line.short { width: 40%; }
+    .skeleton-line.medium { width: 70%; }
+    .skeleton-line.large { height: 80px; border-radius: 8px; }
+
+    @keyframes skeleton-loading {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* 3. Circular Progress Ring Card */
+    .progress-ring-card {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      justify-content: space-between;
+      border-left: 5px solid var(--accent-purple);
+    }
+
+    .progress-ring-wrapper {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .progress-ring {
+      transform: rotate(-90deg);
+    }
+
+    .progress-ring__circle-bg {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.05);
+      stroke-width: 6;
+    }
+
+    .progress-ring__circle {
+      fill: none;
+      stroke: url(#progressGradient);
+      stroke-width: 6;
+      stroke-linecap: round;
+      stroke-dasharray: 220; /* 2 * PI * 35 = ~219.9 */
+      stroke-dashoffset: 220;
+      transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .progress-ring-text {
+      position: absolute;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    /* 4. ETA & Action buttons inside Task cards */
+    .eta-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-amber);
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .offline-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--accent-red);
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      animation: pulse-red 2s infinite;
+      margin-left: 0.5rem;
+    }
+
+    @keyframes pulse-red {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      70% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 0.8rem;
+      width: 100%;
+    }
+
+    .task-action-btn {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .task-action-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.15);
+      transform: translateY(-1px);
+    }
+
+    .task-action-btn:active {
+      transform: translateY(0);
+    }
+
+    .task-action-btn.primary {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.2));
+      border-color: rgba(168, 85, 247, 0.3);
+      color: #c084fc;
+    }
+    
+    .task-action-btn.primary:hover {
+      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3));
+      border-color: rgba(168, 85, 247, 0.5);
+    }
+
+    .task-action-btn.success {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 199, 85, 0.2));
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #a7f3d0;
+    }
+
+    .task-action-btn.success:hover {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 199, 85, 0.3));
+      border-color: rgba(16, 185, 129, 0.5);
+    }
+
+    /* --- METRO MAP STYLES EXTENSION --- */
+    :root {
+      --station-done: #10b981;
+      --station-current: #3b82f6;
+      --station-pending: #64748b;
+    }
+
+    .progress-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .stat-number {
+      font-size: 1.75rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #a855f7, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .vehicle-info {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .vehicle-icon {
+      width: 50px;
+      height: 50px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .vehicle-details h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+
+    .vehicle-details p {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .metro-map {
+      position: relative;
+      padding: 1.25rem 0.25rem;
+    }
+
+    .route-line {
+      position: relative;
+      padding-left: 2.75rem;
+    }
+
+    .route-line::before {
+      content: '';
+      position: absolute;
+      left: 1.15rem;
+      top: 0;
+      bottom: 0;
+      width: 6px;
+      background: linear-gradient(to bottom, 
+        var(--station-done) 0%,
+        var(--station-done) var(--progress, 0%),
+        var(--station-pending) var(--progress, 0%),
+        var(--station-pending) 100%
+      );
+      border-radius: 3px;
+    }
+
+    /* 🚚 炫彩閃爍卡車移動動畫樣式 */
+    .floating-truck {
+      position: absolute;
+      top: -2px;
+      left: -2px;
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+      z-index: 10;
+      border: 2px solid var(--bg-card);
+      animation: pulse-glow 1.2s infinite alternate, truck-scale-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    @keyframes pulse-glow {
+      0% {
+        box-shadow: 0 0 4px rgba(168, 85, 247, 0.4);
+        opacity: 0.85;
+      }
+      100% {
+        box-shadow: 0 0 14px rgba(168, 85, 247, 0.95), 0 0 22px rgba(99, 102, 241, 0.7);
+        opacity: 1;
+      }
+    }
+
+    @keyframes truck-scale-in {
+      from {
+        transform: scale(0);
+      }
+      to {
+        transform: scale(1);
+      }
+    }
+
+    .station {
+      position: relative;
+      margin-bottom: 2rem;
+      animation: stationFadeIn 0.5s ease forwards;
+      opacity: 0;
+    }
+
+    .station.clickable {
+      cursor: pointer;
+    }
+
+    .station:last-child {
+      margin-bottom: 0;
+    }
+
+    @keyframes stationFadeIn {
+      to { opacity: 1; }
+    }
+
+    .station-marker {
+      position: absolute;
+      left: -2.75rem;
+      top: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 4px solid var(--station-pending);
+      background: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.85rem;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 10;
+      color: var(--text-secondary);
+    }
+
+    .station.completed .station-marker {
+      border-color: var(--station-done);
+      background: var(--station-done);
+      color: white;
+    }
+
+    .station.current .station-marker {
+      border-color: var(--station-current);
+      background: var(--station-current);
+      color: white;
+      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+
+    .station-content {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 0.85rem;
+      padding: 0.85rem;
+      min-height: 70px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .station.current .station-content {
+      border-color: rgba(59, 130, 246, 0.3);
+      background: rgba(59, 130, 246, 0.08);
+    }
+
+    .station.completed .station-content {
+      opacity: 0.65;
+    }
+
+    .station-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      color: var(--text-primary);
+    }
+
+    .station.current .station-name {
+      color: #60a5fa;
+    }
+
+    .station.completed .station-name {
+      color: var(--station-done);
+    }
+
+    .station-address {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      line-height: 1.4;
+    }
+
+    .station-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 0.15rem;
+    }
+
+    .station-meta span {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .completed-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      background: rgba(16, 185, 129, 0.15);
+      color: #10b981;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.35rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      margin-top: 0.15rem;
+      align-self: flex-start;
+    }
+
+    .station-lock-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      padding: 0.15rem 0.4rem;
+      border-radius: 0.25rem;
+      font-size: 0.65rem;
+      font-weight: 500;
+    }
+
+    .date-selector-wrapper {
+      margin-top: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(30, 41, 59, 0.4);
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.75rem;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+    .date-label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .date-input {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 0.35rem;
+      color: var(--text-primary);
+      font-size: 0.85rem;
+      padding: 0.25rem 0.5rem;
+      outline: none;
+      font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    .date-input:focus {
+      border-color: var(--accent-purple);
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+    }
+    .btn-query-date {
+      background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-indigo) 100%);
+      color: #fff;
+      border: none;
+      border-radius: 0.35rem;
+      font-size: 0.85rem;
+      padding: 0.25rem 0.65rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 6px rgba(168, 85, 247, 0.2);
+    }
+    .btn-query-date:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4);
+    }
+    .btn-query-date:active {
+      transform: translateY(1px);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- SVG Gradient Definitions for progress ring -->
+  <svg style="width:0; height:0; position:absolute;" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="var(--accent-purple)" />
+        <stop offset="100%" stop-color="var(--accent-indigo)" />
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="container">
+    
+    <!-- Pull to refresh indicator -->
+    <div id="pullIndicator" class="pull-indicator" style="display: none;">
+      <i class="fa-solid fa-arrow-down" id="pullIcon"></i>
+      <span id="pullText">下拉可以重新整理...</span>
+    </div>
+    
+    <!-- Header -->
+    <header>
+      <h1>配送進度查詢</h1>
+      <div class="dealer-name-tag" id="dealerNameContainer">
+        <i class="fa-solid fa-store"></i> <span id="dealerName">正在載入經銷商資料...</span>
+      </div>
+      <div class="date-selector-wrapper" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; flex-wrap: wrap;">
+        <label for="deliveryDateInput" class="date-label"><i class="fa-solid fa-calendar-days"></i> 查詢日期：</label>
+        <div style="display: flex; align-items: center; gap: 0.35rem;">
+          <input type="date" id="deliveryDateInput" class="date-input" />
+          <button id="btnQueryDate" class="btn-query-date" onclick="triggerQueryDate()"><i class="fa-solid fa-magnifying-glass"></i> 查詢</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 主區塊：由 JS 控制渲染 -->
+    <div id="mainContent">
+      
+      <!-- 預設載入狀態 -->
+      <div class="card loader-container">
+        <div class="spinner"></div>
+        <div class="loader-text" id="loaderStatus">正在連線至 LINE 官方服務...</div>
+      </div>
+      
+    </div>
+
+    <!-- 底部資訊 -->
+    <footer>
+      <p>© 2026 鈦傳速智能運控平台</p>
+      <p>如查詢有任何疑問，請聯絡 <a href="mailto:titankou2002@gmail.com">系統管理員</a></p>
+    </footer>
+
+  </div>
+
+  <!-- 圖片放大預覽視窗 -->
+  <div class="modal" id="photoModal">
+    <div class="modal-content" style="position: relative; display: flex; flex-direction: column; align-items: center; max-width: 90vw;">
+      <button class="modal-close" onclick="closePhotoModal()"><i class="fa-solid fa-xmark"></i></button>
+      <div id="modalTitle" style="color: white; font-weight: 600; margin-bottom: 0.75rem; font-size: 0.95rem; text-align: center; letter-spacing: 1px;">照片預覽</div>
+      <img id="modalImg" src="" alt="完工證明照片" style="max-height: 70vh; max-width: 100%; border-radius: 0.5rem; object-fit: contain; cursor: zoom-in;" onclick="window.open(this.src, '_blank')">
+      <button onclick="window.open(document.getElementById('modalImg').src, '_blank')" style="margin-top: 0.75rem; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); transition: all 0.2s ease;">
+        <i class="fa-solid fa-magnifying-glass-plus"></i> 點此在新分頁放大原圖 (支援縮放)
+      </button>
+    </div>
+  </div>
+
+  <!-- 簽收證明單 (海報樣式) 預覽視窗 -->
+  <div class="modal" id="receiptModal">
+    <div class="modal-content" style="position: relative; width: 90%; max-width: 420px; max-height: 92vh; overflow-y: auto; background: #f1f5f9; padding: 20px; border-radius: 28px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); color: #1e293b; font-family: 'Noto Sans TC', sans-serif; display: flex; flex-direction: column;">
+      <button class="modal-close" onclick="closeReceiptModal()" style="color: #64748b; background: rgba(0,0,0,0.06); border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; top: 12px; right: 12px; z-index: 10;"><i class="fa-solid fa-xmark"></i></button>
+      
+      <!-- 頂部標題 -->
+      <div id="rcHeader" style="font-size: 1.3rem; font-weight: 900; line-height: 1.3; margin-top: 5px;"></div>
+      <div id="rcTime" style="font-size: 0.8rem; color: #64748b; font-family: 'Outfit', sans-serif; margin-top: 3px; margin-bottom: 12px;"></div>
+      
+      <!-- 主內卡片 -->
+      <div style="background: #ffffff; border-radius: 20px; padding: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); position: relative; overflow: hidden; display: flex; flex-direction: column; flex-shrink: 0;">
+        <!-- 照片 (高解析度直式，支援點擊放大) -->
+        <div style="width: 100%; height: 350px; border-radius: 14px; overflow: hidden; background: #000; position: relative; flex-shrink: 0; cursor: pointer;" onclick="openPhotoModal(document.getElementById('rcImg').src, '簽收照片原圖')">
+          <img id="rcImg" src="" alt="簽收實景照" style="width: 100%; height: 100%; object-fit: contain;">
+          <div style="position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.6); color: #fff; padding: 4px 8px; border-radius: 6px; font-size: 0.65rem; display: flex; align-items: center; gap: 4px;">
+            <i class="fa-solid fa-magnifying-glass-plus"></i> 點擊放大
+          </div>
+        </div>
+        
+        <!-- 彩色分割條 -->
+        <div id="rcBar" style="height: 6px; width: 100%; margin-top: 10px; border-radius: 3px; flex-shrink: 0;"></div>
+        
+        <!-- 資訊欄位區 -->
+        <div style="margin-top: 10px; padding: 0 4px; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
+          <div>
+            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">收件客戶/案名</div>
+            <div id="rcCust" style="font-size: 1rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+          </div>
+          <div>
+            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">到貨日期</div>
+            <div id="rcArrival" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+          </div>
+          <div>
+            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">送貨地址</div>
+            <div id="rcAddr" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; line-height: 1.3; letter-spacing: 0.5px;"></div>
+          </div>
+          <div>
+            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">連絡人/電話</div>
+            <div id="rcContact" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+          </div>
+          <div>
+            <div id="rcCarLabel" style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">車牌號碼 / 載重</div>
+            <div id="rcCar" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+          </div>
+        </div>
+        
+        <!-- 蓋章 (已送達 VERIFIED) -->
+        <div id="rcStamp" style="position: absolute; bottom: 8px; right: 8px; width: 76px; height: 76px; border: 3px solid; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: rotate(-12deg); z-index: 1; pointer-events: none; opacity: 0.85;">
+          <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">已送達</span>
+          <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">VERIFIED</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 引入 LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  
+  <script>
+    // ==============================================================
+    // ⚠️ 請在此處填入您的 GAS 部署 Web App URL 與 LIFF ID ⚠️
+    // ==============================================================
+    const CONFIG = {
+      GAS_API: "https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec", // 🌟 請換成您實際部署的 GAS 網址
+      LIFF_ID: "2007666611-285rZBFA" // 🌟 請換成您在 LINE Developers 申請的 LIFF ID
+    };
+
+    let cachedUserId = "";
+    let autoRefreshInterval = null;
+    let currentDashboardData = null; // 💡 儲存目前渲染的完整派送資料快照，供簽收證明單隨時調用
+    
+    // 快取機制設定
+    const CACHE_KEY = "taichuansu_last_delivery_data";
+    const CACHE_TIME_KEY = "taichuansu_last_update_time";
+
+    // 💡 國王測試專用：定義 Mock FREE 經銷商數據
+    const MOCK_FREE_DATA = {
+      success: true,
+      dealer: "高雅瓷旗艦經銷商 (測試 FREE 樣式)",
+      user: "國王測試員",
+      grade: "free",
+      tasks: [
+        {
+          id: "DLV-20260519-01",
+          customer: "高雅瓷旗艦經銷商",
+          address: "台北市信義區信義路五段7號 (台北 101)",
+          status: "已送達",
+          seq: 1,
+          boxes: 32,
+          size: "80x80 cm",
+          weight: 840,
+          timeSlot: "上午",
+          shippingType: "專車派送",
+          finishTime: "10:15",
+          thumbnail: "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80",
+          signPhoto: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80",
+          vehicle: "AB-1234"
+        },
+        {
+          id: "DLV-20260519-02",
+          customer: "宏達大理石經銷",
+          address: "台北市信義區松德路100號",
+          status: "準備中",
+          seq: 2,
+          boxes: 18,
+          size: "60x120 cm",
+          weight: 560,
+          timeSlot: "下午",
+          shippingType: "專車派送",
+          vehicle: "AB-1234"
+        },
+        {
+          id: "DLV-20260519-03",
+          customer: "華夏建材有限公司",
+          address: "台北市信義區基隆路一段333號",
+          status: "已送達",
+          seq: 1,
+          boxes: 20,
+          size: "60x60 cm",
+          weight: 480,
+          timeSlot: "上午",
+          shippingType: "專車派送",
+          finishTime: "09:45",
+          vehicle: "CD-5678"
+        },
+        {
+          id: "DLV-20260519-04",
+          customer: "高雅瓷旗艦經銷商",
+          address: "台北市大安區忠孝東路四段205號",
+          status: "配送中",
+          seq: 2,
+          boxes: 15,
+          size: "30x60 cm",
+          weight: 350,
+          timeSlot: "下午",
+          shippingType: "專車派送",
+          vehicle: "CD-5678"
+        },
+        {
+          id: "DLV-20260519-05",
+          customer: "永慶裝潢行",
+          address: "台北市松山區南京東路五段123號",
+          status: "準備中",
+          seq: 3,
+          boxes: 10,
+          size: "40x40 cm",
+          weight: 220,
+          timeSlot: "下午",
+          shippingType: "專車派送",
+          vehicle: "CD-5678"
+        }
+      ],
+      vehiclePositions: [
+        {
+          vehicle: "AB-1234",
+          driver: "陳小明司機",
+          phone: "0912-345-678",
+          lastUpdate: "3分鐘前",
+          targetAddr: "台北市信義區信義路五段7號",
+          departureTime: "08:30",
+          targetPreciseMin: "0"
+        },
+        {
+          vehicle: "CD-5678",
+          driver: "林志強司機",
+          phone: "0987-654-321",
+          lastUpdate: "剛剛",
+          targetAddr: "台北市大安區忠孝東路四段205號",
+          departureTime: "09:00",
+          targetPreciseMin: "15"
+        }
+      ]
+    };
+
+    // 頁面初始化
+    document.addEventListener("DOMContentLoaded", () => {
+      // 1. 初始化下拉刷新手勢
+      initPullToRefresh();
+      
+      // 2. 初始化日期選擇器
+      initDatePicker();
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const testParam = urlParams.get('test') || urlParams.get('mock');
+      if (testParam && (testParam.toLowerCase() === 'free' || testParam.toLowerCase() === 'true')) {
+        updateLoaderText("啟用開發者 Mock 測試模式 (FREE 權限)...");
+        setTimeout(() => {
+          renderDashboard(MOCK_FREE_DATA);
+        }, 800);
+      } else {
+        // 先嘗試載入本機快取以求秒開
+        const cached = loadFromCache();
+        if (cached) {
+          console.log("🚀 快取秒開預載入成功");
+          renderDashboard(cached.data, true);
+        }
+        initLiff();
+      }
+    });
+
+    // 初始化 LIFF
+    function initLiff() {
+      updateLoaderText("正在初始化 LINE SDK...");
+      liff.init({ liffId: CONFIG.LIFF_ID })
+        .then(() => {
+          if (!liff.isLoggedIn()) {
+            if (window.self !== window.top) {
+              // 💡 偵測到在 iframe 中且未登入，不要呼叫 liff.login() 以防被 X-Frame-Options 擋掉，改為引導跳出
+              showExternalLoginGuide();
+            } else {
+              updateLoaderText("跳轉至 LINE 登入中...");
+              liff.login();
+            }
+          } else {
+            liff.getProfile()
+              .then(profile => {
+                cachedUserId = profile.userId;
+                updateLoaderText("安全身分確認成功，正在取得派送進度...");
+                fetchDealerData(cachedUserId);
+              })
+              .catch(err => {
+                showError("身分驗證失敗", "無法從 LINE 取得您的個人基本資料。請確認您的 LINE 授權設定。");
+                console.error("GetProfile Error:", err);
+              });
+          }
+        })
+        .catch(err => {
+          showError("LINE SDK 初始化失敗", "請確認您的網路連線，或於 LINE 官方帳號內開啟此頁面。");
+          console.error("LIFF Init Error:", err);
+        });
+    }
+
+    // 💡 外部瀏覽器引導跳出 iframe 登入
+    function showExternalLoginGuide() {
+      const loader = document.getElementById("loader");
+      if (loader) loader.style.display = "none";
+      
+      const errorEl = document.getElementById("errorScreen");
+      if (errorEl) {
+        errorEl.classList.remove("hidden");
+        document.getElementById("errorTitle").innerText = "🔑 外部瀏覽器安全驗證";
+        document.getElementById("errorMessage").innerHTML = `
+          為了確保您的經銷商資安，請點選下方按鈕，跳轉至 LINE 安全授權中心：<br><br>
+          <a href="https://liff.line.me/${CONFIG.LIFF_ID}" target="_top" style="display:inline-block; background:#06C755; color:#fff; padding:12px 28px; border-radius:30px; text-decoration:none; font-weight:bold; margin-top:10px; box-shadow:0 4px 15px rgba(6,199,85,0.4); font-size:16px; transition:all 0.3s ease;">
+            🟢 點此登入 LINE 查貨
+          </a>
+        `;
+      }
+    }
+
+    // 更新載入文字
+    function updateLoaderText(text) {
+      const el = document.getElementById("loaderStatus");
+      if (el) el.innerText = text;
+    }
+
+    // 儲存至本機快取
+    function saveToCache(data) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+      } catch (e) {
+        console.warn("localStorage save failed:", e);
+      }
+    }
+
+    // 從本機快取載入
+    function loadFromCache() {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        const time = localStorage.getItem(CACHE_TIME_KEY);
+        if (cached) {
+          return {
+            data: JSON.parse(cached),
+            time: parseInt(time) || Date.now()
+          };
+        }
+      } catch (e) {
+        console.warn("localStorage read failed:", e);
+      }
+      return null;
+    }
+
+    // 💡 根據日期動態生成 Mock 測試數據 (歷史日期全送達，今天維持進行中)
+    function getMockDataForDate(dateStr, baseData) {
+      const data = JSON.parse(JSON.stringify(baseData));
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${yyyy}-${mm}-${dd}`;
+      
+      if (dateStr === todayStr) {
+        return data; // 今天：維持原來的進行中狀態
+      }
+      
+      // 過去的歷史日期：模擬 100% 全部已送達
+      data.dealer = `${data.dealer.split(' (')[0]} (${dateStr.replace(/-/g, '/')} 歷史紀錄)`;
+      data.tasks.forEach(t => {
+        t.status = "已送達";
+        if (!t.finishTime) {
+          t.finishTime = "14:30";
+        }
+        if (!t.thumbnail) {
+          t.thumbnail = "https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=600&q=80";
+        }
+        t.signPhoto = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=600&q=80";
+      });
+      if (data.vehiclePositions && Array.isArray(data.vehiclePositions)) {
+        data.vehiclePositions.forEach(v => {
+          v.lastUpdate = `${dateStr.replace(/-/g, '/')} 已全部完工`;
+          v.targetPreciseMin = "0";
+        });
+      }
+      return data;
+    }
+
+    // 💡 全域查詢觸發函數 (支援按鈕點擊與事件自動觸發)
+    async function triggerQueryDate() {
+      const dateInput = document.getElementById("deliveryDateInput");
+      if (!dateInput) return;
+      
+      const btn = document.getElementById("btnQueryDate");
+      const originalHTML = btn ? btn.innerHTML : '<i class="fa-solid fa-magnifying-glass"></i> 查詢';
+      
+      if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 查詢中...';
+        btn.disabled = true;
+        btn.style.opacity = "0.7";
+      }
+      
+      const selectedDate = dateInput.value;
+      console.log(`按鈕或事件觸發查詢日期: ${selectedDate}`);
+      
+      // 立即顯示骨架屏載入動畫，提供強烈視覺回饋！
+      renderSkeleton();
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const testParam = urlParams.get('test') || urlParams.get('mock');
+      
+      try {
+        if (testParam && (testParam.toLowerCase() === 'free' || testParam.toLowerCase() === 'true')) {
+          showNotificationTip(`🔮 模擬載入 ${selectedDate} 日期之配送資訊`);
+          // 稍微延遲 600ms，讓載入動畫有感，增加真實度！
+          await new Promise(resolve => setTimeout(resolve, 600));
+          const mockData = getMockDataForDate(selectedDate, MOCK_FREE_DATA);
+          renderDashboard(mockData);
+        } else {
+          if (cachedUserId) {
+            // 傳入 false 確保非靜默加載，必定觸發載入狀態
+            await fetchDealerData(cachedUserId, false, selectedDate);
+          } else {
+            showNotificationTip("⚠️ 尚未取得身分驗證，將在連線成功後自動查詢");
+          }
+        }
+      } catch (e) {
+        console.error("查詢日期出錯:", e);
+      } finally {
+        // 還原按鈕狀態
+        if (btn) {
+          btn.innerHTML = originalHTML;
+          btn.disabled = false;
+          btn.style.opacity = "";
+        }
+      }
+    }
+
+    // 初始化日期選擇器
+    function initDatePicker() {
+      const dateInput = document.getElementById("deliveryDateInput");
+      if (dateInput) {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+        dateInput.value = todayStr;
+        dateInput.max = todayStr; // 最多只能選擇到今天
+        
+        // 💡 雙重自動事件綁定：若瀏覽器支援則自動載入
+        dateInput.addEventListener("change", triggerQueryDate);
+        dateInput.addEventListener("input", triggerQueryDate);
+      }
+    }
+
+    // 啟動 30 秒自動更新輪詢
+    function startAutoRefresh() {
+      if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+      autoRefreshInterval = setInterval(() => {
+        const dateInput = document.getElementById("deliveryDateInput");
+        const selectedDate = dateInput ? dateInput.value : "";
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const testParam = urlParams.get('test') || urlParams.get('mock');
+        if (testParam && (testParam.toLowerCase() === 'free' || testParam.toLowerCase() === 'true')) {
+          console.log("Mock 模式自動更新中...");
+          const mockData = getMockDataForDate(selectedDate, MOCK_FREE_DATA);
+          renderDashboard(mockData);
+        } else if (cachedUserId) {
+          console.log("背景自動更新數據中...", selectedDate);
+          fetchDealerData(cachedUserId, true, selectedDate); // 傳入 selectedDate，避免背景刷新將歷史數據覆蓋為今日！
+        }
+      }, 30000);
+    }
+
+    // 渲染骨架屏 (Skeleton Screen)
+    function renderSkeleton() {
+      const mainContainer = document.getElementById("mainContent");
+      if (!mainContainer) return;
+      
+      mainContainer.innerHTML = `
+        <div class="skeleton-card" style="border-left: 5px solid rgba(255,255,255,0.05);">
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line"></div>
+        </div>
+        <div class="skeleton-card" style="margin-top:1rem;">
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line medium" style="margin-top:0.5rem;"></div>
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line medium"></div>
+        </div>
+        <div class="skeleton-card" style="margin-top:1rem;">
+          <div class="skeleton-line short"></div>
+          <div class="skeleton-line large" style="margin-top:0.5rem;"></div>
+          <div class="skeleton-line large"></div>
+        </div>
+      `;
+    }
+
+    // 計算預計送達時間倒數
+    function getEstimatedArrival(targetPreciseMin) {
+      if (!targetPreciseMin) return '';
+      const eta = parseInt(targetPreciseMin);
+      if (isNaN(eta) || eta <= 0) return '';
+      if (eta < 60) {
+        return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"></i> 預計 ${eta} 分鐘送達</span>`;
+      }
+      const hrs = Math.floor(eta / 60);
+      const mins = eta % 60;
+      return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"></i> 預計 ${hrs}小時${mins > 0 ? mins+'分' : ''}送達</span>`;
+    }
+
+    // 下拉刷新手勢實作
+    let touchStartY = 0;
+    let touchMoveY = 0;
+    let isPulling = false;
+    
+    function initPullToRefresh() {
+      const container = document.body;
+      const indicator = document.getElementById("pullIndicator");
+      const icon = document.getElementById("pullIcon");
+      const text = document.getElementById("pullText");
+      
+      if (!indicator) return;
+      
+      container.addEventListener('touchstart', (e) => {
+        if (window.scrollY === 0) {
+          touchStartY = e.touches[0].clientY;
+          isPulling = true;
+        }
+      }, { passive: true });
+      
+      container.addEventListener('touchmove', (e) => {
+        if (!isPulling) return;
+        touchMoveY = e.touches[0].clientY;
+        const diff = touchMoveY - touchStartY;
+        
+        if (diff > 40 && window.scrollY === 0) {
+          indicator.style.display = "flex";
+          if (diff > 100) {
+            text.innerText = "釋放立即重新整理最新狀態...";
+            icon.style.transform = "rotate(180deg)";
+          } else {
+            text.innerText = "下拉可以重新整理...";
+            icon.style.transform = "rotate(0deg)";
+          }
+        }
+      }, { passive: true });
+      
+      container.addEventListener('touchend', (e) => {
+        if (!isPulling) return;
+        const diff = touchMoveY - touchStartY;
+        isPulling = false;
+        
+        if (diff > 100 && window.scrollY === 0) {
+          indicator.style.display = "flex";
+          text.innerText = "正在更新中...";
+          icon.className = "fa-solid fa-rotate spinning";
+          handleRefresh();
+          setTimeout(() => {
+            indicator.style.display = "none";
+            icon.className = "fa-solid fa-arrow-down";
+            icon.style.transform = "rotate(0deg)";
+          }, 1500);
+        } else {
+          indicator.style.display = "none";
+        }
+        touchStartY = 0;
+        touchMoveY = 0;
+      });
+    }
+
+    // 浮動提示小工具
+    function showNotificationTip(msg) {
+      const existing = document.getElementById("floatingTip");
+      if (existing) existing.remove();
+
+      const tip = document.createElement("div");
+      tip.id = "floatingTip";
+      tip.style.position = "fixed";
+      tip.style.bottom = "2rem";
+      tip.style.left = "50%";
+      tip.style.transform = "translateX(-50%)";
+      tip.style.background = "rgba(15, 23, 42, 0.95)";
+      tip.style.color = "#f8fafc";
+      tip.style.padding = "0.6rem 1.2rem";
+      tip.style.borderRadius = "9999px";
+      tip.style.fontSize = "0.8rem";
+      tip.style.fontWeight = "600";
+      tip.style.zIndex = "9999";
+      tip.style.boxShadow = "0 8px 32px rgba(0,0,0,0.5)";
+      tip.style.border = "1px solid rgba(255,255,255,0.08)";
+      tip.innerText = msg;
+      
+      document.body.appendChild(tip);
+      setTimeout(() => {
+        tip.style.transition = "all 0.5s ease";
+        tip.style.opacity = "0";
+        setTimeout(() => tip.remove(), 500);
+      }, 3000);
+    }
+
+    // 向後台 GAS API 取得資料（含 3 次自動重試與離線降級）
+    async function fetchDealerData(userId, isSilent = false, selectedDate = "") {
+      if (!isSilent) {
+        const cached = loadFromCache();
+        if (!cached || selectedDate) {
+          renderSkeleton();
+        }
+      }
+      
+      let url = `${CONFIG.GAS_API}?action=getDealerProgress&userId=${userId}`;
+      if (selectedDate) {
+        url += `&date=${selectedDate}`;
+      }
+      const retries = 3;
+      
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.success) {
+            saveToCache(data);
+            renderDashboard(data, false);
+            return;
+          } else {
+            if (i === retries - 1) {
+              showError("無查詢權限", data.error || "查無此 LINE ID 對應之經銷商，請聯絡管理員設定。");
+            }
+          }
+        } catch (err) {
+          console.warn(`後台同步重試 ${i+1}/${retries} 失敗:`, err);
+          if (i === retries - 1) {
+            const cached = loadFromCache();
+            if (cached) {
+              renderDashboard(cached.data, true);
+              showNotificationTip("🔌 網路異常，已為您載入離線暫存數據");
+            } else {
+              showError("後端資料同步失敗", "無法成功連線至鈦傳速物流資料庫，且無本機暫存，請稍後再試。");
+            }
+          } else {
+            await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 指數退避延遲
+          }
+        }
+      }
+    }
+
+    // 渲染主畫面
+    // 💡 智慧識別是否為本經銷商之配送任務 (支援模糊比對與商號關鍵字比對)
+    function isOurTask(task, dealerName, userName) {
+      if (!task || !task.customer) return false;
+      // 方便測試：支援 URL 參數 &dealer=金磚 強制將特定客戶設定為自己的任務！
+      const urlParams = new URLSearchParams(window.location.search);
+      const testDealer = urlParams.get('dealer');
+      const finalDealerName = testDealer || dealerName;
+
+      const cleanTaskCust = task.customer.replace(/\s+/g, '').toLowerCase();
+      const cleanDealer = (finalDealerName || '').replace(/\s+/g, '').toLowerCase();
+      const cleanUser = (userName || '').replace(/\s+/g, '').toLowerCase();
+      
+      if (cleanDealer && (cleanDealer.includes(cleanTaskCust) || cleanTaskCust.includes(cleanDealer))) return true;
+      if (cleanUser && (cleanUser.includes(cleanTaskCust) || cleanTaskCust.includes(cleanUser))) return true;
+      
+      // 特殊關鍵字比對：例如「高雅瓷」
+      if (cleanTaskCust.includes("高雅") && (cleanDealer.includes("graya") || cleanDealer.includes("高雅") || cleanUser.includes("高雅"))) return true;
+      return false;
+    }
+
+    // 💡 僅擷取路名路段（用於簡化顯示非本公司配送點）
+    function getStreetOnly(address) {
+      if (!address) return "未知路段";
+      let cleanAddr = address.replace(/\(.*?\)/g, "").trim();
+      const match = cleanAddr.match(/(?:市|縣|區|鄉|鎮)+(.*?(?:路|街|大道|段|橋|工業區))/);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+      const simpleMatch = cleanAddr.match(/^.*?(?:路|街|大道|段|橋|工業區)/);
+      if (simpleMatch) {
+        return simpleMatch[0].trim();
+      }
+      return cleanAddr.substring(0, 8);
+    }
+
+    // 💡 智慧地址脫敏過濾器 (只顯示路名，不顯示門牌號碼及細節樓層)
+    function getMaskedAddress(address) {
+      if (!address) return "未知路段";
+      // 匹配常見的縣市、區域、路/街/大道/段/橋/村/里/工業區，截斷門牌號碼
+      const match = address.match(/^.*?(?:路|街|大道|段|橋|村|里|工業區)/);
+      if (match) {
+        return match[0] + " (非本公司配送點)";
+      }
+      // 防呆截斷
+      return address.substring(0, 9) + "... (非本公司配送點)";
+    }
+
+    // 渲染主畫面
+    // 渲染主畫面
+    function renderDashboard(data, isCached = false) {
+      currentDashboardData = data; // 💡 每次渲染時快取資料，供動態卡片調用
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const forceGrade = urlParams.get('grade');
+      const isUserFreeGrade = forceGrade ? (forceGrade.toLowerCase() === 'free') : (!data.grade || ["king", "sales", "queen"].indexOf(String(data.grade).toLowerCase().trim()) === -1);
+      
+      if (isUserFreeGrade) {
+        document.body.classList.add("is-free-grade");
+      } else {
+        document.body.classList.remove("is-free-grade");
+      }
+      
+      // 1. 更新經銷商名稱標籤
+      document.getElementById("dealerName").innerText = data.dealer;
+      
+      const mainContainer = document.getElementById("mainContent");
+      mainContainer.innerHTML = ""; // 清空
+
+      if (!data.tasks || data.tasks.length === 0) {
+        // 今日無派送單
+        mainContainer.innerHTML = `
+          <div class="card empty-card">
+            <i class="fa-solid fa-calendar-day"></i>
+            <h3>今日無配送安排</h3>
+            <p>今天沒有安排給您的貨物配送。如有急單需求，請聯絡業務窗口。</p>
+            <button class="btn-refresh" style="margin-top: 1rem; width: 100%;" onclick="handleRefresh()">
+              <i class="fa-solid fa-rotate"></i> 重新載入
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      // 2. 計算目前登入經銷商（本人）的總進度狀態
+      const ourTasks = data.tasks.filter(t => isOurTask(t, data.dealer, data.user));
+      const totalOurTasks = ourTasks.length;
+      const finishedOurTasks = ourTasks.filter(t => t.status === "已完成" || t.status === "已送達").length;
+      const inTransitOurTasks = ourTasks.filter(t => t.status === "配送中" || t.status === "已上車" || t.status === "已指派").length;
+      
+      let bannerTitle = "📦 倉庫配貨準備中";
+      let bannerDesc = `今日您共有 ${totalOurTasks} 筆貨物，正等待裝車`;
+      
+      if (totalOurTasks > 0) {
+        if (finishedOurTasks === totalOurTasks) {
+          bannerTitle = "🎉 今日貨物已全數送達！";
+          bannerDesc = `您的 ${totalOurTasks} 筆專屬貨物已全數安全簽收。`;
+        } else if (finishedOurTasks > 0 || inTransitOurTasks > 0) {
+          bannerTitle = "🚛 司機配送進行中";
+          bannerDesc = `您專屬的貨物已送達 ${finishedOurTasks} 筆，還有 ${totalOurTasks - finishedOurTasks} 筆正在路上！`;
+        }
+      }
+
+      // 3. 建立狀態 Banner 卡片 (採用進度圓環 UI - 顯示本人貨物的總體進度)
+      const bannerCard = document.createElement("div");
+      bannerCard.className = "card progress-ring-card";
+      
+      const strokeDashoffset = totalOurTasks > 0 ? 220 - (220 * finishedOurTasks / totalOurTasks) : 220;
+      let offlineLabel = isCached ? `<span class="offline-badge"><i class="fa-solid fa-wifi-slash"></i> 離線瀏覽</span>` : '';
+      const progressPercentage = Math.round(totalOurTasks > 0 ? (finishedOurTasks / totalOurTasks) * 100 : 0);
+      
+      bannerCard.innerHTML = `
+        <div class="status-info" style="flex: 1;">
+          <h2 style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem;">
+            ${bannerTitle} ${offlineLabel}
+          </h2>
+          <p style="margin-top:0.25rem;">${bannerDesc}</p>
+        </div>
+        <div class="progress-ring-wrapper">
+          <svg class="progress-ring" width="80" height="80">
+            <circle class="progress-ring__circle-bg" cx="40" cy="40" r="35" />
+            <circle class="progress-ring__circle" id="progressRingIndicator" cx="40" cy="40" r="35" 
+              style="stroke-dashoffset: 220;" />
+          </svg>
+          <div class="progress-ring-text">${progressPercentage}%</div>
+        </div>
+      `;
+      mainContainer.appendChild(bannerCard);
+
+      // 延遲觸發 transition 動畫
+      setTimeout(() => {
+        const ring = document.getElementById("progressRingIndicator");
+        if (ring) ring.style.strokeDashoffset = strokeDashoffset;
+      }, 50);
+
+      // 4. 將所有單據依據「車輛 (Vehicle)」分組，並針對各車次渲染獨立捷運路網！
+      const tasksByVehicle = {};
+      data.tasks.forEach(t => {
+        const v = t.vehicle || "未指派車輛";
+        if (!tasksByVehicle[v]) {
+          tasksByVehicle[v] = [];
+        }
+        tasksByVehicle[v].push(t);
+      });
+
+      // 取得所有不重複的車牌代碼
+      const vehicleCodes = Object.keys(tasksByVehicle).sort();
+
+      vehicleCodes.forEach(vehicleCode => {
+        const vehicleTasks = tasksByVehicle[vehicleCode];
+        
+         // 依 seq 排序此車次的原始行車站點
+        const rawSortedTasks = [...vehicleTasks].sort((a, b) => (parseInt(a.seq) || 0) - (parseInt(b.seq) || 0));
+
+        // 💡 依據地址 (address) 合併相同站點的銷貨單
+        const sortedTasks = [];
+        const taskMapByAddress = {};
+
+        rawSortedTasks.forEach(t => {
+          const addr = (t.address || "").trim();
+          if (!taskMapByAddress[addr]) {
+            const mergedTask = {
+              ...t,
+              boxes: parseInt(t.boxes) || 0,
+              weight: parseFloat(t.weight) || 0,
+              thumbnails: t.thumbnail && t.thumbnail.startsWith("http") ? [t.thumbnail] : [],
+              signPhotos: t.signPhoto && t.signPhoto.startsWith("http") ? [{ id: t.id, photo: t.signPhoto, ids: [t.id] }] : [],
+              rawTasks: [t]
+            };
+            taskMapByAddress[addr] = mergedTask;
+            sortedTasks.push(mergedTask);
+          } else {
+            const existing = taskMapByAddress[addr];
+            existing.boxes += parseInt(t.boxes) || 0;
+            existing.weight += parseFloat(t.weight) || 0;
+            if (t.thumbnail && t.thumbnail.startsWith("http") && !existing.thumbnails.includes(t.thumbnail)) {
+              existing.thumbnails.push(t.thumbnail);
+            }
+            if (t.signPhoto && t.signPhoto.startsWith("http")) {
+              const matchedPhoto = existing.signPhotos.find(p => p.photo === t.signPhoto);
+              if (matchedPhoto) {
+                if (!matchedPhoto.ids.includes(t.id)) matchedPhoto.ids.push(t.id);
+              } else {
+                existing.signPhotos.push({ id: t.id, photo: t.signPhoto, ids: [t.id] });
+              }
+            }
+            existing.rawTasks.push(t);
+
+            const isTaskActive = (status) => ["配送中", "已上車", "已指派"].includes(status);
+            const isTaskCompleted = (status) => ["已完成", "已送達"].includes(status);
+
+            if (isTaskActive(t.status)) {
+              existing.status = t.status;
+            } else if (isTaskCompleted(t.status) && !isTaskActive(existing.status)) {
+              existing.status = t.status;
+            }
+          }
+        });
+
+        // 計算此車次總裝車箱數
+        let totalBoxes = 0;
+        sortedTasks.forEach(t => {
+          totalBoxes += parseInt(t.boxes) || 0;
+        });
+
+         // 判斷此車次起點站狀態
+        const completedTasksCount = sortedTasks.filter(t => t.status === "已完成" || t.status === "已送達").length;
+        const activeTasksCount = sortedTasks.filter(t => t.status === "配送中" || t.status === "已上車" || t.status === "已指派").length;
+        
+        // 智慧判定是否已發車：
+        // 1. 若已有完成的單，必定已發車
+        // 2. 若為當日車次，且目前時間小於 08:30，且尚無已完成單，則判定為「尚未發車」
+        let isWarehouseDeparted = completedTasksCount > 0 || activeTasksCount > 0;
+        if (completedTasksCount === 0) {
+          const now = new Date();
+          const currentHour = now.getHours();
+          const currentMin = now.getMinutes();
+          // 如果目前時間早於 8:30 (例如 6:40)，且完全沒有已送達的站點，則強制視為尚未發車
+          if (currentHour < 8 || (currentHour === 8 && currentMin < 30)) {
+            isWarehouseDeparted = false;
+          }
+        }
+
+        // 尋找此車次正在配送的 active 站點
+        let currentTaskIndex = sortedTasks.findIndex(t => t.status === "配送中" || t.status === "已上車" || t.status === "已指派");
+        if (currentTaskIndex === -1 && completedTasksCount < sortedTasks.length && isWarehouseDeparted) {
+          currentTaskIndex = sortedTasks.findIndex(t => t.status !== "已完成" && t.status !== "已送達");
+        }
+
+        // 智慧型路徑規劃與累積 ETA 計算器
+        // 輔助函式：計算兩地之間的經緯度距離 (公里)
+        function getDistanceKM(lat1, lon1, lat2, lon2) {
+          if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+          const R = 6371; // 地球半徑 km
+          const dLat = (lat2 - lat1) * Math.PI / 180;
+          const dLon = (lon2 - lon1) * Math.PI / 180;
+          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          return R * c * 1.3; // 1.3 為道路距離係數
+        }
+
+        // 依據距離跟 30KM 的車速來計算時間：
+        // 時間(分鐘) = 距離(KM) / 30 * 60 = 距離 * 2
+        function calculateLegMinutes(fromLat, fromLng, toLat, toLng) {
+          const dist = getDistanceKM(fromLat, fromLng, toLat, toLng);
+          if (dist <= 0) return 10; // 預設 10 分鐘
+          return Math.round(dist * 2);
+        }
+
+        // 計算各站預估抵達時間
+        const estimatedArrivals = [];
+        const vPos = (data.vehiclePositions && Array.isArray(data.vehiclePositions)) 
+          ? data.vehiclePositions.find(p => p.vehicle === vehicleCode) 
+          : null;
+        if (isWarehouseDeparted && currentTaskIndex !== -1) {
+          let baseTime = new Date();
+          
+          // 1. 第一個 active 站點的抵達時間
+          let currentLegMin = 10; // 預設
+          if (vPos && vPos.targetPreciseMin && !isNaN(parseFloat(vPos.targetPreciseMin))) {
+            currentLegMin = parseFloat(vPos.targetPreciseMin);
+          } else if (vPos && vPos.lat && vPos.lng) {
+            const nextTask = sortedTasks[currentTaskIndex];
+            currentLegMin = calculateLegMinutes(vPos.lat, vPos.lng, nextTask.lat, nextTask.lng);
+          }
+          
+          let accumTime = new Date(baseTime.getTime() + currentLegMin * 60 * 1000);
+          estimatedArrivals[currentTaskIndex] = new Date(accumTime);
+          
+          // 2. 隨後各個站點：前一站抵達時間 + 15分鐘下貨時間 + 車程時間
+          for (let k = currentTaskIndex + 1; k < sortedTasks.length; k++) {
+            const prevTask = sortedTasks[k - 1];
+            const currTask = sortedTasks[k];
+            const legMin = calculateLegMinutes(prevTask.lat, prevTask.lng, currTask.lat, currTask.lng);
+            // 累加 15分鐘下貨 + 該路段車程
+            accumTime = new Date(accumTime.getTime() + (15 + legMin) * 60 * 1000);
+            estimatedArrivals[k] = new Date(accumTime);
+          }
+        }
+
+        // 計算此車次捷運站數資訊：起點站不算進總站數與已送達統計！
+        const totalStations = sortedTasks.length; 
+        const completedStations = completedTasksCount;
+        const remainingStations = totalStations - completedStations;
+
+        // 計算此車次路線線段 progress
+        let progressPercent = 0;
+        if (completedTasksCount === sortedTasks.length) {
+          progressPercent = 100;
+        } else if (isWarehouseDeparted) {
+          const stepSize = 100 / (sortedTasks.length + 1);
+          const activeStationIndex = currentTaskIndex !== -1 ? currentTaskIndex + 1 : completedTasksCount;
+          progressPercent = Math.min(100, Math.round(activeStationIndex * stepSize + stepSize / 2));
+        } else {
+          progressPercent = 0;
+        }
+
+        // 建立車次路網 Container 卡片
+        const vehicleCard = document.createElement("div");
+        vehicleCard.className = "card";
+        vehicleCard.style.marginBottom = "1.25rem";
+
+        const driverName = vPos ? vPos.driver : "專車司機";
+        const lastUpdateText = vPos && vPos.lastUpdate ? `${vPos.lastUpdate}更新` : "剛剛更新";
+
+        // 渲染此車次的 Header 與站數統計
+        let metroHTML = `
+          <div class="vehicle-info" style="margin-bottom:0.85rem;">
+            <div class="vehicle-icon" style="background: linear-gradient(135deg, #a855f7, #6366f1);">
+              <i class="fa-solid fa-truck-fast" style="color: white;"></i>
+            </div>
+            <div class="vehicle-details" style="flex: 1;">
+              <h3 style="font-size:1.05rem; font-weight:700;">${vehicleCode} 專車</h3>
+              <p><i class="fa-solid fa-user"></i> ${driverName} · ${lastUpdateText}</p>
+            </div>
+          </div>
+
+          <!-- 獨立車次的捷運風格數據統計 -->
+          <div class="progress-stats" style="margin-bottom: 1.25rem; background: rgba(0,0,0,0.12); padding: 0.6rem; border-radius: 0.75rem;">
+            <div class="stat-item">
+              <div class="stat-number" style="font-size:1.35rem;">${totalStations}</div>
+              <div class="stat-label">此路線總站</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${completedStations}</div>
+              <div class="stat-label">已送達</div>
+            </div>
+            <div class="stat-item">
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${remainingStations}</div>
+              <div class="stat-label">剩餘站</div>
+            </div>
+          </div>
+
+          <div class="metro-map">
+            <div class="route-line" style="--progress: ${progressPercent}%;">
+              
+              <!-- 倉庫出發站 (站點 1，中立狀態，不列入已完成統計) -->
+              <div class="station start-node">
+                <div class="station-marker" style="background: var(--bg-card); border-color: var(--text-secondary);">
+                  <i class="fa-solid fa-warehouse" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
+                </div>
+                <div class="station-content" style="padding-bottom: 0.6rem;">
+                  <div class="station-name" style="margin-bottom: 0; color: var(--text-secondary);">
+                    <i class="fa-solid fa-warehouse" style="margin-right: 4px;"></i>
+                    倉庫發車 · <span style="font-weight: 500; font-size: 0.9rem;">08:30</span>
+                  </div>
+                </div>
+              </div>
+        `;
+
+        // 迴圈渲染此車次底下的各個配送站點
+        sortedTasks.forEach((t, i) => {
+          // 💡 權限判定：如果是 restricted (free) 等級，僅能展開自己的訂單；如果是非 free 等級 (例如 KING、sales、admin)，則可直接點開看詳情！
+          // 方便測試：支援 URL 參數 &grade=free 強制切換為 Free 模式進行預覽！
+          const urlParams = new URLSearchParams(window.location.search);
+          const forceGrade = urlParams.get('grade');
+          const isUserFreeGrade = forceGrade ? (forceGrade.toLowerCase() === 'free') : (!data.grade || ["king", "sales", "queen"].indexOf(String(data.grade).toLowerCase().trim()) === -1);
+          
+          // 判斷是否為自己專屬的經銷商訂單 (若合併單中任一單是我們的，即為專屬單)
+          const isOwnDealerTask = t.rawTasks.some(rt => isOurTask(rt, data.dealer, data.user));
+          const isOurs = !isUserFreeGrade || isOwnDealerTask;
+          
+          const streetName = getStreetOnly(t.address);
+          let stationClass = "";
+          let markerHTML = "";
+          
+          const isCompleted = t.status === "已完成" || t.status === "已送達";
+          const isCurrent = (i === currentTaskIndex);
+
+          if (isCompleted) {
+            stationClass = "completed";
+            markerHTML = `<i class="fa-solid fa-check"></i>`;
+          } else if (isCurrent) {
+            stationClass = "current";
+            const truckTop = (i === 0) ? "-36px" : "-48px";
+            markerHTML = `
+              <div class="floating-truck" style="top: ${truckTop};">
+                <i class="fa-solid fa-truck"></i>
+              </div>
+            `;
+          } else {
+            stationClass = "";
+            markerHTML = `${i + 2}`; // 倉庫不佔站數，但順序顯示維持 i + 2
+          }
+
+          // 判斷此站是否為收退貨任務 (rawTasks 任一單包含 退 或 收)
+          const isReturnTask = t.rawTasks.some(rt => {
+            const shipType = String(rt.shippingType || "").trim();
+            return shipType.includes("退") || shipType.includes("收");
+          });
+
+          // 根據需求簡化日期資訊：M/D 周幾 + 狀態
+          const cleanDate = t.date ? t.date.replace(/-/g, '/') : new Date().toLocaleDateString('zh-TW');
+          const dayStr = getDayOfWeekStr(cleanDate);
+          const shortDayStr = dayStr.replace("週", "周");
+          
+          let dateShort = "";
+          if (cleanDate) {
+            const parts = cleanDate.split('/');
+            if (parts.length >= 3) {
+              const m = parseInt(parts[1], 10);
+              const d = parseInt(parts[2], 10);
+              dateShort = `${m}/${d}`;
+            }
+          }
+          if (!dateShort) {
+            const dObj = new Date();
+            dateShort = `${dObj.getMonth() + 1}/${dObj.getDate()}`;
+          }
+          
+          let statusShort = "";
+          if (isCompleted) {
+            statusShort = "送達";
+          } else if (isCurrent && isWarehouseDeparted) {
+            statusShort = "配送中";
+          }
+          
+          const finalArrivalInfo = `${dateShort} ${shortDayStr}${statusShort ? ' ' + statusShort : ''}`;
+
+          if (!isOurs) {
+            // 💡 合作夥伴配送點簡化顯示 (展示完整地址，但不顯示客戶名稱，統一綠色配色)
+            const grayColor = "#94A3B8"; // 優雅灰色，與自己的專屬單做視覺區隔
+            const grayBg = "rgba(148, 163, 184, 0.1)";
+            
+            // 💡 只秀路，後面巷弄門牌號都不要顯示 (維護他人訂單私密隱私)
+            let displayAddress = t.address || "未知地址";
+            if (displayAddress && displayAddress !== "未知地址") {
+              let cleanAddr = displayAddress.replace(/\(.*?\)/g, "").trim();
+              const roadMatch = cleanAddr.match(/^(.*?(?:路|街|大道|段|橋|工業區))/);
+              if (roadMatch && roadMatch[1]) {
+                displayAddress = roadMatch[1].trim();
+              } else if (cleanAddr.length > 12) {
+                displayAddress = cleanAddr.substring(0, 12);
+              }
+            }
+
+            metroHTML += `
+              <div class="station ${stationClass}">
+                <div class="station-marker">
+                  ${markerHTML}
+                </div>
+                <div class="station-content" style="padding-bottom: 0.6rem;">
+                  <div class="station-name" style="margin-bottom: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                    <i class="fa-solid fa-location-dot" style="color: ${grayColor}; margin-right: 2px;"></i>
+                    <span style="color: ${grayColor}; font-weight: 700; font-size: 1.02rem;">
+                      ${displayAddress}
+                      ${isReturnTask ? '<span style="color:#ef4444; font-weight:900; margin-left:4px; font-size:0.85rem;">(收退貨)</span>' : ''}
+                    </span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${grayBg}; color: ${grayColor}; border: 1px solid rgba(148, 163, 184, 0.15); margin-left: 0.2rem;">${finalArrivalInfo}</span>
+                  </div>
+                </div>
+              </div>
+            `;
+            return;
+          }
+
+          // 我司或有權限檢視之訂單：詳細展示與手風琴收合
+          const displayAddress = t.address;
+          
+          // 合併尺寸：去重且去除無意義的尺寸，並用逗號連接
+          const sizes = [];
+          t.rawTasks.forEach(rt => {
+            const sz = String(rt.size || "").trim();
+            if (sz && sz !== "--" && sz !== "-" && !sizes.includes(sz)) {
+              sizes.push(sz);
+            }
+          });
+          const displaySize = sizes.length > 0 ? sizes.join(", ") : '--';
+          
+          const displayWeight = t.weight ? t.weight.toLocaleString() + ' kg' : '--';
+
+          // ETA 與簽收說明 badge
+          let etaBadgeHTML = "";
+          if (isCompleted) {
+            etaBadgeHTML = `<div class="completed-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-circle-check"></i> ${t.finishTime || '10:15'} 完成簽收</div>`;
+          } else if (isWarehouseDeparted && isCurrent) {
+            // 下一個點的預估時間
+            let etaMin = 10;
+            if (vPos && vPos.targetPreciseMin && !isNaN(parseFloat(vPos.targetPreciseMin))) {
+              etaMin = parseFloat(vPos.targetPreciseMin);
+            } else if (estimatedArrivals[i]) {
+              const diffMs = estimatedArrivals[i].getTime() - new Date().getTime();
+              etaMin = Math.max(1, Math.round(diffMs / (60 * 1000)));
+            }
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-location-arrow"></i> 預計 ${etaMin} 分鐘後抵達</div>`;
+          } else if (isWarehouseDeparted && i === currentTaskIndex + 1 && estimatedArrivals[i]) {
+            // 下下站：顯示精準估算之時鐘時間 (只估下二站，太遠無意義)
+            const formatTimeStr = (d) => {
+              const hh = String(d.getHours()).padStart(2, "0");
+              const mm = String(d.getMinutes()).padStart(2, "0");
+              return `${hh}:${mm}`;
+            };
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.2);"><i class="fa-solid fa-clock"></i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達</div>`;
+          }
+
+          // 行動按鈕 (司機定位)
+          let actionsHTML = "";
+          const hasActiveTask = t.rawTasks.some(rt => 
+            rt.status === "配送中" || rt.status === "已上車" || rt.status === "已指派"
+          );
+          if (hasActiveTask && (isCurrent || t.status === "配送中" || t.status === "已上車" || t.status === "已指派")) {
+            const addressQuery = encodeURIComponent(t.address);
+            const mapUrl = `https://www.google.com/maps/search/?api=1&query=${addressQuery}`;
+            actionsHTML = `
+              <div class="task-actions" style="margin-top: 0.6rem;">
+                <a href="${mapUrl}" target="_blank" class="task-action-btn primary" style="width: 100%;">
+                  <i class="fa-solid fa-map-location-dot"></i> 司機定位
+                </a>
+              </div>
+            `;
+          }
+          
+          let photoButtonsHTML = "";
+          // 1. 銷貨單 (thumbnails)
+          if (t.thumbnails && t.thumbnails.length > 0) {
+            if (t.thumbnails.length === 1) {
+              photoButtonsHTML += `
+                <button class="task-action-btn" onclick="openPhotoModal('${t.thumbnails[0]}', '銷貨單預覽')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
+                  <i class="fa-solid fa-file-invoice"></i> 檢視銷貨單
+                </button>
+              `;
+            } else {
+              t.thumbnails.forEach((thumb, idx) => {
+                photoButtonsHTML += `
+                  <button class="task-action-btn" onclick="openPhotoModal('${thumb}', '銷貨單預覽 ${idx + 1}')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
+                    <i class="fa-solid fa-file-invoice"></i> 檢視銷貨單 ${idx + 1}
+                  </button>
+                `;
+              });
+            }
+          }
+          
+          // 2. 簽收照片 (signPhotos)
+          if (t.signPhotos && t.signPhotos.length > 0) {
+            const signPhotoListHTML = t.signPhotos.map((item, idx) => {
+              const refIds = (item.ids && item.ids.length > 0) ? item.ids : [item.id];
+              const refLabel = refIds.length > 1 ? `單號：${refIds.join(' / ')}` : `單號：${refIds[0] || ''}`;
+              return `
+                <div style="display:flex; flex-direction:column; gap:0.15rem; width:100%;">
+                  <button class="task-action-btn success" onclick="triggerReceiptCard('${refIds[0]}')" style="width: 100%; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; cursor: pointer; border-radius: 0.35rem; text-align:left;">
+                    <i class="fa-solid fa-camera"></i> 檢視簽收照 ${t.signPhotos.length > 1 ? idx + 1 : ''}
+                  </button>
+                  <div style="font-size: 0.72rem; color: #cbd5e1; padding-left: 0.15rem; line-height: 1.3;">${refLabel}</div>
+                </div>
+              `;
+            }).join('');
+            photoButtonsHTML += `
+              <div style="display:flex; flex-direction:column; gap:0.35rem; width:100%;">
+                ${signPhotoListHTML}
+              </div>
+            `;
+          }
+          
+          if (photoButtonsHTML) {
+            actionsHTML += `
+              <div class="task-actions" style="margin-top: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                ${photoButtonsHTML}
+              </div>
+            `;
+          }
+
+          // 💡 展開狀態設計：本公司專屬的訂單預設展開詳細，其餘點開看詳情（收合，點擊後展開）
+          const defaultExpanded = isOwnDealerTask; 
+          const detailsStyle = defaultExpanded 
+            ? "max-height: 500px; opacity: 1; margin-top: 0.5rem;" 
+            : "max-height: 0; opacity: 0; margin-top: 0; overflow: hidden; pointer-events: none;";
+          const expandedClass = defaultExpanded ? "expanded" : "";
+          
+          // 炫彩標籤 (分公司識別 AESW 及其專屬識別色)
+          let brInfo = getBranchInfo(t.branch, t.customer, t.id);
+          if (isUserFreeGrade) {
+            // 💡 客戶端 (FREE等級) 看的時候，全數統一為綠色，不區分 AEWS 的顏色！
+            brInfo = {
+              code: brInfo.code,
+              color: "#10B981", // 統一為綠色
+              bg: "rgba(16, 185, 129, 0.15)"
+            };
+          }
+
+          let ownTaskBadgeHTML = "";
+          if (isUserFreeGrade && isOwnDealerTask) {
+            ownTaskBadgeHTML = `
+              <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; box-shadow: 0 0 6px rgba(168, 85, 247, 0.4); margin-left: 0.2rem; animation: pulse-glow 1.2s infinite alternate;">
+                <i class="fa-solid fa-star" style="font-size: 0.65rem;"></i> 您的專屬單
+              </span>
+            `;
+          }
+
+          metroHTML += `
+            <div class="station ${stationClass} clickable ${expandedClass} ${isOwnDealerTask ? 'is-ours' : ''}" onclick="toggleStationDetails(this, event)">
+              <div class="station-marker">
+                ${markerHTML}
+              </div>
+              <div class="station-content">
+                <div class="station-name-row" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;">
+                  <div class="station-name" style="margin-bottom: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                    <i class="fa-solid fa-location-dot" style="color: ${brInfo.color}; margin-right: 2px;"></i>
+                    <span style="color: ${brInfo.color}; font-weight: 800; font-size: 1.02rem;">${t.customer} <span style="font-size: 0.85rem; font-weight: 500; opacity: 0.85;">(${streetName})</span></span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${brInfo.bg}; color: ${brInfo.color}; border: 1px solid ${brInfo.color}22; margin-left: 0.2rem;">${finalArrivalInfo}</span>
+                    ${ownTaskBadgeHTML}
+                  </div>
+                  <i class="fa-solid fa-chevron-down toggle-icon" style="transition: transform 0.3s ease; color: var(--text-secondary); margin-left: 0.5rem; ${defaultExpanded ? 'transform: rotate(180deg);' : ''}"></i>
+                </div>
+                
+                <div class="station-details-drawer" style="${detailsStyle} transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
+                  <div class="station-address" style="margin-top: 0.5rem;">${displayAddress}</div>
+                  
+                  <div class="station-meta" style="margin-top: 0.5rem;">
+                    <span><i class="fa-solid fa-box"></i> ${t.boxes || '--'} 箱</span>
+                    <span><i class="fa-solid fa-ruler"></i> 尺寸：${displaySize}</span>
+                    <span><i class="fa-solid fa-weight-hanging"></i> 重量：${displayWeight}</span>
+                  </div>
+                  
+                  ${etaBadgeHTML}
+                  ${actionsHTML}
+                </div>
+              </div>
+            </div>
+          `;
+        });
+
+        metroHTML += `
+            </div>
+          </div>
+        `;
+
+        vehicleCard.innerHTML = metroHTML;
+        mainContainer.appendChild(vehicleCard);
+      });
+
+      // 7. 建立一鍵重新整理按鈕
+      const refreshBtn = document.createElement("button");
+      refreshBtn.className = "btn-refresh";
+      refreshBtn.innerHTML = `<i class="fa-solid fa-rotate" id="refreshIcon"></i> 重新整理最新狀態`;
+      refreshBtn.onclick = handleRefresh;
+      mainContainer.appendChild(refreshBtn);
+      
+      // 啟動或重置自動輪詢
+      startAutoRefresh();
+    }
+
+    // 重新整理事件
+    function handleRefresh() {
+      const icon = document.getElementById("refreshIcon");
+      if (icon) icon.classList.add("spinning");
+      
+      const dateInput = document.getElementById("deliveryDateInput");
+      const selectedDate = dateInput ? dateInput.value : "";
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const testParam = urlParams.get('test') || urlParams.get('mock');
+      if (testParam && (testParam.toLowerCase() === 'free' || testParam.toLowerCase() === 'true')) {
+        setTimeout(() => {
+          if (icon) icon.classList.remove("spinning");
+          const mockData = getMockDataForDate(selectedDate, MOCK_FREE_DATA);
+          renderDashboard(mockData);
+          showNotificationTip("✨ 測試數據更新成功");
+        }, 800);
+      } else {
+        if (cachedUserId) {
+          fetchDealerData(cachedUserId, false, selectedDate).finally(() => {
+            if (icon) icon.classList.remove("spinning");
+          });
+        } else {
+          initLiff();
+        }
+      }
+    }
+
+    // 顯示錯誤訊息卡片
+    function showError(title, desc) {
+      const mainContainer = document.getElementById("mainContent");
+      mainContainer.innerHTML = `
+        <div class="card error-card">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <h3>${title}</h3>
+          <p>${desc}</p>
+          <button class="btn-refresh" style="margin-top: 1.5rem; width: 100%;" onclick="handleRefresh()">
+            <i class="fa-solid fa-rotate"></i> 嘗試重新連線
+          </button>
+        </div>
+      `;
+    }
+
+    // 💡 分公司識別對照工具 (A:安帝嘉/綠, E:高雅瓷/粉, S:喜悅納/藍, W:漢樺/黃)
+    function getBranchInfo(branchName, customerName, orderId) {
+      const bStr = String(branchName || "").trim().toUpperCase();
+      const cStr = String(customerName || "").trim().toUpperCase();
+      const oStr = String(orderId || "").trim().toUpperCase();
+      
+      // 1. 精準對應分公司欄位 (支援 A/E/S/W 英文及中文字串)
+      if (bStr.includes("A") || bStr.includes("安") || bStr.includes("ANTIGRAVITY")) {
+        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+      }
+      if (bStr.includes("E") || bStr.includes("高") || bStr.includes("GAOYACI")) {
+        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+      }
+      if (bStr.includes("S") || bStr.includes("喜") || bStr.includes("SHIYUENA")) {
+        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+      }
+      if (bStr.includes("W") || bStr.includes("漢") || bStr.includes("HANHUA")) {
+        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+      }
+      
+      // 2. 從單號字尾或後綴判定 (-安, -高, -喜, -漢 或 -A, -E, -S, -W)
+      if (oStr.endsWith("安") || oStr.endsWith("-A") || oStr.includes("-安") || oStr.includes("-A")) {
+        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+      }
+      if (oStr.endsWith("高") || oStr.endsWith("-E") || oStr.includes("-高") || oStr.includes("-E")) {
+        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+      }
+      if (oStr.endsWith("喜") || oStr.endsWith("-S") || oStr.includes("-喜") || oStr.includes("-S")) {
+        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+      }
+      if (oStr.endsWith("漢") || oStr.endsWith("-W") || oStr.includes("-漢") || oStr.includes("-W")) {
+        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+      }
+      
+      // 3. 從客戶名稱進行模糊匹配
+      if (cStr.includes("安") || cStr.includes("ANTIGRAVITY")) {
+        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+      }
+      if (cStr.includes("高") || cStr.includes("GAOYACI")) {
+        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+      }
+      if (cStr.includes("喜") || cStr.includes("SHIYUENA")) {
+        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+      }
+      if (cStr.includes("漢") || cStr.includes("HANHUA")) {
+        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+      }
+      
+      // 4. 預設兜底：一律歸屬為 高雅瓷 E (高雅瓷/粉色)，消除任何 OTHER 合作夥伴標籤
+      return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+    }
+
+    // 💡 取得日期對應的週幾字串
+    function getDayOfWeekStr(dateStr) {
+      if (!dateStr) return "";
+      try {
+        const clean = dateStr.replace(/-/g, "/");
+        const d = new Date(clean);
+        const days = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+        return days[d.getDay()] || "";
+      } catch (e) {
+        return "";
+      }
+    }
+
+    // 💡 國王級工具：將 Google Drive 網頁連結自動轉換為 <img> 標籤專用的二進位直連網址 (使用高架極速 lh3 CDN)
+    function toDirectDriveLink(url) {
+      if (!url) return "";
+      const urlStr = String(url).trim();
+      if (urlStr.includes("drive.google.com")) {
+        let fileId = "";
+        const matchD = urlStr.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+        if (matchD && matchD[1]) {
+          fileId = matchD[1];
+        } else {
+          const matchId = urlStr.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          if (matchId && matchId[1]) {
+            fileId = matchId[1];
+          }
+        }
+        if (fileId) {
+          // 使用 lh3 CDN 繞過 Google Drive 第三方 Cookie 限制，完美顯示圖片！
+          return `https://lh3.googleusercontent.com/d/${fileId}`;
+        }
+      }
+      return urlStr;
+    }
+
+    // 圖片預覽 Modal 控制
+    function openPhotoModal(url, title) {
+      const modal = document.getElementById("photoModal");
+      const img = document.getElementById("modalImg");
+      const titleEl = document.getElementById("modalTitle");
+      img.src = toDirectDriveLink(url);
+      if (titleEl) {
+        titleEl.textContent = title || "照片預覽";
+      }
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden"; // 鎖定背景捲動
+    }
+
+    function closePhotoModal() {
+      const modal = document.getElementById("photoModal");
+      modal.style.display = "none";
+      document.body.style.overflow = ""; // 恢復背景捲動
+    }
+
+    // 點擊 Modal 背景也可關閉
+    document.getElementById("photoModal").addEventListener("click", (e) => {
+      if (e.target.id === "photoModal") {
+        closePhotoModal();
+      }
+    });
+
+    // 💡 簽收證明單卡片 (海報模板樣式) 動態產生器
+    function triggerReceiptCard(taskId) {
+      if (!currentDashboardData || !currentDashboardData.tasks) return;
+      const t = currentDashboardData.tasks.find(x => String(x.id) === String(taskId));
+      if (!t) return;
+      
+      openReceiptCard(
+        t.customer || "",
+        t.address || "",
+        t.finishTime || "",
+        t.date || "",
+        t.vehicle || "",
+        t.weight || "",
+        t.signPhoto || "",
+        t.branch || "",
+        t.status || ""
+      );
+    }
+
+    function openReceiptCard(customer, address, finishTime, date, vehicle, weight, signPhoto, branch, status) {
+      const modal = document.getElementById("receiptModal");
+      if (!modal) return;
+      
+      // 1. 取得分公司與主題色 (與司機 App 100% 保持一致)
+      let brInfo = getBranchInfo(branch, customer, "");
+      const urlParams = new URLSearchParams(window.location.search);
+      const forceGrade = urlParams.get('grade');
+      const isUserFreeGrade = forceGrade ? (forceGrade.toLowerCase() === 'free') : (!currentDashboardData || !currentDashboardData.grade || ["king", "sales", "queen"].indexOf(String(currentDashboardData.grade).toLowerCase().trim()) === -1);
+      if (isUserFreeGrade) {
+        brInfo = {
+          code: brInfo.code,
+          color: "#10B981", // 統一為綠色
+          bg: "rgba(16, 185, 129, 0.15)"
+        };
+      }
+      let themeColor = brInfo.color;
+      
+      // 2. 判斷配送狀態與對應文字、配色
+      // 狀態選項：送達 (已完成/已送達)、配送中 (已上車/配送中/已指派)、取消 (已取消)
+      let statusStr = "送達";
+      let statusText = "派送成功";
+      let stampText = "已送達";
+      let stampSub = "VERIFIED";
+      
+      const st = String(status || "已完成");
+      if (st.includes("取消")) {
+        statusStr = "取消";
+        statusText = "已取消";
+        stampText = "已取消";
+        stampSub = "CANCELLED";
+        themeColor = "#ef4444"; // 強制紅色
+      } else if (st.includes("配送中") || st.includes("已上車") || st.includes("運送中") || st.includes("已指派")) {
+        statusStr = "配送中";
+        statusText = "配送中";
+        stampText = "配送中";
+        stampSub = "IN TRANSIT";
+        themeColor = "#3b82f6"; // 強制藍色
+      }
+      
+      // 3. 寫入文字與屬性
+      // 客戶名不用秀二次，標題改為：[分公司代號] · [狀態]
+      document.getElementById("rcHeader").innerText = `${brInfo.code} · ${statusText}`;
+      document.getElementById("rcHeader").style.color = themeColor;
+      
+      // 根據需求簡化日期資訊：M/D 周幾 送達 (或 配送中、取消)
+      const cleanDate = date ? date.replace(/-/g, '/') : new Date().toLocaleDateString('zh-TW');
+      const dayStr = getDayOfWeekStr(cleanDate);
+      const shortDayStr = dayStr.replace("週", "周");
+      
+      let dateShort = "";
+      if (cleanDate) {
+        const parts = cleanDate.split('/');
+        if (parts.length >= 3) {
+          const m = parseInt(parts[1], 10);
+          const d = parseInt(parts[2], 10);
+          dateShort = `${m}/${d}`;
+        }
+      }
+      if (!dateShort) {
+        const dObj = new Date();
+        dateShort = `${dObj.getMonth() + 1}/${dObj.getDate()}`;
+      }
+      
+      let statusShort = "送達";
+      if (st.includes("取消") || st.includes("退貨")) {
+        statusShort = "取消";
+      } else if (st.includes("配送中") || st.includes("已上車") || st.includes("運送中") || st.includes("已指派")) {
+        statusShort = "配送中";
+      }
+      
+      const finalArrivalInfo = `${dateShort} ${shortDayStr} ${statusShort}`;
+      document.getElementById("rcTime").innerText = finalArrivalInfo;
+      
+      document.getElementById("rcImg").src = toDirectDriveLink(signPhoto);
+      document.getElementById("rcBar").style.backgroundColor = themeColor;
+      
+      // 客戶名稱在卡片主內容欄位仍然正常顯示
+      document.getElementById("rcCust").innerText = customer;
+      document.getElementById("rcArrival").innerText = finalArrivalInfo; // 設置專用到貨日期欄位
+      document.getElementById("rcAddr").innerText = address;
+      document.getElementById("rcContact").innerText = "現場收貨人員簽收"; 
+      
+      // 車號 / 載重
+      const weightVal = parseFloat(weight) || 0;
+      if (weightVal >= 10) {
+        document.getElementById("rcCarLabel").innerText = "車牌號碼 / 載重";
+        document.getElementById("rcCar").innerText = `${vehicle || 'N/A'} / ${weightVal} KG`;
+      } else {
+        document.getElementById("rcCarLabel").innerText = "車牌號碼";
+        document.getElementById("rcCar").innerText = vehicle || 'N/A';
+      }
+      
+      // 蓋章文字、顏色與樣式
+      const stamp = document.getElementById("rcStamp");
+      stamp.style.borderColor = themeColor;
+      stamp.style.color = themeColor;
+      stamp.innerHTML = `
+        <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">${stampText}</span>
+        <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">${stampSub}</span>
+      `;
+      
+      // 顯示 Modal
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden"; // 鎖定背景捲動
+    }
+    
+    function closeReceiptModal() {
+      const modal = document.getElementById("receiptModal");
+      if (modal) {
+        modal.style.display = "none";
+        document.body.style.overflow = ""; // 恢復背景捲動
+      }
+    }
+
+    // 點擊簽收證明單 Modal 背景也可關閉
+    document.getElementById("receiptModal").addEventListener("click", (e) => {
+      if (e.target.id === "receiptModal") {
+        closeReceiptModal();
+      }
+    });
+
+    // 💡 點擊站點動態展開/收合詳細資訊 (手風琴特效)
+    function toggleStationDetails(element, event) {
+      // 避免點擊內部按鈕或連結時意外觸發收合/展開
+      if (event && (event.target.closest('a') || event.target.closest('button') || event.target.closest('svg') || event.target.closest('i'))) {
+        return;
+      }
+      
+      const drawer = element.querySelector('.station-details-drawer');
+      const chevron = element.querySelector('.toggle-icon');
+      if (!drawer) return;
+      
+      const isExpanded = element.classList.contains('expanded');
+      
+      if (isExpanded) {
+        element.classList.remove('expanded');
+        drawer.style.maxHeight = '0';
+        drawer.style.opacity = '0';
+        drawer.style.marginTop = '0';
+        drawer.style.pointerEvents = 'none';
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+      } else {
+        element.classList.add('expanded');
+        drawer.style.maxHeight = '500px';
+        drawer.style.opacity = '1';
+        drawer.style.marginTop = '0.5rem';
+        drawer.style.pointerEvents = 'auto';
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+      }
+    }
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鈦傳速｜AI 派車 V3 數據分析</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+TC:wght@300;700&display=swap');
+  :root {
+    --bg: #0f172a;
+    --blue: #1a6fff;
+    --cyan: #00d4ff;
+    --orange: #f59e0b;
+    --green: #00ff88;
+    --text: #c8e0ff;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    font-family: 'Share Tech Mono', monospace;
+    height: 100vh; overflow: hidden;
+    display: flex;
+  }
+
+  .sidebar {
+    width: 300px; flex-shrink:0;
+    background: #0f172a;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    display: flex; flex-direction: column;
+    padding: 16px; gap: 10px; z-index: 1;
+  }
+  .sidebar-title { font-size:11px; letter-spacing:3px; color:rgba(255,255,255,0.3); margin-bottom:4px; }
+  .fake-card { border:1px solid rgba(255,255,255,0.06); border-radius:4px; padding:12px; background:rgba(255,255,255,0.02); }
+  .fake-card .fc-top { display:flex; justify-content:space-between; margin-bottom:6px; }
+  .fc-name { font-size:12px; color:#fff; font-family:'Noto Sans TC',sans-serif; }
+  .fc-tag { font-size:9px; padding:2px 6px; border-radius:2px; background:rgba(26,111,255,0.2); color:var(--cyan); letter-spacing:1px; }
+  .fc-addr { font-size:9px; color:rgba(255,255,255,0.3); margin-bottom:4px; }
+  .fc-weight { font-size:10px; color:rgba(255,255,255,0.2); }
+
+  .map-area { flex:1; position:relative; background:#0a1628; overflow:hidden; }
+  .fake-map {
+    position:absolute; inset:0;
+    background-image:
+      linear-gradient(rgba(26,111,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26,111,255,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* AI 遮罩 */
+  .ai-overlay {
+    position:absolute; inset:0; z-index:50;
+    background: rgba(8,14,28,0.93);
+    backdrop-filter: blur(4px);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:24px;
+    animation: overlayIn 0.4s ease both;
+  }
+  @keyframes overlayIn { from{opacity:0}to{opacity:1} }
+
+  .cancel-hint {
+    position:absolute; top:16px; right:16px; z-index:20;
+    font-size:9px; letter-spacing:2px; color:rgba(255,255,255,0.15);
+    cursor:pointer;
+  }
+  .cancel-hint:hover { color:rgba(255,255,255,0.4); }
+
+  /* 掃描線 */
+  .ai-scan {
+    position:absolute; left:0; right:0; height:1px;
+    background:linear-gradient(90deg,transparent,var(--orange),transparent);
+    box-shadow:0 0 12px var(--orange); opacity:0; z-index:2;
+    animation:aiscan 3s linear infinite;
+  }
+  @keyframes aiscan { 0%{top:0;opacity:0}3%{opacity:0.3}97%{opacity:0.2}100%{top:100%;opacity:0} }
+
+  /* 計算中主體 */
+  .ai-content { position:relative; z-index:10; width:100%; max-width:480px; display:flex; flex-direction:column; gap:16px; }
+
+  /* 標題列 */
+  .ai-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; animation:fiu 0.5s 0.1s ease both; }
+  .ai-title-wrap { display:flex; align-items:center; gap:10px; }
+  .spinning-ring {
+    width:32px; height:32px; border-radius:50%;
+    border:2px solid transparent;
+    border-top-color:var(--orange);
+    border-right-color:rgba(245,158,11,0.3);
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .ai-title { font-family:'Noto Sans TC',sans-serif; font-size:15px; font-weight:700; letter-spacing:3px; color:#fff; }
+  .ai-timer { font-size:11px; letter-spacing:2px; color:var(--orange); }
+
+  @keyframes fiu { from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)} }
+
+  /* 大數字跳動區 */
+  .big-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; animation:fiu 0.5s 0.3s ease both; opacity:0; }
+  .bs-card {
+    border:1px solid rgba(255,255,255,0.05);
+    background:rgba(255,255,255,0.02);
+    padding:12px 14px;
+    position:relative; overflow:hidden;
+  }
+  .bs-card::before {
+    content:''; position:absolute; left:0; top:0; bottom:0; width:2px;
+  }
+  .bs-card.blue::before { background:var(--cyan); }
+  .bs-card.orange::before { background:var(--orange); }
+  .bs-card.green::before { background:var(--green); }
+  .bs-label { font-size:7px; letter-spacing:2px; color:rgba(255,255,255,0.25); margin-bottom:4px; }
+  .bs-val { font-size:22px; letter-spacing:1px; font-family:'Noto Sans TC',sans-serif; font-weight:700; }
+  .bs-card.blue .bs-val { color:var(--cyan); }
+  .bs-card.orange .bs-val { color:var(--orange); }
+  .bs-card.green .bs-val { color:var(--green); }
+  .bs-unit { font-size:9px; color:rgba(255,255,255,0.25); }
+
+  /* 分析橫條 */
+  .analysis-bars { display:flex; flex-direction:column; gap:8px; animation:fiu 0.5s 0.5s ease both; opacity:0; }
+  .ab-row { display:flex; align-items:center; gap:10px; }
+  .ab-label { font-size:9px; letter-spacing:1px; color:rgba(255,255,255,0.3); width:80px; flex-shrink:0; }
+  .ab-track { flex:1; height:3px; background:rgba(255,255,255,0.04); position:relative; overflow:hidden; border-radius:2px; }
+  .ab-fill { height:100%; width:0%; border-radius:2px; transition:width 1.5s ease; }
+  .ab-fill.c { background:linear-gradient(90deg,var(--blue),var(--cyan)); }
+  .ab-fill.o { background:linear-gradient(90deg,#b45309,var(--orange)); }
+  .ab-fill.g { background:linear-gradient(90deg,#059669,var(--green)); }
+  .ab-fill.p { background:linear-gradient(90deg,#7c3aed,#a855f7); }
+  .ab-val { font-size:9px; letter-spacing:1px; color:rgba(255,255,255,0.25); width:28px; text-align:right; }
+
+  /* 滾動 LOG */
+  .log-area {
+    border:1px solid rgba(255,255,255,0.04);
+    background:rgba(0,0,0,0.2);
+    padding:10px 12px; height:72px; overflow:hidden;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    gap:3px;
+    animation:fiu 0.5s 0.7s ease both; opacity:0;
+  }
+  .log-line { font-size:9px; letter-spacing:1px; color:rgba(0,212,255,0.3); display:flex; gap:8px; }
+  .log-line.active { color:rgba(0,212,255,0.8); }
+  .log-line .tag { min-width:32px; }
+  .log-line.ok .tag { color:var(--green); }
+  .log-line.running .tag { color:var(--orange); }
+
+  /* 進度 */
+  .progress-wrap { animation:fiu 0.5s 0.9s ease both; opacity:0; }
+  .progress-meta { display:flex; justify-content:space-between; font-size:9px; letter-spacing:2px; color:rgba(255,255,255,0.2); margin-bottom:6px; }
+  .progress-track { width:100%; height:2px; background:rgba(255,255,255,0.04); overflow:visible; position:relative; }
+  .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--blue),var(--orange),var(--cyan)); box-shadow:0 0 8px var(--orange); transition:width 0.4s ease; position:relative; }
+  .progress-fill::after { content:''; position:absolute; right:-1px; top:-3px; width:8px; height:8px; background:var(--orange); border-radius:50%; box-shadow:0 0 10px var(--orange); }
+
+  /* 完成 */
+  .ai-done { display:none; flex-direction:column; align-items:center; gap:12px; animation:fiu 0.5s ease both; }
+  .done-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; width:100%; max-width:480px; }
+  .dg-card { border:1px solid rgba(0,255,136,0.1); background:rgba(0,255,136,0.02); padding:12px; text-align:center; }
+  .dg-val { font-size:20px; color:var(--green); font-family:'Noto Sans TC',sans-serif; font-weight:700; }
+  .dg-label { font-size:8px; letter-spacing:2px; color:rgba(255,255,255,0.25); }
+  .done-title { font-family:'Noto Sans TC',sans-serif; font-size:16px; letter-spacing:4px; color:#fff; }
+  .done-sub { font-size:9px; letter-spacing:2px; color:rgba(0,255,136,0.4); }
+  .done-btn {
+    padding:10px 40px;
+    border:1px solid rgba(0,255,136,0.3);
+    background:rgba(0,255,136,0.04);
+    color:var(--green); font-family:'Share Tech Mono',monospace;
+    font-size:11px; letter-spacing:3px; cursor:pointer; transition:all 0.3s;
+  }
+  .done-btn:hover { background:rgba(0,255,136,0.1); }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-title">訂單列表 (21)</div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">連驗國際</span><span class="fc-tag">派車中</span></div>
+    <div class="fc-addr">文化三路 330 KG</div>
+    <div class="fc-weight">#150226008</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">喜助</span><span class="fc-tag">高優先</span></div>
+    <div class="fc-addr">新市一路 600 KG</div>
+    <div class="fc-weight">#150226023</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">百碑</span><span class="fc-tag">急件</span></div>
+    <div class="fc-addr">水岸街 1503 KG</div>
+    <div class="fc-weight">#150226002</div>
+  </div>
+  <div class="fake-card">
+    <div class="fc-top"><span class="fc-name">辰熙</span><span class="fc-tag">高優先</span></div>
+    <div class="fc-addr">木柵路 1877 KG</div>
+    <div class="fc-weight">#150226004</div>
+  </div>
+</div>
+
+<div class="map-area">
+  <div class="fake-map"></div>
+
+  <div class="ai-overlay" id="aiOverlay">
+    <div class="ai-scan"></div>
+    <div class="cancel-hint" onclick="cancelAI()">✕ 取消</div>
+
+    <!-- 計算中 -->
+    <div class="ai-content" id="aiComputing">
+
+      <div class="ai-header">
+        <div class="ai-title-wrap">
+          <div class="spinning-ring"></div>
+          <div class="ai-title">AI 資料分析中</div>
+        </div>
+        <div class="ai-timer" id="aiTimer">00:00</div>
+      </div>
+
+      <!-- 大數字 -->
+      <div class="big-stats">
+        <div class="bs-card blue">
+          <div class="bs-label">分析訂單</div>
+          <div class="bs-val" id="bsOrders">0</div>
+          <div class="bs-unit">/ 21 筆</div>
+        </div>
+        <div class="bs-card orange">
+          <div class="bs-label">路線組合</div>
+          <div class="bs-val" id="bsRoutes">0</div>
+          <div class="bs-unit">種方案</div>
+        </div>
+        <div class="bs-card green">
+          <div class="bs-label">最佳效率</div>
+          <div class="bs-val" id="bsEff">0</div>
+          <div class="bs-unit">%</div>
+        </div>
+      </div>
+
+      <!-- 分析橫條 -->
+      <div class="analysis-bars">
+        <div class="ab-row">
+          <div class="ab-label">載重分析</div>
+          <div class="ab-track"><div class="ab-fill c" id="bar0"></div></div>
+          <div class="ab-val" id="bv0">0%</div>
+        </div>
+        <div class="ab-row">
+          <div class="ab-label">時段優化</div>
+          <div class="ab-track"><div class="ab-fill o" id="bar1"></div></div>
+          <div class="ab-val" id="bv1">0%</div>
+        </div>
+        <div class="ab-row">
+          <div class="ab-label">路徑計算</div>
+          <div class="ab-track"><div class="ab-fill g" id="bar2"></div></div>
+          <div class="ab-val" id="bv2">0%</div>
+        </div>
+        <div class="ab-row">
+          <div class="ab-label">優先排序</div>
+          <div class="ab-track"><div class="ab-fill p" id="bar3"></div></div>
+          <div class="ab-val" id="bv3">0%</div>
+        </div>
+      </div>
+
+      <!-- LOG -->
+      <div class="log-area" id="logArea"></div>
+
+      <!-- 進度 -->
+      <div class="progress-wrap">
+        <div class="progress-meta"><span id="aiLabel">PROCESSING</span><span id="aiPct">0%</span></div>
+        <div class="progress-track"><div class="progress-fill" id="aiFill"></div></div>
+      </div>
+    </div>
+
+    <!-- 完成 -->
+    <div class="ai-done" id="aiDone">
+      <div class="done-grid">
+        <div class="dg-card"><div class="dg-val">3</div><div class="dg-label">車輛</div></div>
+        <div class="dg-card"><div class="dg-val">21</div><div class="dg-label">訂單</div></div>
+        <div class="dg-card"><div class="dg-val" id="dsDist">--</div><div class="dg-label">公里</div></div>
+        <div class="dg-card"><div class="dg-val" id="dsEff">--</div><div class="dg-label">效率%</div></div>
+      </div>
+      <div class="done-title">分析完成</div>
+      <div class="done-sub">已找到最佳派車方案</div>
+      <button class="done-btn" onclick="applyResult()">套用方案</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// 計時器
+let seconds=0;
+const timerEl=document.getElementById('aiTimer');
+const timerInterval=setInterval(()=>{
+  seconds++;
+  const m=String(Math.floor(seconds/60)).padStart(2,'0');
+  const s=String(seconds%60).padStart(2,'0');
+  timerEl.textContent=`${m}:${s}`;
+},1000);
+
+// 大數字跳動
+let ordersN=0, routesN=0, effN=0;
+const ordersEl=document.getElementById('bsOrders');
+const routesEl=document.getElementById('bsRoutes');
+const effEl=document.getElementById('bsEff');
+
+// 橫條動畫（延遲啟動）
+setTimeout(()=>{
+  ['bar0','bar1','bar2','bar3'].forEach((id,i)=>{
+    const targets=[92,78,85,96];
+    setTimeout(()=>{
+      document.getElementById(id).style.width=targets[i]+'%';
+    },i*200);
+  });
+},600);
+
+// 橫條數字跳動
+function animateBars(){
+  const targets=[92,78,85,96];
+  const ids=['bv0','bv1','bv2','bv3'];
+  const vals=[0,0,0,0];
+  targets.forEach((t,i)=>{
+    let v=0;
+    const interval=setInterval(()=>{
+      v=Math.min(t,v+Math.floor(Math.random()*4)+2);
+      document.getElementById(ids[i]).textContent=v+'%';
+      if(v>=t) clearInterval(interval);
+    },50+i*20);
+  });
+}
+setTimeout(animateBars,600);
+
+// LOG
+const logs=[
+  {cls:'ok',tag:'[OK]',msg:'載入 21 筆訂單資料'},
+  {cls:'ok',tag:'[OK]',msg:'讀取 3 輛車輛資訊'},
+  {cls:'running',tag:'[..]',msg:'計算載重分配方案...'},
+  {cls:'ok',tag:'[OK]',msg:'載重分析完成'},
+  {cls:'running',tag:'[..]',msg:'最佳化時段排程...'},
+  {cls:'ok',tag:'[OK]',msg:'路徑計算完成 (1,248 條)'},
+  {cls:'running',tag:'[..]',msg:'生成最終派車方案...'},
+];
+const logEl=document.getElementById('logArea');
+let li=0;
+function addLog(){
+  if(li>=logs.length)return;
+  const l=logs[li];
+  const d=document.createElement('div');
+  d.className=`log-line active ${l.cls}`;
+  d.innerHTML=`<span class="tag">${l.tag}</span><span>${l.msg}</span>`;
+  logEl.querySelectorAll('.active').forEach(e=>e.classList.remove('active'));
+  logEl.appendChild(d); li++;
+  const lines=logEl.querySelectorAll('.log-line');
+  if(lines.length>4) lines[0].remove();
+}
+
+// 進度條
+const labels=['PROCESSING','ANALYZING','OPTIMIZING','ROUTING','FINALIZING'];
+let pct=0;
+const fillEl=document.getElementById('aiFill'),pctEl=document.getElementById('aiPct'),labelEl=document.getElementById('aiLabel');
+const timer=setInterval(()=>{
+  pct=Math.min(100,pct+Math.floor(Math.random()*3)+1);
+  fillEl.style.width=pct+'%'; pctEl.textContent=pct+'%';
+  labelEl.textContent=labels[Math.floor((pct/100)*(labels.length-1))];
+
+  // 大數字跳動
+  ordersN=Math.min(21,Math.floor(pct/100*21));
+  routesEl.textContent=Math.floor(pct*15+Math.random()*100);
+  ordersEl.textContent=ordersN;
+  effEl.textContent=Math.min(97,Math.floor(pct*0.8+Math.random()*5));
+
+  if(pct%14===0) addLog();
+  if(pct>=100){
+    clearInterval(timer); clearInterval(timerInterval);
+    labelEl.textContent='COMPLETE';
+    setTimeout(showDone,800);
+  }
+},100);
+
+function showDone(){
+  document.getElementById('aiComputing').style.display='none';
+  document.getElementById('dsDist').textContent=Math.floor(85+Math.random()*30);
+  document.getElementById('dsEff').textContent=Math.floor(88+Math.random()*9);
+  document.getElementById('aiDone').style.display='flex';
+}
+function applyResult(){ fadeOut(); }
+function cancelAI(){ clearInterval(timer); clearInterval(timerInterval); fadeOut(); }
+function fadeOut(){
+  const o=document.getElementById('aiOverlay');
+  o.style.opacity='0'; o.style.transition='opacity 0.5s ease';
+  setTimeout(()=>o.style.display='none',500);
+}
+</script>
+</body>
+</html>

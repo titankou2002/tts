@@ -1,0 +1,33 @@
+name: Deploy TTS Logistics Assets to cPanel (bigt.cc)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  web-deploy:
+    name: 🚚 Sync TTS Logistics HTML Files to /public_html/tts/
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: 🚀 Sync TTS Assets to /public_html/tts/
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: /public_html/tts/
+          exclude: |
+            .git/**
+            .github/**
+            *.js
+            *.xlsx
+            *.json
+            *.md
+            *.py
+            scratch/**

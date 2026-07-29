@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>鈦傳速｜數據分析儀表板 V5.2.4</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        * { box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text-main); margin: 0; padding: 0; min-height: 100vh; font-size: 13px; }
+
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999; transition: opacity 0.3s;
+        }
+        .spinner {
+            width: 40px; height: 40px; border: 3px solid var(--glass-border);
+            border-top-color: var(--accent); border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        header {
+            padding: 10px 20px; display: flex; justify-content: space-between; align-items: center;
+            background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; z-index: 100;
+        }
+
+        /* 轉址內嵌 iframe 時自動向下微調，防止被 negative margin 推移剪裁 */
+        body.embedded-iframe {
+            padding-top: 55px !important;
+        }
+        body.embedded-iframe header {
+            top: 55px !important;
+        }
+        .logo { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+        .logo i { color: var(--accent); }
+
+        .filters-bar {
+            padding: 8px 20px; background: var(--card-bg); display: flex; flex-wrap: wrap; gap: 15px;
+            border-bottom: 1px solid var(--glass-border); align-items: center;
+        }
+        .filter-group { display: flex; align-items: center; gap: 8px; }
+        .filter-group label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+        .filter-group select, .filter-group input {
+            background: #020617; border: 1px solid var(--glass-border);
+            color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;
+        }
+
+        .btn-preset { 
+            background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-dim);
+            padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s;
+        }
+        .btn-preset:hover { background: var(--accent); color: #000; }
+
+        .tabs { display: flex; gap: 2px; padding: 8px 20px 0; border-bottom: 1px solid var(--glass-border); background: #0f172a; }
+        .tab-btn {
+            padding: 10px 18px; border: none; background: transparent; color: var(--text-dim); cursor: pointer;
+            font-weight: 600; border-radius: 8px 8px 0 0; font-size: 14px; transition: 0.2s;
+        }
+        .tab-btn.active { background: var(--card-bg); color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+        .content-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card {
+            background: var(--card-bg); padding: 18px; border-radius: 12px; border: 1px solid var(--glass-border);
+            text-align: center; display: flex; flex-direction: column; justify-content: center;
+        }
+        .stat-label { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; font-weight: 500; }
+        .stat-value { font-size: 26px; font-weight: 800; color: white; }
+        .stat-hint { font-size: 10px; color: var(--text-dim); margin-top: 5px; }
+
+        .charts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
+        .chart-container {
+            background: var(--card-bg); padding: 20px; border-radius: 15px; border: 1px solid var(--glass-border);
+            height: 340px; position: relative;
+        }
+        .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+        .chart-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 12px; }
+        
+        .span-1 { grid-column: span 1; }
+        .span-2 { grid-column: span 2; }
+        .span-3 { grid-column: span 3; }
+        .span-4 { grid-column: span 4; }
+
+        .results-table-container { margin-top: 20px; border-radius: 12px; overflow: hidden; border: 1px solid var(--glass-border); }
+        table { width: 100%; border-collapse: collapse; background: var(--card-bg); font-size: 12px; }
+        th { background: rgba(0,0,0,0.3); padding: 12px; text-align: left; color: var(--text-dim); font-weight: 700; }
+        td { padding: 12px; border-top: 1px solid var(--glass-border); vertical-align: middle; }
+        tr:hover { background: rgba(255,255,255,0.03); }
+
+        .btn-refresh { background: var(--accent); color: #000; border: none; padding: 6px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay"><div class="spinner"></div><div style="font-weight:600">數據分析引擎啟動中...</div></div>
+
+    <header>
+        <div class="logo"><i class="fas fa-chart-pie"></i><span>鈦傳速 | AI 數據調度中心</span></div>
+        <div>
+            <span id="updateTime" style="font-size:11px; color:var(--text-dim); margin-right:15px"></span>
+            <button class="btn-refresh" onclick="fetchData(true)">🔄 同步後端</button>
+        </div>
+    </header>
+
+    <div class="filters-bar">
+        <div class="filter-group">
+            <label>日期區間</label>
+            <input type="date" id="startDate" onchange="updateDashboard()"> ~ 
+            <input type="date" id="endDate" onchange="updateDashboard()">
+            <div style="display:flex; gap:5px; margin-left:10px;">
+                <button class="btn-preset" onclick="setPreset(1)">今天</button>
+                <button class="btn-preset" onclick="setPreset(7)">近7天</button>
+                <button class="btn-preset" onclick="setPreset(30)">近30天</button>
+                <button class="btn-preset" onclick="setPreset(90)">近3個月</button>
+            </div>
+        </div>
+        <div style="width:1px; height:20px; background:var(--glass-border);"></div>
+        <div class="filter-group">
+            <label>分公司</label>
+            <select id="branchFilter" onchange="updateDashboard()">
+                <option value="全部">全部 (合併分析)</option>
+                <option value="高雅瓷">高雅瓷</option>
+                <option value="安帝嘉">安帝嘉</option>
+                <option value="喜悅納">喜悅納</option>
+                <option value="漢樺">漢樺</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>司機過濾</label>
+            <select id="driverFilter" onchange="updateDashboard()">
+                <option value="全部">全部 (車隊合併)</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button id="tab-overview" class="tab-btn active" onclick="switchTab('overview', this)">📈 營運總覽</button>
+        <button id="tab-efficiency" class="tab-btn" onclick="switchTab('efficiency', this)">⏱️ 配送時效</button>
+        <button id="tab-fuel" class="tab-btn" onclick="switchTab('fuel', this)">⛽ 油資里程</button>
+        <button id="tab-performance" class="tab-btn" onclick="switchTab('performance', this)">👤 司機排行</button>
+        <button id="tab-customer" class="tab-btn" onclick="switchTab('customer', this)">🏢 客戶看板</button>
+    </div>
+
+    <div class="content-container">
+        <!-- Overview -->
+        <div id="overview" class="tab-pane active">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">總訂單數</div><div class="stat-value" id="stat-total-orders">0</div><div class="stat-hint">選定區間內的任務總量</div></div>
+                <div class="stat-card"><div class="stat-label">配送完成率</div><div class="stat-value" id="stat-completion-rate" style="color:var(--success)">0%</div><div class="stat-hint">已完成訂單 / 總訂單數</div></div>
+                <div class="stat-card"><div class="stat-label">總配送重 (t)</div><div class="stat-value" id="stat-total-weight">0</div><div class="stat-hint">總公斤數換算為公噸</div></div>
+                <div class="stat-card"><div class="stat-label">單均重量 (kg)</div><div class="stat-value" id="stat-avg-weight">0</div><div class="stat-hint">平均每張訂單的載重</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-chart-line"></i> 營運負荷趨勢</div><div class="chart-desc">觀察每日訂單量的波動，分析營運高峰期。</div><canvas id="chart-daily-trend"></canvas></div>
+                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-check-circle"></i> 派送狀態分佈</div><div class="chart-desc">訂單現況比例：完成、中、未指派。</div><canvas id="chart-status-dist"></canvas></div>
+                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-building"></i> 分公司案量佔比</div><div class="chart-desc">各分站對總業績的貢獻比例。</div><canvas id="chart-branch-dist"></canvas></div>
+                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-clock"></i> 配送時段熱力分布</div><div class="chart-desc">分析客戶對上午、下午配送時段的需求密度。</div><canvas id="chart-slot-dist"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Efficiency -->
+        <div id="efficiency" class="tab-pane">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">平均抵達時效 (h)</div><div class="stat-value" id="stat-avg-hours">0</div><div class="stat-hint">從 08:00 到完成點擊的平均時數</div></div>
+                <div class="stat-card"><div class="stat-label">最速配送紀錄 (h)</div><div class="stat-value" id="stat-fastest" style="color:var(--accent)">0</div><div class="stat-hint">區間內單筆最快達成的任務</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-tachometer-alt"></i> 每日時效波動表</div><div class="chart-desc">追蹤平均抵達時間是否隨日期趨於穩定。</div><canvas id="chart-hourly-trend"></canvas></div>
+                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-weight-hanging"></i> 重量與時效相關性</div><div class="chart-desc">分析載重大小是否顯著影響配送所需的總時長。</div><canvas id="chart-weight-time-scatter"></canvas></div>
+                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-users-cog"></i> 司機抵達速度排行</div><div class="chart-desc">司機平均每趟任務達成速度排名 (小時越低越快)。</div><canvas id="chart-driver-efficiency"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Fuel -->
+        <div id="fuel" class="tab-pane">
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">總油費支出</div><div class="stat-value" id="stat-total-fuel-amt">0</div><div class="stat-hint">區間內車隊報支的總金額</div></div>
+                <div class="stat-card"><div class="stat-label">總行駛里程 (km)</div><div class="stat-value" id="stat-total-km-fuel">0</div><div class="stat-hint">車隊行駛總公里數</div></div>
+                <div class="stat-card"><div class="stat-label">平均油耗 (km/L)</div><div class="stat-value" id="stat-avg-kml" style="color:var(--success)">0</div><div class="stat-hint">整體燃油經濟效率指標</div></div>
+                <div class="stat-card"><div class="stat-label">每公里油耗成本 ($)</div><div class="stat-value" id="stat-cost-per-km" style="color:var(--danger)">0</div><div class="stat-hint">每一公里平均需分攤的油費</div></div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-gas-pump"></i> 油費支出與行駛里程</div><div class="chart-desc">比對每日油費報支與實際行駛里程的對應關係。</div><canvas id="chart-fuel-km-trend"></canvas></div>
+                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-leaf"></i> 節能車輛排行 (km/L)</div><div class="chart-desc">分析哪些車輛/司機的行駛與加油比例最優。</div><canvas id="chart-driver-fuel-efficiency"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Performance -->
+        <div id="performance" class="tab-pane">
+            <div class="charts-grid">
+                <div class="chart-container span-4" style="height:420px"><div class="chart-title"><i class="fas fa-trophy"></i> 司機業務達成量排行</div><div class="chart-desc">量化各司機在區間內完成的訂單總數。</div><canvas id="chart-driver-orders"></canvas></div>
+            </div>
+            <div class="results-table-container">
+                <table id="performance-table">
+                    <thead><tr><th>司機車牌</th><th>訂單總數</th><th>完成率</th><th>總重量(kg)</th><th>Avg時效(h)</th><th>行駛公里</th><th>油資支出</th><th>油耗 km/L</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Customer -->
+        <div id="customer" class="tab-pane">
+            <div class="charts-grid">
+                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-shopping-cart"></i> Top 10 熱門客戶訂單量</div><div class="chart-desc">分析訂單次數最多的前十大客戶。</div><canvas id="chart-customer-orders"></canvas></div>
+                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-truck-loading"></i> Top 10 重量貢獻客戶</div><div class="chart-desc">分析配送總量(kg)最大的前十大客戶。</div><canvas id="chart-customer-weight"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData = { orders: [], schedule: [] };
+        let charts = {};
+        const Color = { accent: '#38bdf8', success: '#4ade80', warning: '#facc15', danger: '#f87171', branch: ['#f472b6', '#4ade80', '#60a5fa', '#fbbf24'] };
+
+        window.onload = () => {
+            if (window.self !== window.top) {
+                document.body.classList.add('embedded-iframe');
+            }
+            fetchData(false);
+        };
+
+        function fetchData(force) {
+            document.getElementById('loadingOverlay').style.opacity = 1;
+            document.getElementById('loadingOverlay').style.pointerEvents = 'all';
+            
+            google.script.run.withSuccessHandler(res => {
+                if (res.success) {
+                    rawData = res;
+                    document.getElementById('updateTime').innerText = 'Sync: ' + new Date().toLocaleTimeString();
+                    const d = new Date(); const d30 = new Date(); d30.setDate(d.getDate()-30);
+                    document.getElementById('startDate').value = d30.toISOString().split('T')[0];
+                    document.getElementById('endDate').value = d.toISOString().split('T')[0];
+                    
+                    // Populate Drivers
+                    const plates = [...new Set(rawData.orders.map(o => o.plate))].filter(Boolean).sort();
+                    const dSel = document.getElementById('driverFilter');
+                    dSel.innerHTML = '<option value="全部">全部 (車隊合併分析)</option>';
+                    plates.forEach(p => { const op = document.createElement('option'); op.value = p; op.textContent = p; dSel.appendChild(op); });
+                    
+                    updateDashboard();
+                }
+                document.getElementById('loadingOverlay').style.opacity = 0;
+                document.getElementById('loadingOverlay').style.pointerEvents = 'none';
+            }).getDashboardData(force);
+        }
+
+        function setPreset(days) {
+            const end = new Date(); const start = new Date();
+            if (days === 1) start.setHours(0,0,0,0); else start.setDate(end.getDate() - days);
+            document.getElementById('startDate').value = start.toISOString().split('T')[0];
+            document.getElementById('endDate').value = end.toISOString().split('T')[0];
+            updateDashboard();
+        }
+
+        // V5.2.4: 確保連動切換
+        function switchTab(targetId, btnElement) {
+            console.log("Switching to", targetId);
+            const containers = document.querySelectorAll('.tab-pane');
+            const btns = document.querySelectorAll('.tab-btn');
+            
+            containers.forEach(el => el.classList.remove('active'));
+            btns.forEach(el => el.classList.remove('active'));
+            
+            const target = document.getElementById(targetId);
+            if (target) {
+                target.classList.add('active');
+                btnElement.classList.add('active');
+                // Trigger chart redraw to handle hidden dimension issues
+                window.dispatchEvent(new Event('resize'));
+            } else {
+                console.error("Tab not found:", targetId);
+            }
+        }
+
+        function updateDashboard() {
+            const sd = document.getElementById('startDate').value.replace(/-/g, '/');
+            const ed = document.getElementById('endDate').value.replace(/-/g, '/');
+            const branch = document.getElementById('branchFilter').value;
+            const driver = document.getElementById('driverFilter').value;
+
+            // Filter Orders
+            const fo = rawData.orders.filter(o => 
+                o.date >= sd && o.date <= ed && 
+                (branch === '全部' || o.branch === branch) && 
+                (driver === '全部' || o.plate === driver)
+            );
+
+            // Filter Schedule (Mileage/Fuel)
+            const fs = rawData.schedule.filter(s => 
+                s.date >= sd && s.date <= ed && 
+                (driver === '全部' || s.plate === driver)
+            );
+
+            renderOverview(fo);
+            renderEfficiency(fo);
+            renderFuel(fs);
+            renderPerformance(fo, fs);
+            renderCustomer(fo);
+        }
+
+        function renderOverview(orders) {
+            const tot = orders.length; if (tot === 0) { clearStats(); return; }
+            const comp = orders.filter(o => o.status === '已完成').length;
+            const w = orders.reduce((s,o)=>s+(o.weight||0), 0);
+            document.getElementById('stat-total-orders').innerText = tot;
+            document.getElementById('stat-completion-rate').innerText = (comp/tot*100).toFixed(1)+'%';
+            document.getElementById('stat-total-weight').innerText = (w/1000).toFixed(1);
+            document.getElementById('stat-avg-weight').innerText = (w/tot).toFixed(0);
+
+            const dates = [...new Set(orders.map(o=>o.date))].sort();
+            createChart('chart-daily-trend', 'line', dates, [{ label: '已完成項數', data: dates.map(d=>orders.filter(o=>o.date===d && o.status==='已完成').length), borderColor: Color.success, tension: 0.3 }]);
+            
+            const stLabels = ['已完成', '配送中', '待指派'];
+            const stData = stLabels.map(s => orders.filter(o=>o.status===s).length);
+            createChart('chart-status-dist', 'doughnut', stLabels, [{ data: stData, backgroundColor: [Color.success, Color.accent, Color.warning] }], { legend: true });
+
+            const brLabels = ['高雅瓷', '安帝嘉', '喜悅納', '漢樺'];
+            createChart('chart-branch-dist', 'pie', brLabels, [{ data: brLabels.map(b=>orders.filter(o=>o.branch===b).length), backgroundColor: Color.branch }], { legend: true });
+
+            const slotMap = { '上午 (AM)': 0, '午後 (PM)': 0, '其它/全天': 0 };
+            orders.forEach(o => { const s = String(o.slot); if (s.includes("上")||s.includes("AM")) slotMap['上午 (AM)']++; else if (s.includes("下")||s.includes("PM")) slotMap['午後 (PM)']++; else slotMap['其它/全天']++; });
+            createChart('chart-slot-dist', 'bar', Object.keys(slotMap), [{ label: '需求件數', data: Object.values(slotMap), backgroundColor: Color.accent }]);
+        }
+
+        function clearStats() {
+            ['stat-total-orders','stat-completion-rate','stat-total-weight','stat-avg-weight','stat-avg-hours','stat-fastest','stat-total-fuel-amt','stat-total-km-fuel','stat-avg-kml','stat-cost-per-km'].forEach(id=>{
+                const el = document.getElementById(id); if (el) el.innerText='--';
+            });
+        }
+
+        function renderEfficiency(orders) {
+            const comp = orders.filter(o=>o.status==='已完成'); if (comp.length === 0) return;
+            const hours = comp.map(o => {
+                if (!o.finishTime || o.finishTime.length < 10) return null;
+                const e = new Date(o.finishTime); const s = new Date(o.date.replace(/\//g,'-')+'T08:00:00');
+                const h = (e-s)/3600000; return (h>0 && h<20) ? h : null;
+            }).filter(h=>h!==null);
+            document.getElementById('stat-avg-hours').innerText = hours.length ? (hours.reduce((a,b)=>a+b)/hours.length).toFixed(1) : '--';
+            document.getElementById('stat-fastest').innerText = hours.length ? Math.min(...hours).toFixed(1) : '--';
+
+            const dates = [...new Set(comp.map(o=>o.date))].sort();
+            createChart('chart-hourly-trend', 'line', dates, [{ label: 'Avg小時/趟', data: dates.map(d=> { const hArr = comp.filter(o=>o.date===d).map(o=>{ const e=new Date(o.finishTime); const s=new Date(d.replace(/\//g,'-')+'T08:00:00'); return (e-s)/3600000; }).filter(h=>h>0&&h<20); return hArr.length ? (hArr.reduce((a,b)=>a+b)/hArr.length).toFixed(1) : 0; }), borderColor: Color.warning }]);
+            createChart('chart-weight-time-scatter', 'scatter', null, [{ label: '配送任務', data: comp.filter(o=>o.weight>0).map(o=> { const h = (new Date(o.finishTime)-new Date(o.date.replace(/\//g,'-')+'T08:00:00'))/3600000; return {x:o.weight, y: (h>0&&h<20)?h:null}; }).filter(p=>p.y!==null), backgroundColor: 'rgba(56,189,248,0.5)' }]);
+            
+            const plates = [...new Set(comp.map(o=>o.plate))].filter(Boolean);
+            const drank = plates.map(p => { const hArr = comp.filter(o=>o.plate===p).map(o=>{ const e=new Date(o.finishTime); const s=new Date(o.date.replace(/\//g,'-')+'T08:00:00'); return (e-s)/3600000; }).filter(h=>h>0&&h<20); return {p, h: hArr.length?(hArr.reduce((a,b)=>a+b)/hArr.length):99}; }).sort((a,b)=>a.h-b.h).slice(0, 8);
+            createChart('chart-driver-efficiency', 'bar', drank.map(r=>r.p), [{ label: '平均耗時(h)', data: drank.map(r=>r.h.toFixed(1)), backgroundColor: '#818cf8' }]);
+        }
+
+        function renderFuel(schedule) {
+            const amt = schedule.reduce((s,x)=>s+(x.fuelAmt||0),0);
+            const km = schedule.reduce((s,x)=>s+(x.totalKm||0),0);
+            const lit = schedule.reduce((s,x)=>s+(x.fuelLit||0),0);
+            document.getElementById('stat-total-fuel-amt').innerText = '$'+Math.round(amt).toLocaleString();
+            document.getElementById('stat-total-km-fuel').innerText = Math.round(km).toLocaleString()+' km';
+            document.getElementById('stat-avg-kml').innerText = lit ? (km/lit).toFixed(1) : '--';
+            document.getElementById('stat-cost-per-km').innerText = km ? '$'+(amt/km).toFixed(1) : '--';
+
+            const dates = [...new Set(schedule.map(x=>x.date))].sort();
+            createChart('chart-fuel-km-trend', 'bar', dates, [
+                { label: '油費', data: dates.map(d=>schedule.filter(x=>x.date===d).reduce((s,x)=>s+(x.fuelAmt||0),0)), backgroundColor: 'rgba(248,113,113,0.4)' },
+                { label: '行駛km', data: dates.map(d=>schedule.filter(x=>x.date===d).reduce((s,x)=>s+(x.totalKm||0),0)), type:'line', borderColor: Color.accent, yAxisID:'y1', pointRadius: 2 }
+            ], { scales: { y1: { position: 'right', grid: { display : false } } } });
+
+            const plates = [...new Set(schedule.map(x=>x.plate))].filter(Boolean);
+            const frank = plates.map(p => { const k=schedule.filter(x=>x.plate===p).reduce((s,x)=>s+(x.totalKm||0),0); const l=schedule.filter(x=>x.plate===p).reduce((s,x)=>s+(x.fuelLit||0),0); return {p, e: l?(k/l):0}; }).sort((a,b)=>b.e-a.e).slice(0, 8);
+            createChart('chart-driver-fuel-efficiency', 'bar', frank.map(r=>r.p), [{ label: 'km/L', data: frank.map(r=>r.e.toFixed(1)), backgroundColor: Color.success }]);
+        }
+
+        function renderPerformance(orders, schedule) {
+            const plates = [...new Set(orders.map(o=>o.plate))].filter(Boolean);
+            const stats = plates.map(p => {
+                const po=orders.filter(o=>o.plate===p); const pc=po.filter(o=>o.status==='已完成');
+                const ps=schedule.filter(s=>s.plate===p); const km=ps.reduce((s,x)=>s+(x.totalKm||0),0); const amt=ps.reduce((s,x)=>s+(x.fuelAmt||0),0); const lit=ps.reduce((s,x)=>s+(x.fuelLit||0),0);
+                return {p, total:po.length, comp:pc.length, weight:po.reduce((s,o)=>s+(o.weight||0),0), km, amt, eff:lit?(km/lit).toFixed(1):'--'};
+            }).sort((a,b)=>b.comp-a.comp);
+            document.querySelector('#performance-table tbody').innerHTML = stats.map(s => `<tr><td style="font-weight:700;color:var(--accent)">${s.p}</td><td>${s.total}</td><td>${(s.comp/s.total*100).toFixed(0)}%</td><td style="color:var(--warning)">${Math.round(s.weight).toLocaleString()}</td><td>--</td><td>${Math.round(s.km)}</td><td>$${Math.round(s.amt).toLocaleString()}</td><td style="color:var(--success)">${s.eff}</td></tr>`).join('');
+            createChart('chart-driver-orders', 'bar', stats.map(s=>s.p), [{ label: '累計完成項數', data: stats.map(s=>s.comp), backgroundColor: Color.success }], { indexAxis: 'y' });
+        }
+
+        function renderCustomer(orders) {
+            const custs = [...new Set(orders.map(o=>o.customer))].slice(0, 100);
+            const stats = custs.map(c => { const co=orders.filter(o=>o.customer===c); return {n:c, c:co.length, w:co.reduce((s,x)=>s+(x.weight||0),0)}; }).sort((a,b)=>b.c-a.c).slice(0, 10);
+            createChart('chart-customer-orders', 'bar', stats.map(x=>x.n), [{ label: '單量(次)', data: stats.map(x=>x.c), backgroundColor: Color.accent }], { indexAxis: 'y' });
+            const wstats = [...stats].sort((a,b)=>b.w-a.w).slice(0, 10);
+            createChart('chart-customer-weight', 'bar', wstats.map(x=>x.n), [{ label: '總重(kg)', data: wstats.map(x=>x.w), backgroundColor: Color.branch[0] }], { indexAxis: 'y' });
+        }
+
+        function createChart(id, type, labels, datasets, opts = {}) {
+            if (charts[id]) charts[id].destroy();
+            const ctx = document.getElementById(id);
+            if (!ctx) return;
+            charts[id] = new Chart(ctx.getContext('2d'), {
+                type, data: { labels, datasets },
+                options: {
+                    responsive: true, maintainAspectRatio: false, indexAxis: opts.indexAxis || 'x',
+                    plugins: { 
+                        legend: { display: opts.legend || false, position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 }, usePointStyle: true, padding: 15 } },
+                        tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', titleColor: '#38bdf8', bodyColor: '#fff', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...opts.scales?.x },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...opts.scales?.y }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
