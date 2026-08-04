@@ -3,12 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>鈦傳速｜我的工作日誌</title>
+  <title>鈦傳速｜倉庫工作日誌</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-worklog.svg">
+  <link rel="apple-touch-icon" href="favicon-worklog.svg">
   <style>
-    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0b0b0c; }
-    iframe { width: 100%; height: 100%; border: none; display: none; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f4f1ea; }
+    iframe { width: 100%; height: calc(100% + 55px); margin-top: -55px; border: none; display: none; }
     #msg {
-      color: #9ca3af; font-family: -apple-system, sans-serif; text-align: center;
+      color: #8c8474; font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", sans-serif; text-align: center;
       padding-top: 40vh; font-size: 14px;
     }
   </style>
@@ -19,30 +21,37 @@
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-    // TODO：向 LINE Developers 申請 LIFF App 後，把這裡換成正式 LIFF ID
-    var LIFF_ID = 'REPLACE_WITH_REAL_LIFF_ID';
+    var LIFF_ID = '2007666611-p2hD0jvc';
     var GAS_BASE = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec';
 
-    function showApp(userId) {
+    function showApp(qs) {
       var iframe = document.getElementById('app');
-      iframe.src = GAS_BASE + '?p=worklog&userId=' + encodeURIComponent(userId || '');
+      iframe.src = GAS_BASE + '?p=worklog' + qs;
       iframe.style.display = 'block';
       document.getElementById('msg').style.display = 'none';
     }
 
-    liff.init({ liffId: LIFF_ID }).then(function () {
-      if (!liff.isLoggedIn()) {
-        liff.login();
-        return;
-      }
-      liff.getProfile().then(function (profile) {
-        showApp(profile.userId);
+    // 專屬連結（empId+token）優先，不需要 LIFF
+    var params = new URLSearchParams(window.location.search);
+    var empId = params.get('empId');
+    var token = params.get('token');
+    if (empId && token) {
+      showApp('&empId=' + encodeURIComponent(empId) + '&token=' + encodeURIComponent(token));
+    } else {
+      liff.init({ liffId: LIFF_ID }).then(function () {
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+        liff.getProfile().then(function (profile) {
+          showApp('&userId=' + encodeURIComponent(profile.userId));
+        }).catch(function () {
+          document.getElementById('msg').textContent = '無法取得 LINE 身分，請重新開啟';
+        });
       }).catch(function () {
-        document.getElementById('msg').textContent = '無法取得 LINE 身分，請重新開啟';
+        document.getElementById('msg').textContent = '請透過主管提供的專屬連結開啟本頁面';
       });
-    }).catch(function (err) {
-      document.getElementById('msg').textContent = '請透過 LINE 官方帳號選單開啟本頁面';
-    });
+    }
   </script>
 </body>
 </html>
