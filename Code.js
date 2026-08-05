@@ -1284,6 +1284,23 @@ function tempSetWorklogSecret() {
   Logger.log('已設定 WORKLOG_SERVICE_SECRET');
 }
 
+// 請假按鈕用：拿司機姓名跟倉庫工作日誌系統換一條該司機的專屬連結（伺服器對伺服器呼叫，
+// 密鑰不會出現在前端程式碼或網路請求裡讓司機看到）
+function getLeaveLinkForDriver(driverName) {
+  try {
+    var secret = PropertiesService.getScriptProperties().getProperty('WORKLOG_SERVICE_SECRET');
+    if (!secret) return { success: false, error: '尚未設定密鑰，請聯絡主管' };
+    var url = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec'
+      + '?p=service&action=leaveLink'
+      + '&driver=' + encodeURIComponent(driverName || '')
+      + '&secret=' + encodeURIComponent(secret);
+    var resp = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    return JSON.parse(resp.getContentText());
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+}
+
 function submitQuickReport(report) {
   try {
     // V2633.1: 身分安全性核封 (V34.27: 已廢棄 token 驗證，改為全信任前端姓名配置)

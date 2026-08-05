@@ -2060,11 +2060,20 @@
         }
         applyThemeIcon();
 
-        // 請假串到倉庫工作日誌系統的員工端，直接開出勤/請假分頁；靠同一個 LINE 官方帳號的
-        // LIFF 身分辨識司機是誰，不用另外傳帳密——如果司機的 LINE 還沒在那邊綁定，會顯示
-        // 「請透過主管提供的專屬連結開啟本頁面」，不會出錯或洩漏其他人資料。
+        // 請假串到倉庫工作日誌系統的員工端。司機端是「選姓名」登入、不是 LINE LIFF，所以不能
+        // 靠 liff.init() 辨識身分（試過會卡在 access.line.me 拒絕連線）。改成：伺服器端拿目前
+        // 選定的司機姓名，跟倉庫工作日誌系統換一條該司機的專屬連結，前端直接開那條連結。
         function openLeaveRequest() {
-            window.open('https://bigt.cc/tts/worklog.html?tab=attendance', '_blank');
+            if (!currentDriverName) { webAlert('請先選擇司機姓名'); return; }
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res && res.success && res.url) window.open(res.url, '_blank');
+                    else webAlert((res && res.error) || '無法取得請假連結，請聯絡主管');
+                })
+                .withFailureHandler(function (err) {
+                    webAlert('無法取得請假連結：' + (err && err.message || err));
+                })
+                .getLeaveLinkForDriver(currentDriverName);
         }
         function jumpToWarehouse() {
             if (!SCRIPT_URL) {
