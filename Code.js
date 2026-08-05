@@ -1277,6 +1277,13 @@ function adminDeleteTask_V11(taskId, branch) {
  * 加油登記 → 每日行程表 (加油金額/公升/照片)
  * 車輛保養 → 車輛保養工作表 (精確欄位對位)
  */
+// 一次性設定：跟「鈦傳速倉庫工作日誌」系統對接發車/收工自動打卡用的共用密鑰，兩邊要設成同一組值。
+// 在 Apps Script 編輯器手動執行一次即可，執行完之後這個函式跟這行密鑰就可以從原始碼刪掉。
+function tempSetWorklogSecret() {
+  PropertiesService.getScriptProperties().setProperty('WORKLOG_SERVICE_SECRET', 'b790128d25a9a674bf60d2ac9a0e266937c0ee269348bead');
+  Logger.log('已設定 WORKLOG_SERVICE_SECRET');
+}
+
 function submitQuickReport(report) {
   try {
     // V2633.1: 身分安全性核封 (V34.27: 已廢棄 token 驗證，改為全信任前端姓名配置)
@@ -1378,6 +1385,24 @@ function submitQuickReport(report) {
 
       // V34.10: 上下班打卡也立即寫入行程足跡
       updateScheduleTrace_V12(report.car, report.lat, report.lng, report.type, (report.type === '上班打卡' ? '公司出發' : '返抵公司'));
+
+      // 串接「鈦傳速倉庫工作日誌」系統：發車=打上班卡、收工=打下班卡。純附加、失敗不拋錯，
+      // 絕對不能因為對方系統掛掉或密鑰沒設定就影響到這裡的發車/收工/里程主流程。
+      try {
+        var wlSecret = PropertiesService.getScriptProperties().getProperty('WORKLOG_SERVICE_SECRET');
+        if (wlSecret) {
+          UrlFetchApp.fetch(
+            'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec'
+            + '?p=service'
+            + '&driver=' + encodeURIComponent(driverName)
+            + '&type=' + encodeURIComponent(report.type)
+            + '&lat=' + encodeURIComponent(report.lat || '')
+            + '&lng=' + encodeURIComponent(report.lng || '')
+            + '&secret=' + encodeURIComponent(wlSecret),
+            { muteHttpExceptions: true }
+          );
+        }
+      } catch (e) { /* 忽略：出勤打卡串接失敗不影響發車/收工本身 */ }
 
     } else if (report.type === '收貨' || report.type === '退貨') {
       // 1. 先寫入送貨日誌 (SHEET_LOG) — V2631.18c Bug2 Fix: 改用動態標頭對位
