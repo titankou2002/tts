@@ -35,8 +35,10 @@
     var params = new URLSearchParams(window.location.search);
     var empId = params.get('empId');
     var token = params.get('token');
+    var tab = params.get('tab'); // 例如智慧物流系統司機端的「請假」按鈕會帶 ?tab=attendance 直接跳分頁
+    var tabQs = tab ? '&tab=' + encodeURIComponent(tab) : '';
     if (empId && token) {
-      showApp('&empId=' + encodeURIComponent(empId) + '&token=' + encodeURIComponent(token));
+      showApp('&empId=' + encodeURIComponent(empId) + '&token=' + encodeURIComponent(token) + tabQs);
     } else {
       liff.init({ liffId: LIFF_ID }).then(function () {
         if (!liff.isLoggedIn()) {
@@ -44,7 +46,7 @@
           return;
         }
         liff.getProfile().then(function (profile) {
-          showApp('&userId=' + encodeURIComponent(profile.userId));
+          showApp('&userId=' + encodeURIComponent(profile.userId) + tabQs);
         }).catch(function () {
           document.getElementById('msg').textContent = '無法取得 LINE 身分，請重新開啟';
         });

@@ -32,6 +32,50 @@
             --btn-main: #2d5a8e;
         }
 
+        /* V39.6: 日夜模式 - 日間採「無印風格」：米白/卡其/淺棕的低對比自然色調，取代夜間的賽博霓虹風 */
+        :root[data-theme="light"] {
+            --bg: #F3EFE6;
+            --surface: rgba(255, 253, 248, 0.9);
+            --primary: #E8E1D3;
+            --primary-soft: #DCD2BE;
+            --secondary: #EDE7DA;
+            --success: #7C8B6F;
+            --warning: #B98B4E;
+            --danger: #B5573F;
+            --text-primary: #3A342B;
+            --text-secondary: #6B6354;
+            --text-tertiary: #9C927E;
+            --border-soft: rgba(58, 52, 43, 0.1);
+            --cyan: #8A7A54;
+            --btn-main: #7C8B6F;
+        }
+
+        :root[data-theme="light"] body { background: var(--bg); }
+        :root[data-theme="light"] .cyber-bg { background: var(--bg); }
+        :root[data-theme="light"] .grid-bg { display: none !important; }
+        :root[data-theme="light"] .info-card { background: rgba(255, 255, 255, 0.55); }
+        :root[data-theme="light"] .car-select,
+        :root[data-theme="light"] .car-select option,
+        :root[data-theme="light"] .fi option { background: #fff; color: var(--text-primary); }
+        :root[data-theme="light"] .nav-3 { background: rgba(58, 52, 43, 0.03); }
+        :root[data-theme="light"] .task-bar { background: rgba(58, 52, 43, 0.04); }
+        :root[data-theme="light"] .task-card { background: rgba(255, 255, 255, 0.75); box-shadow: 0 4px 16px rgba(58, 52, 43, 0.08); }
+        :root[data-theme="light"] .completed-card { background: #EAE4D6 !important; border: 1px dashed #C9BFA9 !important; }
+        :root[data-theme="light"] .tabbar { background: rgba(58, 52, 43, 0.05); }
+        :root[data-theme="light"] .tab-btn.active { color: var(--text-primary); }
+        :root[data-theme="light"] .btn-nav-sub { background: rgba(58, 52, 43, 0.04); }
+        :root[data-theme="light"] .btn-photo { color: #fff; }
+        :root[data-theme="light"] .btn-redo { background: rgba(58, 52, 43, 0.12); color: var(--text-primary); }
+        :root[data-theme="light"] .tc-note { background: rgba(58, 52, 43, 0.04); }
+        :root[data-theme="light"] .btn-card-close { background: rgba(255, 255, 255, 0.85); color: var(--text-primary); border-color: var(--border-soft); }
+        :root[data-theme="light"] .overlay { background: rgba(243, 239, 230, 0.97); }
+        :root[data-theme="light"] button[onclick="jumpToWarehouse()"],
+        :root[data-theme="light"] button[onclick="App.refreshTasks(true)"],
+        :root[data-theme="light"] #reorderBtn { color: var(--text-primary) !important; }
+        :root[data-theme="light"] #fullRouteBar { background: rgba(122, 107, 74, 0.08) !important; border-bottom-color: rgba(122, 107, 74, 0.15) !important; }
+        :root[data-theme="light"] #fullRouteBtn { background: linear-gradient(135deg, #DCD2BE, #EDE7DA) !important; color: #6B5B3A !important; border-color: rgba(122, 107, 74, 0.3) !important; }
+        :root[data-theme="light"] #themeToggleBtn { color: var(--text-secondary); }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -1426,6 +1470,17 @@
             z-index: 1;
         }
     </style>
+    <script>
+        // V39.6: 日夜模式初始化 - 在 <head> 就同步套用，避免先閃一下舊主題再切換
+        (function () {
+            try {
+                var saved = localStorage.getItem('tts_theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.setAttribute('data-theme', saved);
+                }
+            } catch (e) { }
+        })();
+    </script>
 </head>
 
 <body>
@@ -1556,7 +1611,11 @@
                     </svg>
                     鈦傳速｜智能運控系統
                 </div>
-                <div class="header-datetime" id="headerDatetime">--/-- --:--:--</div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div class="header-datetime" id="headerDatetime">--/-- --:--:--</div>
+                    <button id="themeToggleBtn" onclick="toggleTheme()" aria-label="切換日夜模式"
+                        style="background:transparent; border:1px solid var(--border-soft); color:var(--text-secondary); width:26px; height:26px; border-radius:50%; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;">☀️</button>
+                </div>
             </div>
             <div class="header-cards">
                 <div class="info-card">
@@ -1620,13 +1679,15 @@
             </div>
             <div style="display:flex; align-items:center;">
                 <button onclick="jumpToWarehouse()"
-                    style="background:var(--secondary);color:var(--cyan);border:1px solid rgba(56,189,248,0.4);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;cursor:pointer;">🏪 倉庫驗貨</button>
+                    style="background:var(--secondary);color:var(--cyan);border:1px solid rgba(56,189,248,0.4);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;cursor:pointer;">🏪 驗貨</button>
+                <button onclick="openLeaveRequest()"
+                    style="background:var(--secondary);color:#facc15;border:1px solid rgba(250,204,21,0.4);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;cursor:pointer;">📝 請假</button>
                 <button onclick="App.refreshTasks(true)"
                     style="background:var(--secondary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;position:relative">↻
-                    重新整理 <span id="newTaskBadge"
+                    重整 <span id="newTaskBadge"
                         style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center">!</span></button>
                 <button id="reorderBtn" onclick="toggleReorderMode()"
-                    style="background:var(--secondary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800">調整順序
+                    style="background:var(--secondary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800">排序
                     ↕️</button>
             </div>
         </div>
@@ -1980,6 +2041,31 @@
             google.script.run.withSuccessHandler(url => { SCRIPT_URL = url; }).getScriptUrl();
         })();
 
+        // V39.6: 日夜模式切換（純符號按鈕：☀️=目前夜間，點擊切換到日間；🌙=目前日間，點擊切換回夜間）
+        function applyThemeIcon() {
+            var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            var btn = document.getElementById('themeToggleBtn');
+            if (btn) btn.textContent = isLight ? '🌙' : '☀️';
+        }
+        function toggleTheme() {
+            var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            var next = isLight ? 'dark' : 'light';
+            if (next === 'dark') {
+                document.documentElement.removeAttribute('data-theme'); // 預設(無屬性)即夜間主題
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+            try { localStorage.setItem('tts_theme', next); } catch (e) { }
+            applyThemeIcon();
+        }
+        applyThemeIcon();
+
+        // 請假串到倉庫工作日誌系統的員工端，直接開出勤/請假分頁；靠同一個 LINE 官方帳號的
+        // LIFF 身分辨識司機是誰，不用另外傳帳密——如果司機的 LINE 還沒在那邊綁定，會顯示
+        // 「請透過主管提供的專屬連結開啟本頁面」，不會出錯或洩漏其他人資料。
+        function openLeaveRequest() {
+            window.open('https://bigt.cc/tts/worklog.html?tab=attendance', '_blank');
+        }
         function jumpToWarehouse() {
             if (!SCRIPT_URL) {
                 google.script.run.withSuccessHandler(url => {
