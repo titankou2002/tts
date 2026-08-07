@@ -8,10 +8,10 @@
   <link rel="apple-touch-icon" href="favicon-worklog.svg">
   <style>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f4f1ea; }
-    iframe { width: 100%; height: calc(100% + 55px); margin-top: -55px; border: none; display: none; }
+    iframe { width: 100%; height: calc(100% + 55px); margin-top: -55px; border: none; display: block; }
     #msg {
       color: #8c8474; font-family: -apple-system, "Hiragino Sans", "Noto Sans TC", sans-serif; text-align: center;
-      padding-top: 40vh; font-size: 14px;
+      padding-top: 40vh; font-size: 14px; display: none;
     }
   </style>
 </head>
@@ -19,41 +19,11 @@
   <div id="msg">載入中...</div>
   <iframe id="app" allow="geolocation"></iframe>
 
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
-    var LIFF_ID = '2007666611-p2hD0jvc';
     var GAS_BASE = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec';
-
-    function showApp(qs) {
-      var iframe = document.getElementById('app');
-      iframe.src = GAS_BASE + '?p=worklog' + qs;
-      iframe.style.display = 'block';
-      document.getElementById('msg').style.display = 'none';
-    }
-
-    // 專屬連結（empId+token）優先，不需要 LIFF
-    var params = new URLSearchParams(window.location.search);
-    var empId = params.get('empId');
-    var token = params.get('token');
-    var tab = params.get('tab'); // 例如智慧物流系統司機端的「請假」按鈕會帶 ?tab=attendance 直接跳分頁
-    var tabQs = tab ? '&tab=' + encodeURIComponent(tab) : '';
-    if (empId && token) {
-      showApp('&empId=' + encodeURIComponent(empId) + '&token=' + encodeURIComponent(token) + tabQs);
-    } else {
-      liff.init({ liffId: LIFF_ID }).then(function () {
-        if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
-        }
-        liff.getProfile().then(function (profile) {
-          showApp('&userId=' + encodeURIComponent(profile.userId) + tabQs);
-        }).catch(function () {
-          document.getElementById('msg').textContent = '無法取得 LINE 身分，請重新開啟';
-        });
-      }).catch(function () {
-        document.getElementById('msg').textContent = '請透過主管提供的專屬連結開啟本頁面';
-      });
-    }
+    var search = window.location.search || '';
+    var qs = search ? (search.startsWith('?') ? '&' + search.substring(1) : '&' + search) : '';
+    document.getElementById('app').src = GAS_BASE + '?p=worklog' + qs;
   </script>
 </body>
 </html>
