@@ -21,10 +21,10 @@
 
   <script>
     var search = window.location.search || '';
-    var qs = search ? (search.charAt(0) === '?' ? search : '?' + search) : '';
+    var qs = search ? (search.charAt(0) === '?' ? search.slice(1) : search) : '';
     var iframe = document.getElementById('app');
     iframe.addEventListener('load', function () { document.getElementById('msg').style.display = 'none'; });
-    iframe.src = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec?p=worklog' + qs;
+    iframe.src = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec?p=worklog' + (qs ? '&' + qs : '');
   </script>
 </body>
 </html>
