@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鈦傳速｜派車工作站 V8.8</title>
+  <!-- 派車工作站專屬圖標：跟 OS 共用底圖，之後有需要可換獨立圖示 -->
+  <link rel="icon" type="image/svg+xml" href="favicon-os.svg">
+  <link rel="apple-touch-icon" href="favicon-os.svg">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #020617;
+    }
+    iframe {
+      width: 100%;
+      height: calc(100% + 55px);
+      margin-top: -55px;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- V39.33: 獨立的排車直達連結，跟 OS.html(一般主控台) 分開，這裡才會自動開啟派車彈窗 -->
+  <iframe src="https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?p=dispatch" allow="geolocation; microphone; camera"></iframe>
+</body>
+</html>
