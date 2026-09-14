@@ -1176,7 +1176,9 @@
     // ==============================================================
     const CONFIG = {
       GAS_API: "https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec", // 🌟 請換成您實際部署的 GAS 網址
-      LIFF_ID: "2007666611-285rZBFA" // 🌟 請換成您在 LINE Developers 申請的 LIFF ID
+      LIFF_ID: "2007666611-285rZBFA", // 🌟 請換成您在 LINE Developers 申請的 LIFF ID
+      // 注意：GAS HtmlService 會把反引號樣板字串內的 "https://" 從 // 起當註解截掉，樣板字串內請一律用 ${CONFIG.HTTPS}
+      HTTPS: "https://"
     };
 
     let cachedUserId = "";
@@ -1653,7 +1655,15 @@
         }
       }
       
-      let url = `${CONFIG.GAS_API}?action=getDealerProgress&userId=${userId}`;
+      // V41: 身分改以 LIFF access token 由後端向 LINE 驗證，不再把 userId 當憑證放在 URL 上
+      let accessToken = "";
+      try { accessToken = (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) ? (liff.getAccessToken() || "") : ""; } catch (e) { }
+      if (!accessToken) {
+        showError("LINE 登入已逾時", "請關閉此頁面，重新從 LINE 官方帳號開啟。");
+        try { if (typeof liff !== 'undefined' && window.self === window.top) liff.login(); } catch (e) { }
+        return;
+      }
+      let url = `${CONFIG.GAS_API}?action=getDealerProgress&accessToken=${encodeURIComponent(accessToken)}`;
       if (selectedDate) {
         url += `&date=${selectedDate}`;
       }
@@ -2193,7 +2203,7 @@
           );
           if (hasActiveTask && (isCurrent || t.status === "配送中" || t.status === "已上車" || t.status === "已指派")) {
             const addressQuery = encodeURIComponent(t.address);
-            const mapUrl = `https://www.google.com/maps/search/?api=1&query=${addressQuery}`;
+            const mapUrl = `${CONFIG.HTTPS}www.google.com/maps/search/?api=1&query=${addressQuery}`;
             actionsHTML = `
               <div class="task-actions" style="margin-top: 0.6rem;">
                 <a href="${mapUrl}" target="_blank" class="task-action-btn primary" style="width: 100%;">
@@ -2450,14 +2460,14 @@
         if (matchD && matchD[1]) {
           fileId = matchD[1];
         } else {
-          const matchId = urlStr.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          const matchId = urlStr.match(new RegExp('[?&]id=([a-zA-Z0-9_-]+)'));
           if (matchId && matchId[1]) {
             fileId = matchId[1];
           }
         }
         if (fileId) {
           // 使用 lh3 CDN 繞過 Google Drive 第三方 Cookie 限制，完美顯示圖片！
-          return `https://lh3.googleusercontent.com/d/${fileId}`;
+          return `${CONFIG.HTTPS}lh3.googleusercontent.com/d/${fileId}`;
         }
       }
       return urlStr;
