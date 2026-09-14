@@ -164,6 +164,8 @@
         .drill-body { flex: 1; overflow: auto; }
         .drill-body table th { cursor: pointer; user-select: none; }
         .drill-body table th:hover { color: var(--accent); }
+        #freight-table th[data-k] { cursor: pointer; user-select: none; white-space: nowrap; }
+        #freight-table th[data-k]:hover, #freight-table th.sorted { color: var(--accent); }
         .drill-body tr.row-click { cursor: pointer; }
         .drill-close { margin-left: auto; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-weight: 700; }
         .mini-btn { background: rgba(255,255,255,0.06); color: #e2e8f0; border: 1px solid var(--glass-border); padding: 2px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; }
@@ -322,6 +324,13 @@
                 <button class="btn-branch b-安帝嘉" data-branch="安帝嘉" onclick="setBranch('安帝嘉')">安帝嘉</button>
                 <button class="btn-branch b-喜悅納" data-branch="喜悅納" onclick="setBranch('喜悅納')">喜悅納</button>
                 <button class="btn-branch b-漢樺" data-branch="漢樺" onclick="setBranch('漢樺')">漢樺</button>
+                <span style="color:var(--text-dim); font-weight:600; margin-left:14px;">類型</span>
+                <div id="freightTypeBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="btn-branch active" data-type="全部" onclick="setFreightType('全部')">全部</button>
+                    <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般</button>
+                    <button class="btn-branch" data-type="退貨" onclick="setFreightType('退貨')" style="color:#f87171">退貨</button>
+                    <button class="btn-branch" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
+                </div>
                 <span style="flex:1"></span>
                 <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
             </div>
@@ -340,16 +349,16 @@
                 <div class="table-scroll">
                 <table id="freight-table">
                     <thead>
-                        <tr>
-                            <th>日期</th>
-                            <th>單號</th>
-                            <th>分公司</th>
-                            <th>客戶名稱</th>
-                            <th>重量(kg)</th>
-                            <th>偏遠</th>
-                            <th>系統估算</th>
+                        <tr id="freightHead">
+                            <th data-k="date" onclick="freightSortBy('date')">日期</th>
+                            <th data-k="id" onclick="freightSortBy('id')">單號</th>
+                            <th data-k="branch" onclick="freightSortBy('branch')">分公司</th>
+                            <th data-k="customer" onclick="freightSortBy('customer')">客戶名稱</th>
+                            <th data-k="weight" onclick="freightSortBy('weight')">重量(kg)</th>
+                            <th data-k="isRemote" onclick="freightSortBy('isRemote')">偏遠</th>
+                            <th data-k="estFee" onclick="freightSortBy('estFee')">系統估算</th>
                             <th>運費公式</th>
-                            <th>核定運費</th>
+                            <th data-k="finalFee" onclick="freightSortBy('finalFee')">核定運費</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -879,7 +888,7 @@
                 .manualAdjustFreight_V11(taskId, branch, newFee, ATOKEN());
         }
 
-        let __lastFreightSets = { orders: [], schedule: [] };
+        let __lastFreightSets = { rawOrders: [], orders: [], schedule: [] };
         function renderFreightStats() {
             const orders = __lastFreightSets.orders, schedule = __lastFreightSets.schedule;
             const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
@@ -892,11 +901,48 @@
             setText('stat-fee-ratio', fuelAmt ? (finalFreightTotal/fuelAmt).toFixed(1)+'x' : '--');
         }
 
-        function renderFreight(orders, schedule) {
-            __lastFreightSets = { orders, schedule };
+        // V41.40: 運費明細 類型篩選 + 欄位排序 (點表頭切換正序/倒序)
+        let freightType = '全部';
+        let freightSort = { key: 'date', dir: -1 };
+        function setFreightType(t) {
+            freightType = t;
+            document.querySelectorAll('#freightTypeBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.type === t));
+            updateDashboard();
+        }
+        function freightSortBy(k) {
+            if (freightSort.key === k) freightSort.dir = -freightSort.dir; else freightSort = { key: k, dir: (k === 'date' ? -1 : 1) };
+            renderFreight(__lastFreightSets.rawOrders, __lastFreightSets.schedule);
+        }
+        function freightTypeOf(o) {
+            if (o.docType === '退貨') return '退貨';
+            if (o.docType === '樣品') return o.sampleTo === 'home' ? '樣品免費' : '樣品收費';
+            return '銷貨';
+        }
+        function renderFreight(rawOrders, schedule) {
+            const orders = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
+            __lastFreightSets = { rawOrders, orders, schedule };
             renderFreightStats();
+            document.querySelectorAll('#freightHead th[data-k]').forEach(th => {
+                const on = th.dataset.k === freightSort.key;
+                th.classList.toggle('sorted', on);
+                th.innerHTML = th.innerHTML.replace(/\s*[▲▼]$/, '') + (on ? (freightSort.dir < 0 ? ' ▼' : ' ▲') : '');
+            });
+            const finalOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
+            const valOf = o => {
+                switch (freightSort.key) {
+                    case 'finalFee': return finalOf(o);
+                    case 'weight': case 'estFee': return Number(o[freightSort.key]) || 0;
+                    case 'isRemote': return (o.isRemote && o.isRemote !== '否') ? 1 : 0;
+                    default: return String(o[freightSort.key] || '');
+                }
+            };
+            const cmp = (a, b) => {
+                const va = valOf(a), vb = valOf(b);
+                const r = (typeof va === 'number') ? va - vb : va.localeCompare(vb, 'zh-Hant');
+                return (r || b.date.localeCompare(a.date)) * (r ? freightSort.dir : 1);
+            };
             const tableBody = document.querySelector('#freight-table tbody');
-            tableBody.innerHTML = orders.slice().sort((a, b) => b.date.localeCompare(a.date)).map(o => {
+            tableBody.innerHTML = orders.slice().sort(cmp).map(o => {
                 const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
                 const isRemoteStr = o.isRemote || "否";
                 const isRemoteBadge = isRemoteStr !== "否" ? `<span class="badge badge-warn">${escapeHTML(isRemoteStr)}</span>` : `<span style="color:var(--text-dim)">否</span>`;
