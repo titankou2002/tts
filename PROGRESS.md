@@ -325,3 +325,12 @@ RE612114 代號無法被主要邏輯識別 → OCR 輸出混亂
   - `Warehouse.html` 讀 `WH_USERINFO.token`；備援改頁內登入框，**不可再用 prompt()**
 - 已驗證：QC.html 直接顯示待裝車清單，不問密碼。GAS @601；GitHub aa8fc0d。
 - `Warehouse.html` 檔名不變、`?p=warehouse` 網址不變。
+
+## 2026-09-14 晚 @602 V41.38（報表留在 bigt.cc、分析中心 iframe 化、行程列精簡）
+
+- 新增 `Analytics.html`（bigt.cc 外殼，與 OS.html 同構，iframe 包 `exec?p=analytics`，-55px 裁掉 GAS 警告列）。
+- `Dashboard.html` 報表按鈕：在 iframe 內時 `window.top.location = bigt.cc/tts/Analytics.html`（同分頁），不再跳 script.google.com。
+- `WebDashboard.html`：prompt/alert/confirm 全改頁內登入框 / `notify()` / `ask()`（Chrome 封鎖跨網域 iframe 原生對話框）；`body.embedded-iframe` 把版面下推 55px。
+- 行程列：不再標「樣品免費」（只留「樣品收費」）；同一地點 >2 家 → 只列第一家 + `+N家`。
+- 已在瀏覽器驗證：OS.html → 報表 → 同分頁進 Analytics.html，登入、資料載入正常。
+- 待辦：Dashboard.html 仍有 26 處 alert/confirm，在 OS.html iframe 內會靜默失敗（confirm 一律回 false）；需要時逐步改 showToast / 頁內確認。
