@@ -23,6 +23,12 @@
         * { box-sizing: border-box; font-family: 'Inter', -apple-system, sans-serif; }
         body { background: var(--bg); color: var(--text-main); margin: 0; padding: 0; min-height: 100vh; font-size: 13px; }
 
+        /* 被 bigt.cc/tts/Analytics.html 用 iframe 包住時，外殼用 margin-top:-55px 把 GAS 警告列裁掉，這裡把版面往下推回來 */
+        body.embedded-iframe { padding-top: 55px; }
+        body.embedded-iframe header { top: 55px; }
+        body.embedded-iframe #drillPanel { top: 55px; height: calc(100vh - 55px); }
+        body.embedded-iframe #drillMask, body.embedded-iframe #lightbox, body.embedded-iframe .modal-mask, body.embedded-iframe #loadingOverlay { top: 55px; }
+
         #loadingOverlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -429,22 +435,67 @@
         let __adminTokenMem = '';
         function ATOKEN() { if (__adminTokenMem) return __adminTokenMem; try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { } return __adminTokenMem; }
         function setAdminToken(t) { __adminTokenMem = t || ''; try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { } }
+        // V41.38: 這頁會被 bigt.cc/tts/Analytics.html 用 iframe 包住；Chrome 封鎖跨網域 iframe 的 prompt/alert/confirm，
+        // 一律改用頁內登入框 + 右下角訊息 + 頁內確認框，不可再呼叫原生對話框。
         function promptAdminLogin(afterOk) {
-            const pwd = window.prompt('請輸入管理員密碼');
-            if (pwd === null) { alert('未登入，無法載入資料'); hideLoading(); return; }
-            google.script.run
-                .withSuccessHandler(res => {
-                    if (res && res.success && res.token) { setAdminToken(res.token); afterOk(); }
-                    else { alert('密碼錯誤'); promptAdminLogin(afterOk); }
-                })
-                .withFailureHandler(err => { alert('登入失敗：' + (err && err.message || err)); promptAdminLogin(afterOk); })
-                .sysVerifyPwd(pwd);
+            hideLoading();
+            let box = document.getElementById('whLoginBox');
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'whLoginBox';
+                box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.92);display:flex;align-items:center;justify-content:center;padding:24px;';
+                box.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;width:100%;max-width:320px;color:#e2e8f0;font-family:inherit">'
+                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">分析中心登入</div>'
+                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"></div>'
+                    + '<input id="whLoginPwd" type="password" placeholder="管理員密碼" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:16px;margin-bottom:12px">'
+                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700;cursor:pointer">登入</button></div>';
+                document.body.appendChild(box);
+                const submit = () => {
+                    const pwd = document.getElementById('whLoginPwd').value;
+                    const msg = document.getElementById('whLoginMsg');
+                    if (!pwd) { msg.textContent = '請輸入密碼'; return; }
+                    msg.textContent = '驗證中…';
+                    google.script.run
+                        .withSuccessHandler(res => {
+                            if (res && res.success && res.token) { setAdminToken(res.token); box.remove(); afterOk(); }
+                            else { msg.textContent = '密碼錯誤'; }
+                        })
+                        .withFailureHandler(err => { msg.textContent = '登入失敗：' + (err && err.message || err); })
+                        .sysVerifyPwd(pwd);
+                };
+                document.getElementById('whLoginBtn').onclick = submit;
+                document.getElementById('whLoginPwd').onkeydown = e => { if (e.key === 'Enter') submit(); };
+            }
+            box.style.display = 'flex';
+            setTimeout(() => { const i = document.getElementById('whLoginPwd'); if (i) i.focus(); }, 50);
+        }
+        function notify(msg, isErr) {
+            let t = document.getElementById('whToast');
+            if (!t) {
+                t = document.createElement('div'); t.id = 'whToast';
+                t.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:99998;padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,.5);transition:opacity .3s;max-width:90vw;';
+                document.body.appendChild(t);
+            }
+            t.style.background = isErr ? '#7f1d1d' : '#0f766e'; t.style.color = '#fff';
+            t.textContent = msg; t.style.opacity = '1';
+            clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 3500);
+        }
+        function ask(msg, onYes) {
+            const m = document.createElement('div');
+            m.style.cssText = 'position:fixed;inset:0;z-index:99997;background:rgba(2,6,23,.7);display:flex;align-items:center;justify-content:center;padding:20px;';
+            m.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:22px;max-width:360px;width:100%;color:#e2e8f0">'
+                + '<div style="font-size:15px;line-height:1.6;margin-bottom:16px">' + msg + '</div>'
+                + '<div style="display:flex;gap:10px;justify-content:flex-end"><button data-r="0" style="padding:8px 16px;border-radius:8px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer">取消</button>'
+                + '<button data-r="1" style="padding:8px 16px;border-radius:8px;border:0;background:#0ea5e9;color:#fff;font-weight:700;cursor:pointer">確定</button></div></div>';
+            m.querySelectorAll('button').forEach(b => b.onclick = () => { m.remove(); if (b.dataset.r === '1') onYes(); });
+            document.body.appendChild(m);
         }
         function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1 || m.indexOf('AUTH_FORBIDDEN') !== -1; }
         function showLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 1; o.style.pointerEvents = 'all'; }
         function hideLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 0; o.style.pointerEvents = 'none'; }
 
         window.onload = function() {
+            if (window.self !== window.top) document.body.classList.add('embedded-iframe');
             setPreset('lastMonth', true);   // 預設：上個月完整區間
             if (!ATOKEN()) promptAdminLogin(() => fetchData(false));
             else fetchData(false);
@@ -466,13 +517,13 @@
                     buildItinPlateButtons();
                     updateDashboard();
                 } else {
-                    alert('資料載入失敗：' + ((res && res.error) || '未知錯誤'));
+                    notify('資料載入失敗：' + ((res && res.error) || '未知錯誤'), true);
                 }
                 hideLoading();
             }).withFailureHandler(err => {
                 hideLoading();
                 if (isAuthError(err)) { setAdminToken(''); promptAdminLogin(() => fetchData(force)); return; }
-                alert('同步失敗：' + err.message);
+                notify('同步失敗：' + err.message, true);
             }).getDashboardData(force, ATOKEN());
         }
 
@@ -749,7 +800,7 @@
             const taskId = el.dataset.id;
             const branch = el.dataset.branch;
             const newFee = parseFloat(el.value);
-            if (isNaN(newFee) || newFee < 0) { alert('請輸入有效的運費金額'); return; }
+            if (isNaN(newFee) || newFee < 0) { notify('請輸入有效的運費金額', true); return; }
             el.disabled = true;
             const originalBg = el.style.background;
             el.style.background = 'rgba(148,163,184,0.15)';
@@ -764,13 +815,13 @@
                     } else {
                         el.style.background = 'rgba(239,68,68,0.15)';
                         if (isAuthError(res)) { setAdminToken(''); promptAdminLogin(() => handleAdjustFreight(el)); return; }
-                        alert('調整失敗：' + res.error);
+                        notify('調整失敗：' + res.error, true);
                     }
                 })
                 .withFailureHandler(err => {
                     el.disabled = false;
                     el.style.background = 'rgba(239,68,68,0.15)';
-                    alert('連線失敗：' + err.message);
+                    notify('連線失敗：' + err.message, true);
                 })
                 .manualAdjustFreight_V11(taskId, branch, newFee, ATOKEN());
         }
@@ -924,7 +975,9 @@
             if (o && o.thumbnail) showThumb(o.thumbnail);
         }
         function overrideDocType(id, branch, docType) {
-            if (!confirm(`確定將 ${id} 改判為「${docType || '依規則判定'}」？`)) return;
+            ask(`確定將 ${id} 改判為「${docType || '依規則判定'}」？`, () => overrideDocTypeDo(id, branch, docType));
+        }
+        function overrideDocTypeDo(id, branch, docType) {
             google.script.run.withSuccessHandler(res => {
                 if (res && res.success) {
                     const o = rawData.orders.find(x => String(x.id) === String(id) && x.branch === branch);
@@ -936,10 +989,10 @@
                         else { o.docType = '銷貨'; o.sampleTo = ''; }
                         o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
                     }
-                    alert(res.message); updateDashboard(); openDrill(drillState.kind, drillState.branch);
+                    notify(res.message); updateDashboard(); openDrill(drillState.kind, drillState.branch);
                     fetchData(true);
-                } else alert('改判失敗：' + ((res && res.error) || ''));
-            }).withFailureHandler(err => alert('改判失敗：' + err.message)).setDocTypeOverride_V41(id, branch, docType, ATOKEN());
+                } else notify('改判失敗：' + ((res && res.error) || ''), true);
+            }).withFailureHandler(err => notify('改判失敗：' + err.message, true)).setDocTypeOverride_V41(id, branch, docType, ATOKEN());
         }
         function drillTsv() {
             const { rows, cols } = drillState;
@@ -947,7 +1000,7 @@
             const line = r => cs.map(c => { const v = r[c.k]; let t = c.k === '_thumb' ? (r.thumbnail || '') : (c.k === 'fee' ? (r.isSample ? '免費' : Math.round(v || 0)) : (c.fmt && !c.html ? c.fmt(v) : (v === undefined || v === null ? '' : v))); return String(t).replace(/[\t\n]/g, ' '); });
             return [cs.map(c => c.n)].concat(rows.map(line)).map(a => a.join('\t')).join('\n');
         }
-        function drillCopy() { navigator.clipboard.writeText(drillTsv()).then(() => alert('已複製，可直接貼到 Excel / 試算表')).catch(() => alert('複製失敗，請改用 CSV')); }
+        function drillCopy() { navigator.clipboard.writeText(drillTsv()).then(() => notify('已複製，可直接貼到 Excel / 試算表')).catch(() => notify('複製失敗，請改用 CSV', true)); }
         function drillCsv() {
             const csv = '\ufeff' + drillTsv().split('\n').map(l => l.split('\t').map(c => '"' + c.replace(/"/g, '""') + '"').join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -963,10 +1016,10 @@
             document.getElementById('cfgMask').classList.add('open');
             document.getElementById('cfgSlabs').innerHTML = '<div style="color:var(--text-dim)">載入中…</div>';
             google.script.run.withSuccessHandler(res => {
-                if (!res || !res.success) { alert('讀取設定失敗：' + ((res && res.error) || '')); closeFreightSettings(); return; }
+                if (!res || !res.success) { notify('讀取設定失敗：' + ((res && res.error) || ''), true); closeFreightSettings(); return; }
                 cfgState = { weightSlabs: res.weightSlabs || [], remoteAreas: res.remoteAreas || [], addonFees: res.addonFees || [] };
                 renderCfg();
-            }).withFailureHandler(err => { alert('讀取設定失敗：' + err.message); closeFreightSettings(); })
+            }).withFailureHandler(err => { notify('讀取設定失敗：' + err.message, true); closeFreightSettings(); })
               .getFreightSettings_V41(ATOKEN());
         }
         function closeFreightSettings() { document.getElementById('cfgMask').classList.remove('open'); }
@@ -995,9 +1048,9 @@
             btn.disabled = true; btn.innerText = '儲存中…';
             google.script.run.withSuccessHandler(res => {
                 btn.disabled = false; btn.innerText = '儲存設定';
-                if (res && res.success) { alert(res.message); closeFreightSettings(); fetchData(true); }
-                else alert('儲存失敗：' + ((res && res.error) || ''));
-            }).withFailureHandler(err => { btn.disabled = false; btn.innerText = '儲存設定'; alert('儲存失敗：' + err.message); })
+                if (res && res.success) { notify(res.message); closeFreightSettings(); fetchData(true); }
+                else notify('儲存失敗：' + ((res && res.error) || ''), true);
+            }).withFailureHandler(err => { btn.disabled = false; btn.innerText = '儲存設定'; notify('儲存失敗：' + err.message, true); })
               .saveFreightSettings_V41(cfgState, ATOKEN());
         }
 

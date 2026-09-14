@@ -3207,7 +3207,15 @@
         var layerShowsTodayAM = true, layerShowsTodayPM = true; // 預設全選
 
         // V5.1.12: 開啟分析儀表板
+        // V41.38: 在 bigt.cc/tts/OS.html 內嵌時，報表改走同網域的 Analytics.html 外殼 (同分頁轉跳)，
+        // 不再跳到 script.google.com 出現「這個應用程式是由 Google Apps Script 的使用者建立」。
+        const SITE_BASE = 'https:' + '/' + '/bigt.cc/tts/';
         function openAnalytics() {
+            if (window.self !== window.top) {
+                const u = SITE_BASE + 'Analytics.html';
+                try { window.top.location.href = u; } catch (e) { window.open(u, '_blank'); }
+                return;
+            }
             showToast('正在準備儀表板...');
             google.script.run.withSuccessHandler(url => {
                 if (url) window.open(url + '?p=analytics', '_blank');
@@ -4290,7 +4298,8 @@
 
                         const tRet = String(t.isReturn || '').includes('true') || t.isReturn === true || String(t.shippingType || t.type || '').includes('退');
                         const shippingLabel = (t.shippingType && !String(t.shippingType).includes('退')) ? `<span style="color:var(--cyan); font-size:9px; border:1px solid var(--cyan); padding:0 2px; border-radius:3px; margin-left:2px;">${escapeHTML(t.shippingType)}</span>` : '';
-                        const sampleLabel = t.docType === '樣品' ? `<span style="color:${t.sampleTo === 'home' ? '#fbbf24' : '#38bdf8'}; font-size:9px; border:1px solid currentColor; padding:0 2px; border-radius:3px; margin-left:2px;" title="${t.sampleTo === 'home' ? '樣品送回公司 (不計費)' : '樣品外送 (照常計費)'}">${t.sampleTo === 'home' ? '樣品免費' : '樣品收費'}</span>` : '';
+                        // V41.38: 行程列只標「樣品收費」(影響計費)；「樣品免費」(送回公司) 不顯示，太吵
+                        const sampleLabel = (t.docType === '樣品' && t.sampleTo !== 'home') ? `<span style="color:#38bdf8; font-size:9px; border:1px solid currentColor; padding:0 2px; border-radius:3px; margin-left:2px;" title="樣品外送 (照常計費)">樣品收費</span>` : '';
                         const cStr = escapeHTML(custShort2) + (tRet ? `<span style="color:#ef4444; font-size:10px;">(退)</span>` : '') + shippingLabel + sampleLabel;
 
                         if (!seenCustStrs.has(cStr)) {
@@ -4300,13 +4309,14 @@
 
                         if (t.isBackYingge) isBack = true;
                     });
-                    // V41.4: 同一地點多家客戶 (如「載回鶯歌」8 家) 不再全列：分公司字母去重、只顯示前 2 家 + 剩餘家數，完整名單放 title
+                    // V41.38: 同一地點多家客戶 (如「載回鶯歌」8 家) 不再全列：分公司字母去重；
+                    // 超過 2 家只顯示第一家 + 其餘家數 (+N家)，完整名單放 title
                     const uniqBranchHTML = Array.from(new Set(branchesHTML.match(/<span[^>]*>[^<]*<\/span>/g) || [])).join('');
                     if (group.tasks.length > 1) branchesHTML = uniqBranchHTML;
                     let custTitle = '';
-                    if (custStrs.length > 3) {
+                    if (custStrs.length > 2) {
                         custTitle = custStrs.map(s => s.replace(/<[^>]+>/g, '')).join(' / ');
-                        customersHTML = custStrs.slice(0, 2).join('/') + `<span style="color:#38bdf8; font-weight:900; margin-left:3px;">+${custStrs.length - 2}家</span>`;
+                        customersHTML = custStrs[0] + `<span style="color:#38bdf8; font-weight:900; margin-left:3px;">+${custStrs.length - 1}家</span>`;
                     } else {
                         customersHTML = custStrs.join('/');
                     }
