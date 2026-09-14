@@ -164,6 +164,15 @@
         .drill-body { flex: 1; overflow: auto; }
         .drill-body table th { cursor: pointer; user-select: none; }
         .drill-body table th:hover { color: var(--accent); }
+        .chip-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .chip { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.04); color: var(--text-dim); cursor: pointer; user-select: none; white-space: nowrap; }
+        .chip b { color: #fff; margin-left: 3px; }
+        .chip:hover { border-color: var(--accent); color: #fff; }
+        .chip.on { background: rgba(56,189,248,0.18); border-color: var(--accent); color: var(--accent); }
+        .cond-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin: 1px 2px 1px 0; border: 1px solid currentColor; white-space: nowrap; }
+        .top-cust { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.06); }
+        .top-cust .n { color: #e2e8f0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+        .top-cust .v { color: var(--accent); font-weight: 700; }
         #freight-table th[data-k] { cursor: pointer; user-select: none; white-space: nowrap; }
         #freight-table th[data-k]:hover, #freight-table th.sorted { color: var(--accent); }
         .drill-body tr.row-click { cursor: pointer; }
@@ -334,11 +343,12 @@
                 <span style="flex:1"></span>
                 <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
             </div>
+            <!-- V41.42: 運費統計方塊重設計：單數/狀況可點篩選、客戶前三名可點看佔比 -->
             <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">總運費 (含核定調整)</div><div class="stat-value" id="stat-fee-total">--</div><div class="stat-hint">以核定運費為準，未核定則用系統估算</div></div>
-                <div class="stat-card"><div class="stat-label">單數</div><div class="stat-value" id="stat-fee-count" style="color:var(--accent)">--</div><div class="stat-hint">區間內有運費的訂單</div></div>
-                <div class="stat-card"><div class="stat-label">貨運行集貨單運費</div><div class="stat-value" id="stat-carrier-total" style="color:var(--warning)">--</div><div class="stat-hint">掃描建單時勾了「貨運行集貨(打折)」的單，其折扣後運費合計</div></div>
-                <div class="stat-card"><div class="stat-label">運費 vs 油費</div><div class="stat-value" id="stat-fee-ratio">--</div><div class="stat-hint">總運費 / 總油費</div></div>
+                <div class="stat-card"><div class="stat-label">總運費 (含核定調整)</div><div class="stat-value" id="stat-fee-total">--</div><div class="stat-hint">以核定運費為準，未核定則用系統估算 ｜ 運費/油費 <b id="stat-fee-ratio">--</b></div></div>
+                <div class="stat-card"><div class="stat-label">單數 <span class="stat-hint" style="display:inline">(點分類可篩選)</span></div><div class="stat-value" id="stat-fee-count" style="color:var(--accent)">--</div><div class="chip-row" id="chips-kind"></div></div>
+                <div class="stat-card"><div class="stat-label">其它狀況 <span class="stat-hint" style="display:inline">(點可篩選)</span></div><div class="stat-value" id="stat-cond-count" style="color:#c084fc">--</div><div class="chip-row" id="chips-cond"></div></div>
+                <div class="stat-card" style="cursor:pointer" onclick="openCustomerShare()" title="點擊看全部客戶運費佔比"><div class="stat-label">客戶分析 <span class="stat-hint" style="display:inline">(前三名，點看佔比)</span></div><div id="top-customers" style="margin-top:4px"></div></div>
             </div>
 
             <div class="results-table-container">
@@ -361,7 +371,7 @@
                             <th data-k="branch" onclick="freightSortBy('branch')">分公司</th>
                             <th data-k="customer" onclick="freightSortBy('customer')">客戶名稱</th>
                             <th data-k="weight" onclick="freightSortBy('weight')">重量(kg)</th>
-                            <th data-k="isRemote" onclick="freightSortBy('isRemote')">偏遠</th>
+                            <th data-k="cond" onclick="freightSortBy('cond')">狀況</th>
                             <th data-k="estFee" onclick="freightSortBy('estFee')">系統估算</th>
                             <th>運費公式</th>
                             <th data-k="finalFee" onclick="freightSortBy('finalFee')">核定運費</th>
@@ -512,7 +522,7 @@
 
         window.onload = function() {
             if (window.self !== window.top) document.body.classList.add('embedded-iframe');
-            setPreset('lastMonth', true);   // 預設：上個月完整區間
+            setPreset('7d', true);   // 預設：近一週 (使用者要求)；表格預設日期新→舊
             if (!ATOKEN()) promptAdminLogin(() => fetchData(false));
             else fetchData(false);
         };
@@ -895,16 +905,79 @@
         }
 
         let __lastFreightSets = { rawOrders: [], orders: [], schedule: [] };
+        // V41.42: 狀況判斷 (偏遠 / 久候 / 指定時間 / 搬運 / 貨運行)；旗標來自後端 isTimed/isWait/isCarry，舊快取沒有時退回公式字串判斷
+        function condsOf(o) {
+            const p = parseFeeParts(o.detail);
+            const c = [];
+            if (o.isRemote && o.isRemote !== '否') c.push('偏遠');
+            if (o.isWait || p.wait) c.push('久候');
+            if (o.isTimed || p.timed) c.push('指定時間');
+            if (o.isCarry || p.carry) c.push('搬運');
+            return c;
+        }
+        const COND_COLOR = { '偏遠': '#fbbf24', '久候': '#c084fc', '指定時間': '#38bdf8', '搬運': '#f472b6', '貨運行': '#f97316' };
+        function condBadges(o) {
+            const c = condsOf(o);
+            if (o.carrierFlag) c.push('貨運行');
+            return c.length ? c.map(x => `<span class="cond-badge" style="color:${COND_COLOR[x]}">${x}</span>`).join('') : '<span style="color:var(--text-dim)">—</span>';
+        }
+        // 單數分類：一般 / 退貨 / 貨運行 / 偏遠 (一張單可同時屬於多類)
+        function kindsOf(o) {
+            const k = [];
+            if (freightTypeOf(o) === '退貨') k.push('退貨'); else k.push('一般');
+            if (o.carrierFlag) k.push('貨運行');
+            if (o.isRemote && o.isRemote !== '否') k.push('偏遠');
+            return k;
+        }
+        let freightCond = '';   // 方塊上點選的分類/狀況篩選 ('' = 不篩)
+        function setFreightCond(c) { freightCond = (freightCond === c) ? '' : c; renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []); }
+        function matchCond(o) {
+            if (!freightCond) return true;
+            if (['一般', '退貨', '貨運行', '偏遠'].includes(freightCond)) return kindsOf(o).includes(freightCond);
+            return condsOf(o).includes(freightCond);
+        }
         function renderFreightStats() {
             const orders = __lastFreightSets.orders, schedule = __lastFreightSets.schedule;
+            const base = __lastFreightSets.typed || orders;   // 分類/狀況計數用「類型篩選後、方塊篩選前」的集合，數字才不會點了就消失
             const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
             const finalFreightTotal = orders.reduce((sum, o) => sum + feeOf(o), 0);
             const fuelAmt = schedule.reduce((sum, x) => sum + (x.fuelAmt||0), 0);
-            const carrierFreightTotal = orders.filter(o => o.carrierFlag && o.carrierFlag !== "").reduce((sum, o) => sum + feeOf(o), 0);
             setText('stat-fee-total', '$' + Math.round(finalFreightTotal).toLocaleString());
-            setText('stat-fee-count', orders.filter(o => feeOf(o) > 0).length);
-            setText('stat-carrier-total', '$' + Math.round(carrierFreightTotal).toLocaleString());
+            setText('stat-fee-count', orders.length);
             setText('stat-fee-ratio', fuelAmt ? (finalFreightTotal/fuelAmt).toFixed(1)+'x' : '--');
+
+            const cnt = {};
+            base.forEach(o => { kindsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); condsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); });
+            const chip = k => `<span class="chip ${freightCond === k ? 'on' : ''}" onclick="setFreightCond('${k}')" style="${COND_COLOR[k] && freightCond !== k ? 'color:' + COND_COLOR[k] : ''}">${k}<b>${cnt[k] || 0}</b></span>`;
+            document.getElementById('chips-kind').innerHTML = ['一般', '退貨', '貨運行', '偏遠'].map(chip).join('');
+            document.getElementById('chips-cond').innerHTML = ['久候', '搬運', '指定時間'].map(chip).join('');
+            setText('stat-cond-count', base.filter(o => condsOf(o).length).length);
+
+            const byCust = {};
+            orders.forEach(o => { const n = o.customer || '(無名)'; byCust[n] = (byCust[n] || 0) + feeOf(o); });
+            const top = Object.entries(byCust).sort((a, b) => b[1] - a[1]).slice(0, 3);
+            document.getElementById('top-customers').innerHTML = top.length
+                ? top.map((t, i) => `<div class="top-cust"><span class="n">${i + 1}. ${escapeHTML(t[0])}</span><span class="v">$${Math.round(t[1]).toLocaleString()}<span style="color:var(--text-dim);font-weight:500;font-size:10px"> ${finalFreightTotal ? (t[1] / finalFreightTotal * 100).toFixed(0) : 0}%</span></span></div>`).join('')
+                : '<div style="color:var(--text-dim);font-size:12px">區間內無資料</div>';
+        }
+        // 客戶佔比 (點客戶分析方塊)
+        function openCustomerShare() {
+            const orders = __lastFreightSets.orders || [];
+            const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
+            const total = orders.reduce((s, o) => s + feeOf(o), 0);
+            const m = {};
+            orders.forEach(o => { const n = o.customer || '(無名)'; const x = m[n] || (m[n] = { customer: n, n: 0, fee: 0, weight: 0 }); x.n++; x.fee += feeOf(o); x.weight += o.weight || 0; });
+            const rows = Object.values(m).map(x => Object.assign(x, { pct: total ? x.fee / total * 100 : 0, avg: x.n ? x.fee / x.n : 0 }));
+            drillState = Object.assign(drillState, {
+                rows, kind: 'custShare', branch: '', sortDir: -1, sortKey: 'fee',
+                cols: [{ k: 'customer', n: '客戶' }, { k: 'n', n: '單數', num: true }, { k: 'weight', n: '總重量(kg)', num: true, fmt: v => Math.round(v).toLocaleString() }, { k: 'fee', n: '運費', num: true, fmt: v => '$' + Math.round(v).toLocaleString() }, { k: 'avg', n: '平均每單', num: true, fmt: v => '$' + Math.round(v).toLocaleString() }, { k: 'pct', n: '佔比', num: true, fmt: v => v.toFixed(1) + '%' }]
+            });
+            document.getElementById('drillTitle').innerText = '客戶運費佔比' + (freightType !== '全部' ? '｜' + freightType : '') + (freightCond ? '｜' + freightCond : '');
+            document.getElementById('drillSub').innerText = '依目前分公司 / 類型 / 狀況篩選後的單據統計；點欄位標頭可排序';
+            document.getElementById('drillSummary').innerHTML = [['客戶數', rows.length], ['總單數', orders.length], ['總運費', '$' + Math.round(total).toLocaleString()]].map(s => `<span class="s">${s[0]}<b>${s[1]}</b></span>`).join('');
+            renderDrillTable();
+            document.getElementById('drillMask').classList.add('open');
+            document.getElementById('drillPanel').classList.add('open');
         }
 
         // V41.40: 運費明細 類型篩選 + 欄位排序 (標題旁 降序/升序 按鈕 + 表頭點擊)
@@ -944,8 +1017,9 @@
             return '銷貨';
         }
         function renderFreight(rawOrders, schedule) {
-            const orders = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
-            __lastFreightSets = { rawOrders, orders, schedule };
+            const typed = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
+            const orders = typed.filter(matchCond);   // 方塊上點的分類 / 狀況
+            __lastFreightSets = { rawOrders, typed, orders, schedule };
             renderFreightStats();
             syncSortDirBtns();
 
@@ -959,7 +1033,7 @@
                 switch (freightSort.key) {
                     case 'finalFee': return finalOf(o);
                     case 'weight': case 'estFee': return Number(o[freightSort.key]) || 0;
-                    case 'isRemote': return (o.isRemote && o.isRemote !== '否') ? 1 : 0;
+                    case 'cond': return condsOf(o).length + (o.carrierFlag ? 1 : 0);
                     default: return String(o[freightSort.key] || '');
                 }
             };
@@ -971,8 +1045,6 @@
             const tableBody = document.querySelector('#freight-table tbody');
             tableBody.innerHTML = orders.slice().sort(cmp).map(o => {
                 const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
-                const isRemoteStr = o.isRemote || "否";
-                const isRemoteBadge = isRemoteStr !== "否" ? `<span class="badge badge-warn">${escapeHTML(isRemoteStr)}</span>` : `<span style="color:var(--text-dim)">否</span>`;
                 const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
                     ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">🚛 ${escapeHTML(o.carrierFlag)}</span>`
                     : '';
@@ -1007,7 +1079,7 @@
                         <td>${branchTag(o.branch)}</td>
                         <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}</td>
                         <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg</span></td>
-                        <td>${isRemoteBadge}</td>
+                        <td>${condBadges(o)}</td>
                         <td>$${o.estFee}</td>
                         <td>${formulaCell}</td>
                         <td>${feeInput}</td>

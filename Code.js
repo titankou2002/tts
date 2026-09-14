@@ -55,6 +55,7 @@ function onOpen() {
     .addItem("🧾 建立每 2 小時「樣品/退貨判定」排程 (並立即更新)", "menuSetupSalesDocTrigger")
     .addItem("🧾 立即更新樣品/退貨判定", "menuRefreshSalesDoc")
     .addItem("🧹 清理屬性空間 (UUID 垃圾)", "menuCleanupProperties")
+    .addItem("🚚 把指送地點清單寫進運費管理表 (J–L 欄，只在空白時)", "menuSeedDirectMap")
     .addToUi();
 }
 
@@ -938,6 +939,10 @@ function getDashboardData(force, token) {
         adjustedFee: adjFee,
         carrierFlag: carrierFlagVal,
         carrierDiscount: carrierDiscountVal,
+        // V41.42: 狀況旗標 (分析中心運費統計「狀況」欄與篩選用；與計費輸入一致)
+        isTimed: isTimedDeliver === "是" || isTimedReturn === "是",
+        isWait: isOvertimeWait === "是",
+        isCarry: isHeavyCarry === "是",
         wrapSeal: (function () {
           var ws = tIdx.wrapSeal !== -1 ? String(getSafeVal(row, tIdx.wrapSeal) || "").trim() : "";
           if (ws) return ws;
@@ -5866,17 +5871,10 @@ function saveFreightSettings_V41(cfg, token) {
 
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT) || ss.insertSheet(V11_PROD_CONFIG.SHEET_FREIGHT);
-    // 備份舊設定到「運費管理表_歷史」
-    try {
-      var hist = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT + "_歷史") || ss.insertSheet(V11_PROD_CONFIG.SHEET_FREIGHT + "_歷史");
-      var oldVals = sheet.getDataRange().getValues();
-      if (oldVals.length) {
-        hist.appendRow(["=== " + Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd HH:mm") + " 變更前 ==="]);
-        hist.getRange(hist.getLastRow() + 1, 1, oldVals.length, oldVals[0].length).setValues(oldVals);
-      }
-    } catch (hErr) { console.log("運費設定歷史備份失敗: " + hErr.message); }
-
-    sheet.clear();
+    // V41.42: 不再另開「運費管理表_歷史」備份分頁 (分頁太多)；要看舊設定用 Google 試算表本身的「版本記錄」。
+    // 只清 A–H (費率區)，J–L 的「指送地點」區由小姐直接在表上維護，不能被這裡清掉。
+    var lastRow = Math.max(sheet.getLastRow(), 1);
+    sheet.getRange(1, 1, lastRow, 8).clearContent().setBackground(null).setFontColor(null).setFontWeight(null);
     var rows = Math.max(slabs.length, remotes.length, addons.length) + 1;
     var grid = [];
     for (var i = 0; i < rows; i++) grid.push(["", "", "", "", "", "", "", ""]);
@@ -5890,7 +5888,7 @@ function saveFreightSettings_V41(cfg, token) {
     sheet.getRange("G1:H1").setBackground("#d35400").setFontColor("#ffffff").setFontWeight("bold");
     FreightEngine._cachedRates = null;
     _clearDashboardCache_();
-    return { success: true, message: "✅ 運費設定已儲存 (舊設定已備份至「運費管理表_歷史」)" };
+    return { success: true, message: "✅ 運費設定已儲存" };
   } catch (e) {
     return { success: false, error: e.message };
   } finally {

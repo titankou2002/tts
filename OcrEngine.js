@@ -84,8 +84,53 @@ function sortSalesSheetByCompany_Core(sheet) {
     range.setValues(data);
 }
 
-/** V34.20: 獲取指送對照表資料 (寫死表單以提高效能與準確率) */
+/**
+ * V41.42: 指送地點改由「運費管理表」J–L 欄維護 (小姐可自己加/改)：
+ *   J 指送簡稱 (可用逗號放多個，例如「仟聖,任聖」)、K 全名、L 完整地址
+ * 讀不到或該區空白時退回下方寫死的預設清單；快取 10 分鐘。
+ * 選單「把指送地點清單寫進運費管理表」可把預設清單灌進去當起手式。
+ */
+var DIRECT_MAP_COLS = { key: 9, fullName: 10, address: 11 }; // J, K, L (0-based)
 function getDirectMap_V20() {
+    var cacheKey = "direct_map_v41";
+    try {
+        var cached = CacheService.getScriptCache().get(cacheKey);
+        if (cached) return JSON.parse(cached);
+    } catch (e) { }
+    var list = [];
+    try {
+        var ss = getSS_V11();
+        var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT);
+        if (sheet && sheet.getLastColumn() >= DIRECT_MAP_COLS.address + 1) {
+            var data = sheet.getRange(2, DIRECT_MAP_COLS.key + 1, Math.max(sheet.getLastRow() - 1, 1), 3).getValues();
+            data.forEach(function (r) {
+                var key = String(r[0] || "").trim(), full = String(r[1] || "").trim(), addr = String(r[2] || "").trim();
+                if (key && addr) list.push({ key: key, fullName: full || key.split(/[,，、]/)[0], address: addr, phone: "" });
+            });
+        }
+    } catch (e) { console.log("讀取運費管理表指送區失敗: " + e.message); }
+    if (!list.length) list = getDirectMapDefault_V20();
+    try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(list), 600); } catch (e) { }
+    return list;
+}
+/** [選單] 把預設指送清單寫進運費管理表 J–L (只在該區空白時) */
+function menuSeedDirectMap() {
+    var ui = SpreadsheetApp.getUi();
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT);
+    if (!sheet) { ui.alert("找不到「運費管理表」，請先執行 setupFreightRateSheet_V11"); return; }
+    var c = DIRECT_MAP_COLS.key + 1;
+    var existing = sheet.getLastColumn() >= c + 2 ? sheet.getRange(2, c, Math.max(sheet.getLastRow() - 1, 1), 3).getValues().filter(function (r) { return String(r[0] || "").trim(); }) : [];
+    if (existing.length) { ui.alert("運費管理表 J–L 已有 " + existing.length + " 筆指送地點，未覆蓋。要重灌請先清空 J–L。"); return; }
+    var rows = [["指送簡稱(逗號可多個)", "全名", "完整地址"]].concat(getDirectMapDefault_V20().map(function (m) { return [m.key, m.fullName, m.address]; }));
+    sheet.getRange(1, c, rows.length, 3).setValues(rows);
+    sheet.getRange(1, c, 1, 3).setBackground("#8e44ad").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.autoResizeColumns(c, 3);
+    try { CacheService.getScriptCache().remove("direct_map_v41"); } catch (e) { }
+    ui.alert("✅ 已寫入 " + (rows.length - 1) + " 筆指送地點到運費管理表 J–L 欄。之後直接在表上增修即可 (10 分鐘內生效)。");
+}
+/** 預設清單 (運費管理表 J–L 空白時使用) */
+function getDirectMapDefault_V20() {
     return [
         { key: "弘昇", fullName: "弘昇貨運", address: "桃園市八德區後庄街52-1號(弘昇貨運)", phone: "" },
         { key: "財利", fullName: "財利貨運", address: "新北市鶯歌區德昌二街70巷32弄88號-5(財利貨運)", phone: "" },
