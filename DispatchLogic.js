@@ -26,7 +26,7 @@ function _findHeader(arr, keys) {
 /** 1. 取得任務 (V15.1) */
 function getUnDispatchedTasks_V3(token) {
   try {
-    _requireAdmin_(token);
+    _requireWarehouse_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -190,7 +190,7 @@ function getUnDispatchedTasks_V3(token) {
 /** 2. 取得司機 */
 function getDrivers_V3(token) {
   try {
-    _requireAuth_(token, ['driver', 'admin']);
+    _requireAuth_(token, ['driver', 'warehouse', 'admin']);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_VEHICLE);
     const data = sheet.getDataRange().getValues();
@@ -549,7 +549,7 @@ function extractDistrict(addr) {
 /** 6.5 倉庫批次儲存 (V0708.8) */
 function batchWarehouseSave_V3(jsonStr, token) {
   try {
-    _requireAdmin_(token);
+    _requireWarehouse_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -589,7 +589,7 @@ function batchWarehouseSave_V3(jsonStr, token) {
 /** 7. 倉庫驗貨 (V1.0) */
 function verifyTask_V3(id, actualDriver, token) {
   try {
-    _requireAdmin_(token);
+    _requireWarehouse_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
@@ -617,7 +617,7 @@ function verifyTask_V3(id, actualDriver, token) {
 
 function undoVerifyTask_V3(id, token) {
   try {
-    _requireAdmin_(token);
+    _requireWarehouse_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());

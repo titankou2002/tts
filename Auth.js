@@ -23,7 +23,8 @@ var __AUTH_CTX__ = null; // 單次執行內的授權上下文；每個 google.sc
 
 var AUTH_TTL = {
   ADMIN_SEC: 3650 * 24 * 60 * 60, // 10 年 (使用者要求：電腦記住登入愈久愈好；要強制全員重登就刪掉 SESSION_SECRET 屬性)
-  DRIVER_SEC: 180 * 24 * 60 * 60  // 180 天 (司機手機長期登入)
+  DRIVER_SEC: 180 * 24 * 60 * 60, // 180 天 (司機手機長期登入)
+  WAREHOUSE_SEC: 30 * 24 * 60 * 60 // 30 天 (驗貨頁每次載入由伺服器重發，只夠一個分頁長開)
 };
 
 function _getSessionSecret_() {
@@ -139,6 +140,14 @@ function _isDriverDeactivated_(name) {
 }
 
 function _requireAdmin_(token) { return _requireAuth_(token, ['admin']); }
+/**
+ * V41.37 倉庫驗貨頁 (?p=warehouse / bigt.cc QC.html iframe) 專用：
+ * 使用者決定驗貨頁「略過後台密碼」。Chrome 在跨網域 iframe 內封鎖 window.prompt()，
+ * 所以 QC.html 根本問不到密碼；改由 doGet 在渲染時直接發一枚 role=warehouse 的短效 token 塞進頁面。
+ * 這枚 token 只能過 _requireWarehouse_ 守的 5 個驗貨函式，碰不到派車/設定/分析等 admin 功能。
+ */
+function _requireWarehouse_(token) { return _requireAuth_(token, ['warehouse', 'admin']); }
+function _issueWarehouseToken_() { return _issueToken_({ role: 'warehouse', name: '倉庫驗貨' }, AUTH_TTL.WAREHOUSE_SEC); }
 function _requireDriver_(token) { return _requireAuth_(token, ['driver', 'admin']); }
 
 /** 只允許「已經通過驗證的執行」呼叫 — 給內部輔助函式用，擋掉從 Console 直接呼叫 */

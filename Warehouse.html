@@ -486,19 +486,60 @@
             return name.slice(-2);
         }
 
-        // ===== V41 管理員登入：與戰情室共用 token (localStorage，10 年)；沒有就問密碼 =====
+        // ===== V41.37 驗貨頁授權 =====
+        // 使用者決定驗貨頁「略過後台密碼」：doGet 渲染時直接塞一枚 role=warehouse 的 token (WH_USERINFO.token)，
+        // 只能用驗貨相關 5 個函式。有戰情室 admin token (localStorage) 的電腦優先用 admin token。
+        // 注意：這頁常被 bigt.cc/tts/QC.html 用 iframe 包住，Chrome 封鎖跨網域 iframe 的 window.prompt()，
+        // 所以絕對不能用 prompt() 問密碼，備援改用頁內登入框。
+        const WH_USERINFO = <?!= JSON.stringify(userInfo || {}) ?>;
         const ADMIN_TOKEN_KEY = 'ttsAdminTokenV41';
         let __adminTokenMem = '';
-        function ATOKEN() { if (__adminTokenMem) return __adminTokenMem; try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { } return __adminTokenMem; }
+        function ATOKEN() {
+            if (__adminTokenMem) return __adminTokenMem;
+            try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { }
+            if (!__adminTokenMem && WH_USERINFO && WH_USERINFO.token) __adminTokenMem = WH_USERINFO.token;
+            return __adminTokenMem;
+        }
         function setAdminToken(t) { __adminTokenMem = t || ''; try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { } }
         function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1 || m.indexOf('AUTH_FORBIDDEN') !== -1; }
         function promptAdminLogin(afterOk) {
-            const pwd = window.prompt('請輸入管理員密碼');
-            if (pwd === null) return;
-            google.script.run
-                .withSuccessHandler(res => { if (res && res.success && res.token) { setAdminToken(res.token); afterOk(); } else { alert('密碼錯誤'); promptAdminLogin(afterOk); } })
-                .withFailureHandler(err => { alert('登入失敗：' + (err && err.message || err)); promptAdminLogin(afterOk); })
-                .sysVerifyPwd(pwd);
+            let box = document.getElementById('whLoginBox');
+            if (!box) {
+                box = document.createElement('div');
+                box.id = 'whLoginBox';
+                box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.92);display:flex;align-items:center;justify-content:center;padding:24px;';
+                box.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;width:100%;max-width:320px;color:#e2e8f0;font-family:inherit">'
+                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">驗貨系統登入</div>'
+                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"></div>'
+                    + '<input id="whLoginPwd" type="password" placeholder="管理員密碼" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:16px;margin-bottom:12px">'
+                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700">登入</button></div>';
+                document.body.appendChild(box);
+                const submit = () => {
+                    const pwd = document.getElementById('whLoginPwd').value;
+                    const msg = document.getElementById('whLoginMsg');
+                    if (!pwd) { msg.textContent = '請輸入密碼'; return; }
+                    msg.textContent = '驗證中…';
+                    google.script.run
+                        .withSuccessHandler(res => {
+                            if (res && res.success && res.token) { setAdminToken(res.token); box.remove(); afterOk(); }
+                            else { msg.textContent = '密碼錯誤'; }
+                        })
+                        .withFailureHandler(err => { msg.textContent = '登入失敗：' + (err && err.message || err); })
+                        .sysVerifyPwd(pwd);
+                };
+                document.getElementById('whLoginBtn').onclick = submit;
+                document.getElementById('whLoginPwd').onkeydown = e => { if (e.key === 'Enter') submit(); };
+            }
+            box.style.display = 'flex';
+            setTimeout(() => { const i = document.getElementById('whLoginPwd'); if (i) i.focus(); }, 50);
+        }
+        // 授權失敗：先丟掉失效的 admin token 改用伺服器下發的 warehouse token 重試一次；再不行才顯示登入框
+        let __whFallbackTried = false;
+        function onAuthFail(retry) {
+            const whTok = (WH_USERINFO && WH_USERINFO.token) || '';
+            setAdminToken('');
+            if (whTok && !__whFallbackTried) { __whFallbackTried = true; __adminTokenMem = whTok; retry(); return; }
+            promptAdminLogin(retry);
         }
 
         window.onload = function () {
@@ -511,10 +552,10 @@
                 document.body.classList.add('embedded-iframe');
             }
             google.script.run.withFailureHandler(err => {
-                if (isAuthError(err)) { setAdminToken(''); promptAdminLogin(initData); return; }
+                if (isAuthError(err)) { onAuthFail(initData); return; }
                 alert('讀取失敗：' + (err && err.message || err));
             }).withSuccessHandler(res => {
-                if (res && !res.success && isAuthError(res)) { setAdminToken(''); promptAdminLogin(initData); return; }
+                if (res && !res.success && isAuthError(res)) { onAuthFail(initData); return; }
                 if (res.success) {
                     allTasks = res.tasks;
                     google.script.run.withSuccessHandler(dRes => {

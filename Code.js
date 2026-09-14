@@ -287,6 +287,10 @@ function doGet(e) {
   
   var email = getUserEmail_V11();
   var auth = checkAuth_V24(email);
+  if (fileName === 'Warehouse') {
+    // V41.37: 驗貨頁略過後台密碼 (見 Auth.js _requireWarehouse_)；token 隨頁面下發，只能用驗貨功能
+    auth = { active: true, role: 'warehouse', token: _issueWarehouseToken_() };
+  }
   // V39.32: GAS 網頁實際渲染在 googleusercontent.com 的內部 iframe，
   // client端 window.location.search 讀不到原始 exec 網址帶的 ?p=xxx，
   // 改用伺服器端變數直接把 page 值塞進頁面，讓「?p=dispatch 自動開啟派車」這類邏輯可靠運作
