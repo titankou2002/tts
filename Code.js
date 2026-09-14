@@ -912,6 +912,8 @@ function getDashboardData(force, token) {
         finishTime: String(getSafeVal(row, tIdx.finish)),
         shippingType: shippingTypeVal,
         address: addressVal,
+        // V41.39: 指定到貨時間 (HH:MM 或 HH:MM~HH:MM)，分析中心司機卡片「指定準點率」用
+        specifiedArrive: tIdx.specifiedArrive !== -1 ? _fmtArriveTime_(getSafeVal(row, tIdx.specifiedArrive)) : "",
         whStatus: tIdx.whStatus !== -1 ? String(getSafeVal(row, tIdx.whStatus) || "").trim() : "",
         returnReason: tIdx.returnReason !== -1 ? String(getSafeVal(row, tIdx.returnReason) || "").trim() : "",
         note: noteText,

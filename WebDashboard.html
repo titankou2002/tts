@@ -302,6 +302,7 @@
                 <span style="color:var(--text-dim); font-weight:600;">車輛</span>
                 <div id="itinPlateBtns" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
             </div>
+            <div id="driverCards" class="stats-grid"></div>
             <div class="stats-grid">
                 <div class="stat-card"><div class="stat-label">出勤天數</div><div class="stat-value" id="stat-itin-days">--</div><div class="stat-hint">區間內有行程的天數</div></div>
                 <div class="stat-card"><div class="stat-label">總送達點數</div><div class="stat-value" id="stat-itin-stops" style="color:var(--success)">--</div><div class="stat-hint">已完成的訂單數</div></div>
@@ -703,8 +704,15 @@
 
         // ===== 司機行程記錄 =====
         let itinPlate = '全部';
+        // V41.39: 只列車輛管理表登記的自家車 (外車 / 派送清單車牌欄的雜值一律不列)
+        function fleetPlates() {
+            const vm = rawData.vehicleMap || {};
+            const fleet = Object.keys(vm).filter(p => p && vm[p]).sort();
+            // 車輛管理表讀不到時退回行程表出現過的車牌，至少不會整頁空白
+            return fleet.length ? fleet : [...new Set(rawData.schedule.map(s => s.plate))].filter(Boolean).sort();
+        }
         function buildItinPlateButtons() {
-            const plates = [...new Set([...rawData.orders.map(o => o.plate), ...rawData.schedule.map(s => s.plate)])].filter(Boolean).sort();
+            const plates = fleetPlates();
             const wrap = document.getElementById('itinPlateBtns');
             wrap.innerHTML = ['全部', ...plates].map(p => `<button class="btn-branch ${itinPlate === p ? 'active' : ''}" data-plate="${escapeHTML(p)}" onclick="setItinPlate('${escapeHTML(p)}')">${escapeHTML(p === '全部' ? p : plateLabel(p))}</button>`).join('');
         }
@@ -728,12 +736,57 @@
                 return { t, r, depot: /公司出發|返抵公司|公司/.test(r) };
             }).filter(Boolean);
         }
+        // 「HH:MM」→ 分鐘；抓不到回 -1
+        function hhmm(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : -1; }
+        // 指定到貨時間的截止點：時段「10:30~11:00」取 11:00，單一時間取本身
+        function deadlineOf(spec) { const parts = String(spec || '').split(/[~至\-到]/); return hhmm(parts[parts.length - 1]); }
+
+        // V41.39: 司機卡片 (自家車，依司機名分卡)
+        function renderDriverCards(sched, ordersFor) {
+            const vm = rawData.vehicleMap || {};
+            const byDrv = {};
+            sched.forEach(s => {
+                const drv = vm[s.plate] || s.driver || '';
+                if (!drv) return;
+                const d = byDrv[drv] || (byDrv[drv] = { name: drv, plates: new Set(), days: new Set(), km: 0, fuelAmt: 0, fuelLit: 0, orders: 0, timed: 0, onTime: 0 });
+                d.plates.add(s.plate); d.days.add(s.date); d.km += s.totalKm || 0; d.fuelAmt += s.fuelAmt || 0; d.fuelLit += s.fuelLit || 0;
+                ordersFor(s.date, s.plate).forEach(o => {
+                    if (o.isSample) return;                       // 樣品免費不算單量
+                    d.orders++;
+                    if (o.specifiedArrive) {
+                        const dl = deadlineOf(o.specifiedArrive), ft = hhmm(o.finishTime);
+                        if (dl >= 0 && ft >= 0) { d.timed++; if (ft <= dl) d.onTime++; }
+                    }
+                });
+            });
+            const list = Object.values(byDrv).sort((a, b) => b.orders - a.orders);
+            const row = (k, v, hint) => `<div class="bc-row"><span class="bc-k">${k}</span><span class="bc-v">${v}</span></div>${hint ? `<div class="stat-hint" style="text-align:right;margin-top:-4px;">${hint}</div>` : ''}`;
+            document.getElementById('driverCards').innerHTML = list.map((d, i) => {
+                const days = d.days.size || 1;
+                const c = Color.branch[i % Color.branch.length];
+                const perKm = d.km > 0 && d.fuelAmt > 0 ? '$' + (d.fuelAmt / d.km).toFixed(1) : '—';
+                const kmPerL = d.km > 0 && d.fuelLit > 0 ? (d.km / d.fuelLit).toFixed(1) + ' km/L' : '';
+                const punct = d.timed ? Math.round(d.onTime / d.timed * 100) + '<span style="font-size:12px">%</span>' : '—';
+                return `<div class="stat-card branch-card" style="border-top-color:${c}">
+                    <div class="stat-label" style="color:${c}">${escapeHTML(d.name)} <span style="font-size:11px;color:var(--text-dim);font-weight:500">${escapeHTML([...d.plates].join('/'))}</span></div>
+                    ${row('合計總單量', d.orders + '<span style="font-size:12px"> 單</span>', '不含樣品免費')}
+                    ${row('平均日單量', (d.orders / days).toFixed(1) + '<span style="font-size:12px"> 單/日</span>', '出勤 ' + d.days.size + ' 天')}
+                    ${row('每日里程數', Math.round(d.km / days) + '<span style="font-size:12px"> km/日</span>', '總里程 ' + Math.round(d.km).toLocaleString() + ' km')}
+                    ${row('每公里油耗', perKm + (perKm !== '—' ? '<span style="font-size:12px"> /km</span>' : ''), kmPerL || '區間內無加油記錄')}
+                    ${row('指定準點率', punct, d.timed ? '指定時間單 ' + d.onTime + '/' + d.timed + ' 準時' : '區間內無指定時間單')}
+                </div>`;
+            }).join('') || '<div style="color:#64748b; padding:12px;">區間內無自家車行程</div>';
+        }
+
         function renderItinerary() {
             const f = currentFilters();
             const vm = rawData.vehicleMap || {};
-            const allS = rawData.schedule.filter(s => s.date >= f.sd && s.date <= f.ed && s.plate && (itinPlate === '全部' || s.plate === itinPlate));
+            const fleet = new Set(fleetPlates());
+            const fleetS = rawData.schedule.filter(s => s.date >= f.sd && s.date <= f.ed && s.plate && fleet.has(s.plate));
+            const allS = fleetS.filter(s => itinPlate === '全部' || s.plate === itinPlate);
             // 派送清單的「車牌」欄有時填司機名，兩種都認
             const ordersFor = (date, plate) => rawData.orders.filter(o => o.date === date && (o.plate === plate || (vm[plate] && o.plate === vm[plate])));
+            renderDriverCards(fleetS, ordersFor);
 
             const rows = allS.map(s => {
                 const stops = parseTrace(s.trace);
