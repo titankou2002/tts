@@ -9,43 +9,26 @@
  */
 
 /**
- * 🚀 一鍵初始化：寫入三家分公司 LINE 機器人的 Access Token
+ * ⚠️ 三家分公司的 LINE Token（LINE_TOKEN_GAOYACI / LINE_TOKEN_XIYENA / LINE_TOKEN_ANDIGA）
+ * 請至 Apps Script「專案設定 → 指令碼屬性」設定，V41 起不再寫在原始碼。
+ * 舊版 initScriptProperties_HourlyNotify_V11() 內寫死的三組 token 已隨公開 repo 外洩，請在 LINE Developers Console 重新發行。
  */
-function initScriptProperties_HourlyNotify_V11() {
-  var props = PropertiesService.getScriptProperties();
-  props.setProperty("LINE_TOKEN_GAOYACI", "hzlR1hr0qkVqcoIo60dqdxomaloGS8dyL3lpENhMLZYLvcNNi1KbM+lhsABoOIO2leCOFrpxFhP1Gq2qxPY2NtmHm+KNlsSAYoES4jqKIpZUSHbbwgFvcrv0kF4LJb7TJ4lMiRHOz+0JNta0zXfwdgdB04t89/1O/w1cDnyilFU=");
-  props.setProperty("LINE_TOKEN_XIYENA", "TWnnSSNt2W6WT+GzFomkzpO1pjmnFUnHBwzX8WELv8QqRUKud4b1l+oYScv/U9roOFVSJGJ3PKNu/epFUll/LkbqLYGj7gVtKJFrWKdqCQqwTHZmOEAtXak2sUNUyXWW2JRwOdKyFqbdbEhJpsCA0QdB04t89/1O/w1cDnyilFU=");
-  props.setProperty("LINE_TOKEN_ANDIGA", "TVEmQdRFexP0Y+dKjMtwfwiCcwfMlqHXvv7KJ67bcsZyS9+3Uvy7Yw1buPOTMMBrCUEeyN1Ti8c/dok3d7J30+TfXcYmCWoHINPm4BU2l0GSssA6ywn4oafnYFl5xhFpfgHeloxX4RzLninKLl9MugdB04t89/1O/w1cDnyilFU=");
-  return "✅ 高雅瓷、喜悅納、安帝嘉 LINE Token 已成功寫入指令碼屬性！";
-}
 
 /**
  * ⏰ 建立固定時間通知排程：10:00 / 12:00 / 14:00 / 17:00
+ * ⚠️ V38.x：LINE 每小時彙整通知已停用（司機配送完成通知改走 Telegram 即時推播，依分公司分流）。
+ *     本函式仍保留「漢樺 17:30 Email」與「凌晨 02:00 數據清理」兩個排程。
  */
-function setupHourlyDeliverySummaryTrigger_V11() {
-  // 先清除舊的同名排程，避免重複
+function setupHourlyDeliverySummaryTrigger_V11(e) {
+  _requireSystemContext_(e);
+  // 先清除舊的同名排程，避免重複（含已建立的 hourlyDeliverySummaryJob）
   removeAllDeliverySummaryTriggers_V11();
-  
-  var TRIGGER_HOURS = [10, 12, 14, 17]; // 早上10點、中午12點、下午2點、下午5點
-  
-  TRIGGER_HOURS.forEach(function(hour) {
-    ScriptApp.newTrigger('hourlyDeliverySummaryJob')
-      .timeBased()
-      .atHour(hour)
-      .everyDays(1)
-      .inTimezone("Asia/Taipei")
-      .create();
-  });
     
   SpreadsheetApp.getUi().alert(
     "✅ 成功建立自動化排程！\n\n" +
-    "每天將在以下時間自動發送 LINE 通知：\n" +
-    "• 上午 10:00\n" +
-    "• 中午 12:00\n" +
-    "• 下午 14:00\n" +
-    "• 下午 17:00\n\n" +
     "📧 漢樺無人簽收 Email：每日 17:30 自動發送 (假日不發送)\n" +
     "🧼 數據 3 天自動封存清理：每日凌晨 02:00 自動執行\n\n" +
+    "ℹ️ LINE 每小時彙整通知已停用（改為 Telegram 即時到貨推播）。\n\n" +
     "⚠️ 若需變更，請先執行「移除排程」再重新建立。"
   );
   
@@ -57,7 +40,8 @@ function setupHourlyDeliverySummaryTrigger_V11() {
 /**
  * ⏰ 建立 3 天數據自動封存清理排程 (每天凌晨 02:00 自動執行)
  */
-function setupCleanupTrigger_V11() {
+function setupCleanupTrigger_V11(e) {
+  _requireSystemContext_(e);
   var triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(function(t) {
     if (t.getHandlerFunction() === 'cleanupOldLogsAndTasks_V11') {
@@ -78,7 +62,8 @@ function setupCleanupTrigger_V11() {
 /**
  * 🗑️ 移除所有到貨通知排程（避免重複或更換時間時殘留舊觸發器）
  */
-function removeAllDeliverySummaryTriggers_V11() {
+function removeAllDeliverySummaryTriggers_V11(e) {
+  _requireSystemContext_(e);
   var triggers = ScriptApp.getProjectTriggers();
   var removed = 0;
   triggers.forEach(function(trigger) {
@@ -97,7 +82,8 @@ function removeAllDeliverySummaryTriggers_V11() {
 /**
  * 核心執行程序：由計時器每小時呼叫一次
  */
-function hourlyDeliverySummaryJob() {
+function hourlyDeliverySummaryJob(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var taskSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
   if (!taskSheet) {
@@ -873,6 +859,7 @@ function formatDriverItemQty_TextOnly(qty, boxQty, pcsPerBox) {
  * 依分公司對應 Token，主動發送 LINE Push Message (啟用無聲發送，支援文字與 Flex 物件)
  */
 function pushLineMessageToId_V11(lineId, msgObj, branchName) {
+  _requireCtx_();
   var props = PropertiesService.getScriptProperties();
   var token = "";
   
@@ -904,11 +891,13 @@ function pushLineMessageToId_V11(lineId, msgObj, branchName) {
   } else {
     messageObj = msgObj;
   }
-  
+  // 支援一次推送多則訊息：傳入陣列直接使用（如 圖片 + 文字）
+  var messages = Array.isArray(messageObj) ? messageObj : [ messageObj ];
+
   var url = "https://api.line.me/v2/bot/message/push";
   var payload = {
     "to": lineId,
-    "messages": [ messageObj ],
+    "messages": messages,
     "notificationDisabled": true // 🔕 無聲推播，手機不震動、不叮咚
   };
   
@@ -932,7 +921,8 @@ function pushLineMessageToId_V11(lineId, msgObj, branchName) {
  * 🧪 測試工具：立刻強迫發送最新一筆已完成訂單的卡片通知
  * 功用：不受一小時時間限制，直接抓取「最新一筆已完成訂單」，模擬發送給您在白名單上設定的通知人。
  */
-function testSendHourlySummaryNow_V11() {
+function testSendHourlySummaryNow_V11(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var taskSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
   if (!taskSheet) return "Error: Sheet not found";
@@ -1074,7 +1064,8 @@ function testSendHourlySummaryNow_V11() {
 /**
  * ⏰ 建立漢樺 17:30 未簽收 Email 排程
  */
-function setupHanHuaEmailTrigger_V11() {
+function setupHanHuaEmailTrigger_V11(e) {
+  _requireSystemContext_(e);
   var triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(function(t) {
     if (t.getHandlerFunction() === 'sendHanHuaUnattendedEmailReport') {
@@ -1097,7 +1088,8 @@ function setupHanHuaEmailTrigger_V11() {
  * 📧 漢樺 / 波爾泰 未簽收到貨每日 Email 彙整通知 (每天 17:30 執行，假日不寄)
  * 收件人: anna@anword.com.tw
  */
-function sendHanHuaUnattendedEmailReport() {
+function sendHanHuaUnattendedEmailReport(e) {
+  _requireSystemContext_(e);
   var today = new Date();
   var dayOfWeek = today.getDay(); // 0: 週日, 6: 週六
   if (dayOfWeek === 0 || dayOfWeek === 6) {
@@ -1111,7 +1103,8 @@ function sendHanHuaUnattendedEmailReport() {
 /**
  * 🧪 測試立即發送漢樺未簽收 Email
  */
-function testSendHanHuaEmailReportNow() {
+function testSendHanHuaEmailReportNow(e) {
+  _requireSystemContext_(e);
   var res = executeHanHuaEmailSend(true);
   try { SpreadsheetApp.getUi().alert(res); } catch(e) {}
   return res;
@@ -1121,6 +1114,7 @@ function testSendHanHuaEmailReportNow() {
  * 核心發送邏輯
  */
 function executeHanHuaEmailSend(isTestMode) {
+  _requireCtx_();
   var ss = getSS_V11();
   var logSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
   var taskSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);

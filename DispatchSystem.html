@@ -124,6 +124,7 @@
         body.embedded-iframe #dispatchModal {
             top: 55px !important;
             height: calc(100vh - 55px) !important;
+        }
         @keyframes pulse-click {
             0% { transform: scale(1); }
             50% { transform: scale(0.95); opacity: 0.8; }
@@ -146,25 +147,68 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* ============ V39.27: 手機版 RWD ============ */
+        .dp-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 25px; background: #1e293b; border-bottom: 3px solid var(--color-primary); flex-shrink: 0; }
+        .dp-header-title { color: #fff; font-weight: 900; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-right: 10px; }
+        .dp-header-btns { display: flex; gap: 12px; }
+        .dp-left-panel { width: 750px; border-right: 2px solid #1e293b; display: flex; flex-direction: column; background: #0f172a; }
+        .dp-right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .dp-filter-grid { padding: 10px; background: #1e293b; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .dp-mobile-only { display: none; }
+        .dp-voucher-icon-btn { display: none; }
+        .dp-hide-mobile { }
+
+        /* V39.29: 手機版任務卡片 - 完全獨立設計，不是桌機版卡片硬擠窄版 */
+        .task-card-mobile {
+            background: #0f172a;
+            border: 1px solid #1e293b;
+            border-left: 4px solid #334155;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+        .task-card-mobile.selected { border-color: var(--color-primary); background: rgba(56,189,248,0.08); }
+        .task-card-mobile.is-assigned { opacity: 0.75; }
+        .task-card-mobile.is-returned { border-left-color: var(--color-danger); }
+        /* V39.31: 指定時間/待指派 閃爍燈號 */
+        @keyframes blink-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.15; } }
+        .status-blink-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ef4444; animation: blink-dot 1s infinite; flex-shrink: 0; }
+
+        @media (max-width: 768px) {
+            .dp-header { flex-wrap: wrap; padding: 8px 12px; gap: 6px; }
+            .dp-header-title { font-size: 14px; }
+            .dp-header-btns { width: 100%; gap: 6px; }
+            .dp-header-btns button { flex: 1; padding: 7px 4px !important; font-size: 11px !important; white-space: nowrap; }
+            .dp-hide-mobile { display: none !important; }
+            .dp-left-panel { width: 100% !important; border-right: none; }
+            .dp-right-panel { display: none !important; }
+            .dp-filter-grid { display: none !important; }
+            .dp-mobile-only { display: flex; }
+            .dp-voucher-icon-btn { display: inline-flex !important; }
+            #driverDispatchModal > div { width: 94vw !important; padding: 16px !important; }
+        }
     </style>
 </head>
 <body>
     <div id="dispatchModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:var(--color-bg-deep); z-index:9000; flex-direction:column; overflow:hidden;">
         <!-- Header -->
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 25px; background:#1e293b; border-bottom:3px solid var(--color-primary); flex-shrink: 0;">
-            <div style="color:#fff; font-weight:900; font-size:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-right:10px;">物流派車工作站 V8.8</div>
-            <div style="display:flex; gap:12px;">
+        <div class="dp-header">
+            <div class="dp-header-title">物流派車工作站 V8.8</div>
+            <div class="dp-header-btns">
                 <button id="batchReturnBtn" class="btn-pulse" onclick="openReturnModalFromSelection()" style="display:none; background:#a855f7; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">🔴 批次退回分公司</button>
                 <button id="copyToLINEBtn" class="btn-pulse" onclick="copyToLINE()" style="background:var(--color-success); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">已勾選清單</button>
-                <button id="copyToWarehouseBtn" class="btn-pulse" onclick="copyToWarehouse()" style="background:var(--color-accent); color:#000; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">📸 回鶯歌圖片</button>
+                <button id="copyToWarehouseBtn" class="btn-pulse dp-hide-mobile" onclick="copyToWarehouse()" style="background:var(--color-accent); color:#000; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">📸 回鶯歌圖片</button>
                 <button onclick="closeDispatchModal()" style="background:#475569; color:#fff; border:none; padding:8px 18px; border-radius:8px; cursor:pointer; font-weight:900;">✕ 關閉</button>
             </div>
         </div>
 
-        <div style="flex:1; display:flex; overflow:hidden;">
-            <!-- 清單區 (V11.21: 加寬至 750px 避免折字) -->
-            <div style="width:750px; border-right:2px solid #1e293b; display:flex; flex-direction:column; background:#0f172a;">
-                <div style="padding:10px; background:#1e293b; display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+        <div style="flex:1; display:flex; overflow:hidden; position:relative;">
+            <!-- 清單區 (V11.21: 加寬至 750px 避免折字；手機版改滿版，見 .dp-left-panel) -->
+            <div class="dp-left-panel">
+                <div class="dp-filter-grid">
                     <select id="filterDate" onchange="applyFilters_V3()" style="background:#020617; color:#fff; border:1px solid #475569; padding:6px; border-radius:6px;"></select>
                     <select id="sortMode" onchange="applyFilters_V3()" style="background:#020617; color:#fff; border:1px solid #475569; padding:6px; border-radius:6px;">
                         <option value="address" selected>📍 依收貨地址排序</option>
@@ -184,12 +228,20 @@
                         <input type="text" id="searchQuery" oninput="applyFilters_V3()" placeholder="🔍 搜尋客戶、地址、單號..." style="width:100%; background:#020617; color:#fff; border:1px solid #475569; padding:8px; border-radius:6px;">
                     </div>
                 </div>
+
+                <!-- V39.26: 手機版濃縮篩選列 - 搜尋框常駐 + 一顆「篩選」按鈕收納其餘4個選單 -->
+                <div class="dp-mobile-only" style="padding:10px; background:#1e293b; gap:8px;">
+                    <input type="text" id="searchQueryMobile" oninput="document.getElementById('searchQuery').value=this.value; applyFilters_V3();" placeholder="🔍 搜尋客戶、地址、單號..." style="flex:1; background:#020617; color:#fff; border:1px solid #475569; padding:8px; border-radius:6px;">
+                    <button onclick="toggleMobileFilterSheet()" style="background:#334155; color:#fff; border:1px solid #475569; padding:8px 14px; border-radius:6px; font-weight:900; white-space:nowrap;">🔧 篩選</button>
+                </div>
+                <div id="mobileFilterSheet" style="display:none; padding:10px; background:#1e293b; border-top:1px solid #334155; grid-template-columns:1fr 1fr; gap:8px;"></div>
+
                 <div id="filterStats" style="padding:7px 12px; background:#0f172a; color:#cbd5e1; font-size:13px; font-weight:bold; border-bottom:1px solid #1e293b;"></div>
                 <div id="unifiedTaskList" class="custom-scroll" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px;"></div>
             </div>
 
-            <!-- 右側板 -->
-            <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <!-- 右側板 (電腦版直接顯示；手機版改成浮動視窗，見下方 dp-mobile-only 區塊) -->
+            <div class="dp-right-panel">
                 <div style="flex:1; background:#000; margin:10px; border-radius:15px; display:flex; justify-content:center; align-items:center; border:2px solid #334155; overflow: hidden; position:relative;">
                     <img id="dispatchVoucherImg" style="display:none; max-width:100%; max-height:100%; object-fit: contain;">
                     <div id="dispatchVoucherPlaceholder" style="color:#475569; font-size:16px;">🔍 點擊左側卡片預覽圖檔</div>
@@ -206,6 +258,28 @@
                 </div>
             </div>
         </div>
+
+        <!-- V39.26: 手機版銷貨單全螢幕浮層 (電腦版不會出現，由 .dp-voucher-icon-btn 觸發) -->
+        <div id="mobileVoucherOverlay" style="display:none; position:fixed; inset:0; z-index:9700; background:rgba(0,0,0,0.92); align-items:center; justify-content:center; flex-direction:column;" onclick="if(event.target===this) closeMobileVoucher()">
+            <button onclick="closeMobileVoucher()" style="position:absolute; top:16px; right:16px; background:#334155; color:#fff; border:none; border-radius:50%; width:40px; height:40px; font-size:18px; font-weight:900; cursor:pointer;">✕</button>
+            <img id="mobileVoucherImg" style="max-width:94vw; max-height:88vh; object-fit:contain; border-radius:8px;">
+        </div>
+
+        <!-- V39.26: 手機版浮動指派按鈕 -->
+        <button id="mobileAssignFab" class="dp-mobile-only" onclick="openMobileDriverSheet()" style="position:fixed; right:16px; bottom:16px; z-index:9500; background:var(--color-primary); color:#fff; border:none; border-radius:30px; padding:14px 20px; font-weight:900; box-shadow:0 4px 20px rgba(0,0,0,0.5); align-items:center; gap:8px; cursor:pointer;">
+            🚛 指派司機 <span id="mobileAssignCount" style="background:rgba(255,255,255,0.25); border-radius:12px; padding:2px 8px; font-size:13px;">0</span>
+        </button>
+
+        <!-- V39.26: 手機版司機清單下滑面板 -->
+        <div id="mobileDriverSheet" style="display:none; position:fixed; inset:0; z-index:9600; background:rgba(0,0,0,0.6);" onclick="if(event.target===this) closeMobileDriverSheet()">
+            <div style="position:absolute; left:0; right:0; bottom:0; background:#1e293b; border-radius:20px 20px 0 0; padding:16px; max-height:75vh; display:flex; flex-direction:column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <b style="color:#38bdf8; font-size:16px;">選擇司機</b>
+                    <button onclick="closeMobileDriverSheet()" style="background:#475569; color:#fff; border:none; border-radius:8px; padding:6px 14px; cursor:pointer;">關閉</button>
+                </div>
+                <div style="color:#64748b; font-size:12px; margin-bottom:8px;">已勾選任務時：點司機直接指派並自動收合。未勾選任務時：點司機檢視/編輯行程。</div>
+                <div id="mobileDriverList" class="custom-scroll" style="overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
         </div>
     </div>
 
@@ -279,6 +353,14 @@
             str = str.replace(/^(台北市|臺北市|新北市|桃園市|基隆市|[\u4e00-\u9fff]{2,3}[縣市])/g, '');
         }
         return str.replace(/(號)([\s,，-].*)$/, '$1').replace(/(\d+)(樓|F|層|號-.*)$/i, '$1號').trim();
+    }
+
+    // V39.34: 統一「地址結尾 (XX貨運)」的顯示規則 - 貨運二字拿掉、括號內文字用黃字，
+    // 排車桌機版/手機版共用，司機端(Index.html)、驗貨(Warehouse.html)也各自複製同一套規則以維持一致
+    function formatAddrWithCarrierTag(addr) {
+        return escapeHTML(scrubAddress(addr)).replace(/\(([^)]*)\)/g, (full, inner) =>
+            `<span style="color:#fbbf24;">(${inner.replace(/貨運/g, '')})</span>`
+        );
     }
 
     function getWeightColor(w) {
@@ -395,8 +477,22 @@
             /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     }
 
+    // V39.29: 版面寬度判斷 (跟 CSS 的 max-width:768px 斷點對齊)，用來決定任務卡片渲染哪一種模板
+    function isMobileLayout() {
+        return window.innerWidth <= 768;
+    }
+
     function openDispatchModal_V3() {
         document.getElementById('dispatchModal').style.display = 'flex';
+
+        // V39.14: 開啟當下先顯示讀取動畫，避免彈窗只是顯示上一次的舊資料(或空白)，
+        // 讓人以為「按了沒反應」，實際上是後端兩支 API 還在跑
+        const listEl = document.getElementById('unifiedTaskList');
+        if (listEl) {
+            listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#94a3b8;">' +
+                '<div style="width:36px; height:36px; margin:0 auto 14px; border:3px solid rgba(56,189,248,0.2); border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite;"></div>' +
+                '載入派車資料中...</div>';
+        }
         google.script.run.withSuccessHandler(res => {
             if (res.success) {
                 dispatchAllTasks = res.tasks;
@@ -408,9 +504,13 @@
                         renderDriverDashboard_V7();
                         applyFilters_V3();
                     }
-                }).getDrivers_V3();
+                }).getDrivers_V3(ATOKEN());
+            } else {
+                if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 載入失敗，請關閉後重新點擊「阿榮排車」</div>';
             }
-        }).getUnDispatchedTasks_V3();
+        }).withFailureHandler(err => {
+            if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 連線失敗: ' + (err && err.message || err) + '</div>';
+        }).getUnDispatchedTasks_V3(ATOKEN());
     }
 
     function closeDispatchModal() {
@@ -484,6 +584,69 @@
         document.getElementById('filterStats').innerHTML = `🔎 篩選顯示：共 <span style="color:#38bdf8;">${filtered.length}</span> 筆 &nbsp;|&nbsp; 🟢 已分配: <span style="color:#22c55e;">${assignedCnt}</span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}</span>`;
         renderDispatchSections_V7(filtered);
         renderDriverDashboard_V7();
+    }
+
+    // V39.29: 手機版任務卡片 - 完全獨立設計，不需要編號(1,2,3)也不需要傳統checkbox，
+    // 整張卡片就是點擊區(重用既有的 toggleSelectionByCheckbox 邏輯)，右上角用 ✅ 表示已選取。
+    function buildMobileTaskCardHtml(gt, isS, isAssigned, isExactDuplicate, custShort2, displayId, brObj) {
+        const itemsDropdownHtml = (gt.items && gt.items.length > 0) ? `
+            <div class="items-dropdown-content" id="items-${gt.id}" style="display:none; margin-top:8px; background:rgba(0,0,0,0.4); border-radius:8px; padding:8px 10px;" onclick="event.stopPropagation()">
+                ${gt.items.map((item, itemIdx) => {
+                    const sizeArr = (gt.size || '').split(/[,，、；;\/]+/);
+                    const itemSize = (sizeArr[itemIdx] || sizeArr[0] || '').trim();
+                    const qtyBox = formatItemQtyBox(item.qty, item.boxQty, item.pcsPerBox);
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.08); font-size:13px;">
+                            <span style="color:#fff; font-weight:bold; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.code}</span>
+                            <span style="color:var(--color-primary); opacity:0.85; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}</span>
+                            <span style="color:var(--color-accent); white-space:nowrap;">${qtyBox}</span>
+                            <span style="color:#f472b6; white-space:nowrap;">${item.qty}片</span>
+                        </div>
+                    `;
+                }).join('')}
+            </div>` : '';
+
+        // V39.31: 地址裡「(弘昇貨運)」這類貨運行標記，拿掉「貨運」二字、括號內文字改黃色
+        const addrHtml = formatAddrWithCarrierTag(gt.address);
+
+        // V39.31: 有強制指定時間 或 待指派中 -> 閃爍燈號提醒
+        const needsBlink = !!gt.specifiedArrive || !isAssigned;
+        const blinkDotHtml = needsBlink ? '<span class="status-blink-dot" title="' + (gt.specifiedArrive ? '指定時間' : '待指派') + '"></span>' : '';
+
+        return `
+            <div class="task-card-mobile ${isS ? 'selected' : ''} ${isAssigned ? 'is-assigned' : ''} ${gt.status === '退回分公司' ? 'is-returned' : ''}" onclick="toggleSelectionByCheckbox(event,'${gt.id}')">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <b style="font-size:16px; color:#60a5fa; flex-shrink:0;">${escapeHTML(custShort2)}</b>
+                    <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:700; flex-shrink:0;">${displayId}</span>
+                    ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:900; flex-shrink:0;">${gt.shippingType}</span>` : ''}
+                    ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:11px; flex-shrink:0;">⚠️重複</span>' : ''}
+                    <span style="margin-left:auto; flex-shrink:0; display:flex; align-items:center; gap:6px;">
+                        ${gt.timeSlot ? `<span class="time-tag">${escapeHTML(gt.timeSlot)}</span>` : ''}
+                        <span style="color:#fbbf24; font-weight:900; font-size:13px;">${gt.date.substring(5)}</span>
+                        <span style="font-size:19px; line-height:1;">${isS ? '✅' : ''}</span>
+                    </span>
+                </div>
+                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-top:5px;">
+                    <div style="color:#cbd5e1; font-size:13px; line-height:1.4; word-break:break-word; flex:1; min-width:0;">${addrHtml}</div>
+                    <span style="flex-shrink:0; display:flex; align-items:center; gap:6px; margin-top:2px;">
+                        ${blinkDotHtml}
+                        ${!isAssigned ? '<span class="unassigned-badge">待指派</span>' : `<span class="driver-name-tag" style="background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};">${escapeHTML(gt.assignedDriver)}</span>`}
+                    </span>
+                </div>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px;">
+                    <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" title="${gt.isBackYingge ? '回鶯歌' : '留永安'}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">${gt.isBackYingge ? '回鶯歌' : '留永安'}</button>
+                    ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" style="display:inline-flex; background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px;" onclick="openMobileVoucher(event,'${gt.id}')">📷</button>` : ''}
+                    ${gt.items && gt.items.length > 0 ? `
+                    <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;">
+                        明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 9px; transition: transform 0.2s;">▼</span>
+                    </div>` : ''}
+                    <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:15px;">${gt.weight.toFixed(0)}<span style="font-size:10px;">kg</span></span>
+                    ${gt.carrierFlag ? '<span style="background:rgba(249,115,22,0.15); color:#f97316; border:1px solid rgba(249,115,22,0.4); padding:1px 6px; border-radius:4px; font-size:11px; font-weight:bold;">🚛貨運行</span>' : ''}
+                </div>
+                ${gt.note ? `<div style="color:#fbbf24; font-size:12px; margin-top:6px; line-height:1.4; word-break:break-all;">${escapeHTML(gt.note)}</div>` : ''}
+                ${itemsDropdownHtml}
+            </div>
+        `;
     }
 
     function renderDispatchSections_V7(tasks) {
@@ -596,6 +759,11 @@
                     return cleaned.length > 0 ? cleaned.substring(0, 2) : raw.substring(0, 2);
                 })();
 
+                // V39.29: 手機版完全獨立的卡片模板，不重用桌機版(避免文字被擠壓折行)
+                if (isMobileLayout()) {
+                    return buildMobileTaskCardHtml(gt, isS, isAssigned, isExactDuplicate, custShort2, displayId, brObj);
+                }
+
                 return `
                     <div class="task-card ${isS ? 'selected' : ''} ${isExactDuplicate ? 'same-address' : ''} ${isAssigned ? 'is-assigned' : ''} ${gt.status === '退回分公司' ? 'is-returned' : ''}" onclick="handleCardClick_V7('${gt.id}')">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
@@ -605,14 +773,16 @@
                             ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900; box-shadow: 0 0 8px rgba(245,158,11,0.4); animation: pulse-light 2s infinite; margin-left:4px;">${gt.shippingType}</span>` : ''}
                             <!-- Colored Order ID Box -->
                             <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-weight: 700; margin-left: 4px;">${displayId}</span>
-                            <span class="addr-text ${gt.isReturn ? 'addr-return' : ''}">${escapeHTML(scrubAddress(gt.address))}</span>
+                            <span class="addr-text ${gt.isReturn ? 'addr-return' : ''}">${formatAddrWithCarrierTag(gt.address)}</span>
                             ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜</span>' : ''}
                             ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:12px; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; margin-left:4px; animation: pulse-light 2s infinite;">重複異常請注意‼️</span>' : ''}
                             ${isAssigned && gt.status !== '退回分公司' ? `<span style="margin-left:auto; background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};" class="driver-name-tag">${escapeHTML(gt.assignedDriver)}</span>` : ''}
                         </div>
                         <div style="display:flex; align-items:center; gap:10px; margin-left:50px; margin-top:6px;">
                             <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">回鶯歌</button>
-                            
+                            <!-- V39.26: 手機版看圖小圖示，電腦版隱藏(電腦版點卡片即可看右側面板) -->
+                            ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" onclick="openMobileVoucher(event,'${gt.id}')" style="background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px; cursor:pointer; align-items:center;">📷</button>` : ''}
+
                             <!-- Expandable Dropdown Trigger instead of static Size/Boxes -->
                             ${gt.items && gt.items.length > 0 ? `
                             <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
@@ -689,6 +859,9 @@
             if (t) totalW += Number(t.weight || 0);
         });
         document.getElementById('selWeightTotal').innerText = totalW.toFixed(0);
+        // V39.26: 手機版浮動指派按鈕同步顯示已選筆數
+        const mobileCountEl = document.getElementById('mobileAssignCount');
+        if (mobileCountEl) mobileCountEl.innerText = dispatchSelectedIds.size;
     }
 
     function renderDriverDashboard_V7() {
@@ -753,9 +926,9 @@
     }
 
     function showDriverDispatchList_V8(n, driverName) {
-        if (isTouchDevice()) {
-            alert('手機版不支援手指拖曳排序，請用電腦操作。');
-        }
+        // V39.26: 手機版原本直接擋人、要求回電腦操作，改成用▲▼按鈕在手機上也能排序，記住目前開的是哪個司機供 moveDispatchTask 重繪用
+        window._dispatchModalDriverPlate = n;
+        window._dispatchModalDriverName = driverName;
         document.querySelectorAll('#driverDispatchModal').forEach(el => el.remove());
         const modal = document.createElement('div');
         modal.id = "driverDispatchModal";
@@ -764,7 +937,7 @@
         const allDriverTasks = dispatchAllTasks.filter(t => t.assignedDriver === driverName || t.vehicle === n);
         const tasks = allDriverTasks.filter(t => dv === 'all' || t.date === dv).sort((a, b) => (a.order || 999) - (b.order || 999));
         const dragTip = isTouchDevice()
-            ? '<span style="color:#ef4444; font-size:13px; font-weight:bold;">⚠️ 手機版不支援拖曳排序</span>'
+            ? '<span style="color:#94a3b8; font-size:13px;">點 ▲▼ 調整順序</span>'
             : '<span style="color:#94a3b8; font-size:13px;">拖曳卡片以前後排序</span>';
         modal.innerHTML = `
             <div style="background:#1e293b; padding:25px; border-radius:15px; width:650px; border:3px solid #334155; display:flex; flex-direction:column; max-height:92vh;">
@@ -776,10 +949,18 @@
                     ${tasks.map((t, idx) => {
                         const displayId = formatDisplayOrderId(t.id, t.branch);
                         const brObj = getOrderTint(t.id, t.branch);
+                        // V39.26: 手機版(觸控)用▲▼按鈕排序取代拖曳，避免在可捲動清單裡跟滑動手勢打架
+                        const reorderCtrl = isTouchDevice()
+                            ? `<div style="display:flex; flex-direction:column; align-items:center; line-height:1;">
+                                 <button onclick="moveDispatchTask(event,'${t.id}',-1)" ${idx === 0 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === 0 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === 0 ? 'default' : 'pointer'}; padding:2px 6px;">▲</button>
+                                 <button onclick="moveDispatchTask(event,'${t.id}',1)" ${idx === tasks.length - 1 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === tasks.length - 1 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === tasks.length - 1 ? 'default' : 'pointer'}; padding:2px 6px;">▼</button>
+                               </div>`
+                            : `<div class="drag-handle" style="color:#475569; font-size:12px; cursor:move;">☰</div>`;
                         return `
                         <div data-id="${t.id}" style="background:#0f172a; padding:10px 15px; margin-bottom:10px; border-radius:10px; border:1px solid #334155; display:flex; flex-direction:column; gap:4px; ${isTouchDevice() ? '' : 'cursor:move;'}">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
-                            <div class="drag-handle" style="color:#475569; font-size:12px;">${idx + 1}. ${isTouchDevice() ? '' : '☰'}</div>
+                            <span style="color:#475569; font-size:12px;">${idx + 1}.</span>
+                            ${reorderCtrl}
                             <b style="font-size:16px; color:#60a5fa;">${(function () {
                                 var raw = String(t.customer || '');
                                 var cleaned = raw.replace(/(股份有限公司|有限公司|實業|設計|建材|工程|工作室|公司|商行|企業|磁磚|五金)/g, '').trim();
@@ -790,7 +971,7 @@
                                     明細 <span class="arrow-icon" id="driver-arrow-${t.id}" style="font-size: 8px; transition: transform 0.2s;">▼</span>
                                 </div>
                                 ` : ''}
-                                <span style="color:#cbd5e1; font-size:13px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${scrubAddress(t.address)}</span>
+                                <span style="color:#cbd5e1; font-size:13px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${formatAddrWithCarrierTag(t.address)}</span>
                                 <!-- Colored Order ID Box -->
                                 <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 4px;">${displayId}</span>
                                 ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜</span>' : ''}
@@ -848,7 +1029,7 @@
                 onEnd: function () {
                     const ids = Array.from(document.querySelectorAll('#sortableTaskList > div')).map(el => el.getAttribute('data-id'));
                     const updates = ids.map((id, i) => ({ id: id, order: i + 1 }));
-                    google.script.run.recordDispatchOrder(updates);
+                    google.script.run.recordDispatchOrder(updates, ATOKEN());
                     dispatchAllTasks.forEach(t => {
                         const u = updates.find(x => x.id === t.id);
                         if (u) t.order = u.order;
@@ -856,6 +1037,34 @@
                 }
             });
         }
+    }
+
+    // V39.26: 手機版▲▼排序 - 跟 Sortable 的 onEnd 用同一套持久化邏輯 (recordDispatchOrder)，
+    // 換位後直接重繪整個 driverDispatchModal，讓每顆按鈕的 disabled 狀態(是否為第一/最後一筆)正確更新
+    function moveDispatchTask(e, taskId, direction) {
+        e.stopPropagation();
+        const n = window._dispatchModalDriverPlate;
+        const driverName = window._dispatchModalDriverName;
+        const dv = document.getElementById('filterDate').value;
+        const allDriverTasks = dispatchAllTasks.filter(t => t.assignedDriver === driverName || t.vehicle === n);
+        const tasks = allDriverTasks.filter(t => dv === 'all' || t.date === dv).sort((a, b) => (a.order || 999) - (b.order || 999));
+
+        const idx = tasks.findIndex(t => t.id === taskId);
+        const targetIdx = idx + direction;
+        if (idx === -1 || targetIdx < 0 || targetIdx >= tasks.length) return;
+
+        const tmp = tasks[idx];
+        tasks[idx] = tasks[targetIdx];
+        tasks[targetIdx] = tmp;
+
+        const updates = tasks.map((t, i) => ({ id: t.id, order: i + 1 }));
+        google.script.run.recordDispatchOrder(updates, ATOKEN());
+        dispatchAllTasks.forEach(t => {
+            const u = updates.find(x => x.id === t.id);
+            if (u) t.order = u.order;
+        });
+
+        showDriverDispatchList_V8(n, driverName);
     }
 
     function copyFilteredList() {
@@ -998,7 +1207,7 @@
                             ${shippingHtml}
                             <!-- Colored Order ID Box -->
                             <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 1px 5px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 4px; display:inline-block;">${tDisplayId}</span>
-                            <span style="color:#e2e8f0; font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; margin-left:4px;">${escapeHTML(scrubAddress(t.address))}</span>
+                            <span style="color:#e2e8f0; font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; margin-left:4px;">${formatAddrWithCarrierTag(t.address)}</span>
                             ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span style="background:#22c55e; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">[膠]</span>' : ''}
                             ${t.isReturn ? '<span style="color:#ef4444; font-weight:900; font-size:13px; border:1px solid #ef4444; padding:0 4px; border-radius:4px;">退</span>' : ''}
                             ${dupHtml}
@@ -1140,6 +1349,81 @@
         applyFilters_V3();
     }
 
+    // ============ V39.26: 手機版 RWD 專用函式 ============
+
+    // 手機版篩選面板：把既有的 4 個下拉選單「搬移」進面板，不複製 id，維持原本 applyFilters_V3() 邏輯不動
+    function toggleMobileFilterSheet() {
+        const sheet = document.getElementById('mobileFilterSheet');
+        const grid = document.querySelector('.dp-filter-grid');
+        if (!sheet || !grid) return;
+        const isOpen = sheet.style.display === 'grid';
+        if (isOpen) {
+            Array.from(sheet.children).forEach(el => grid.appendChild(el));
+            sheet.style.display = 'none';
+        } else {
+            ['filterDate', 'sortMode', 'filterBranch', 'filterDriver'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) sheet.appendChild(el);
+            });
+            sheet.style.display = 'grid';
+        }
+    }
+
+    // 手機版銷貨單圖片：卡片上的小圖示點擊後全螢幕浮層開啟 (不影響原本點卡片載入到右側面板的邏輯)
+    function openMobileVoucher(e, id) {
+        e.stopPropagation();
+        const t = dispatchAllTasks.find(x => x.id === id);
+        if (!t || !t.thumbnail) { showToast('這筆沒有圖檔'); return; }
+        document.getElementById('mobileVoucherImg').src = t.thumbnail;
+        document.getElementById('mobileVoucherOverlay').style.display = 'flex';
+    }
+    function closeMobileVoucher() {
+        document.getElementById('mobileVoucherOverlay').style.display = 'none';
+    }
+
+    // 手機版司機指派浮動面板：點浮動按鈕從下滑出司機清單，點司機後收合回任務畫面
+    function openMobileDriverSheet() {
+        renderMobileDriverList();
+        document.getElementById('mobileDriverSheet').style.display = 'block';
+    }
+    function closeMobileDriverSheet() {
+        document.getElementById('mobileDriverSheet').style.display = 'none';
+    }
+    function renderMobileDriverList() {
+        const listEl = document.getElementById('mobileDriverList');
+        if (!listEl) return;
+        const rows = dispatchDrivers.map(d => {
+            const plate = d.plate;
+            const currentLoad = dispatchAllTasks.filter(t => {
+                const isMatched = (String(t.assignedDriver).trim() === d.name.trim() || String(t.vehicle).trim() === plate.trim());
+                const isFinished = (t.status && (t.status.includes('完成') || t.status.includes('送達') || t.status.includes('結案')));
+                return isMatched && !isFinished;
+            }).reduce((sum, tk) => sum + (Number(tk.weight) || 0), 0);
+            return `<div onclick="handleMobileDriverTap('${escapeHTML(plate)}','${escapeHTML(d.name)}')" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                <b style="color:${getDriverColor(d.name)}; font-size:16px;">${escapeHTML(d.name)}</b>
+                <span style="color:#94a3b8; font-size:13px;">${escapeHTML(plate)} · ${currentLoad.toFixed(0)}kg</span>
+            </div>`;
+        }).join('');
+        const externalDrivers = [
+            { plate: "外車-1", name: "外車 1" }, { plate: "外車-2", name: "外車 2" }, { plate: "外車-3", name: "外車 3" }
+        ];
+        const extRows = externalDrivers.map(d => `<div onclick="handleMobileDriverTap('${d.plate}','${d.name}')" style="background:#0f172a; border:1px solid #a855f7; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+            <b style="color:#a855f7; font-size:16px;">${d.name}</b><span style="color:#94a3b8; font-size:13px;">${d.plate}</span>
+        </div>`).join('');
+        listEl.innerHTML = rows + extRows;
+    }
+    function handleMobileDriverTap(n, name) {
+        // 有勾選任務：快速指派，指派完直接收合回任務畫面 (V39.26 手機版req 2)
+        // 沒勾選任務：跟電腦版一致，開啟該司機的行程檢視/編輯
+        if (dispatchSelectedIds.size > 0) {
+            quickDispatch_V7(n, name);
+            closeMobileDriverSheet();
+        } else {
+            closeMobileDriverSheet();
+            showDriverDispatchList_V8(n, name);
+        }
+    }
+
     function toggleSelectionByCheckbox(e, id) {
         e.stopPropagation();
         const norm = a => scrubAddress(a).replace(/\s/g, '').replace(/[０-９]/g, x => String.fromCharCode(x.charCodeAt(0) - 0xFEE0));
@@ -1177,7 +1461,7 @@
                     t.isBackYingge = !isB;
                     applyFilters_V3();
                 })
-                .updateBackYinggeStatus_V3(id, "", isB);
+                .updateBackYinggeStatus_V3(id, "", isB, ATOKEN());
             applyFilters_V3();
         }
     }
@@ -1203,18 +1487,19 @@
             plate: plate,
             name: name,
             shift: "1"
-        });
+        }, ATOKEN());
     }
 
     function cancelDispatchAction(id) {
         google.script.run.withSuccessHandler(() => {
             openDispatchModal_V3();
             showToast("✅ 已撤回");
-        }).cancelDispatch_V3(id);
+        }).cancelDispatch_V3(id, ATOKEN());
     }
 
     function escapeHTML(str) {
-        return str ? str.replace(/[&<>"']/g, m => ({
+        // V39.29: 補上 String() 轉型，避免傳入數字(如 item.qty 是純數字型別)時 .replace 直接爆炸
+        return str || str === 0 ? String(str).replace(/[&<>"']/g, m => ({
             '&': '&amp;',
             '<': '&lt;',
             '>': '&gt;',
@@ -1376,7 +1661,7 @@
             btn.style.background = "#a855f7";
             if(res.success) {
                 // V11.26: 停止縮網址，直接發送
-                google.script.run.pushLineMessage_V11(msg);
+                google.script.run.pushLineMessage_V11(msg, ATOKEN());
                 pendingReturnSet.clear();
                 dispatchSelectedIds.clear();
                 closeReturnModal();
@@ -1385,7 +1670,7 @@
             } else {
                 showToast("❌ 錯誤: " + res.error);
             }
-        }).adminBatchReturnTasks_V11(updates);
+        }).adminBatchReturnTasks_V11(updates, ATOKEN());
     }
 </script>
 </body>

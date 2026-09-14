@@ -1,5 +1,6 @@
-function getArchiveDataDiagnostic() {
-  const ss = SpreadsheetApp.openById("1M-Ewy58fQs-QmqzO5nERoXDCm7lm6S_mrrAIR1mUOtA");
+function getArchiveDataDiagnostic(e) {
+  _requireSystemContext_(e);
+  const ss = getSS_V11();
   const taskSheet = ss.getSheetByName("派送清單");
   const archiveSheet = ss.getSheetByName("派送清單_封存區");
   
@@ -29,8 +30,9 @@ function getArchiveDataDiagnostic() {
   }
 }
 
-function restoreRecentDataFromArchive() {
-  const ss = SpreadsheetApp.openById("1M-Ewy58fQs-QmqzO5nERoXDCm7lm6S_mrrAIR1mUOtA");
+function restoreRecentDataFromArchive(e) {
+  _requireSystemContext_(e);
+  const ss = getSS_V11();
   const taskSheet = ss.getSheetByName("派送清單");
   const archiveSheet = ss.getSheetByName("派送清單_封存區");
   const cutoffStr = "2026/03/13";

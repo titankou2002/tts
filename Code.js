@@ -23,7 +23,23 @@ const V11_PROD_CONFIG = {
   SHEET_DIRECT_MAP: "指送對照表",
   SHEET_FREIGHT: "運費管理表",
   SHEET_COMPANY: "分公司代碼表",
-  SHEET_HABIT: "排車習慣記錄"
+  SHEET_HABIT: "排車習慣記錄",
+  // V41: 外部試算表 ID 集中管理 (舊版散落在各函式內)
+  GAOYACI_SS_ID: "1G5q-GixMWSdJJeF8ZiXWMOfrx4FMobER25jNc8m4Zds",
+  PRODUCT_MASTER_SS_IDS: [
+    "16QNID9hLs2K1iy_ePo7MxYxhW4kpDrDlfEIZ2p83ixo", // 安帝嘉
+    "1uFKKWBfulg-GmCbJsSomimT5LW5r0N2w28rubrPveTA", // 喜悅納
+    "1G5q-GixMWSdJJeF8ZiXWMOfrx4FMobER25jNc8m4Zds", // 高雅瓷
+    "1OnLLqn3zUp-AzoD6ds95lZ01XxwOut8bt8SCHYLl0hc"  // 漢樺
+  ],
+  // V41.30: 「送回公司/倉庫」的地址關鍵字 — 樣品單只有送回這些地方才不計單、不收運費；送到貨運行/加工廠/客戶處照常計費
+  HOME_ADDR_KEYWORDS: ["高職西街", "鶯歌倉", "載回", "回鶯歌", "回公司", "喜悅納", "安帝嘉", "高雅瓷", "漢樺公司"],
+  // V41.28: 各分公司「銷售報表」(樣品 / 退貨 判定用；漢樺沒有報表，只靠關鍵字)
+  SALES_REPORT: {
+    "安帝嘉": { ssId: "16QNID9hLs2K1iy_ePo7MxYxhW4kpDrDlfEIZ2p83ixo", sheet: "經銷銷售報表" },
+    "喜悅納": { ssId: "1uFKKWBfulg-GmCbJsSomimT5LW5r0N2w28rubrPveTA", sheet: "月報表" },
+    "高雅瓷": { ssId: "1G5q-GixMWSdJJeF8ZiXWMOfrx4FMobER25jNc8m4Zds", sheet: "經銷銷售報表" }
+  }
 };
 
 /** V2632.11: 核心選單初始化 */
@@ -34,14 +50,44 @@ function onOpen() {
     .addItem("🆘 救回誤封存訂單 (從封存區移回)", "emergencyRestoreTasks")
     .addSeparator()
     .addItem("⏰ 建立/更新定時排程 (LINE + Email + 3天自動封存)", "setupHourlyDeliverySummaryTrigger_V11")
+    .addSeparator()
+    .addItem("🔑 設定管理員密碼", "menuSetAdminPassword")
+    .addItem("🧾 建立每 2 小時「樣品/退貨判定」排程 (並立即更新)", "menuSetupSalesDocTrigger")
+    .addItem("🧾 立即更新樣品/退貨判定", "menuRefreshSalesDoc")
+    .addItem("🧹 清理屬性空間 (UUID 垃圾)", "menuCleanupProperties")
     .addToUi();
+}
+
+/** V41: 從試算表選單設定管理員密碼 (屬性超過 50 個時 Apps Script 設定頁無法編輯，改走這裡) */
+function menuSetAdminPassword() {
+  var ui = SpreadsheetApp.getUi();
+  var res = ui.prompt("設定管理員密碼", "請輸入後台登入密碼（至少 4 碼）：", ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  try {
+    ui.alert(setAdminPassword(res.getResponseText()));
+  } catch (e) {
+    ui.alert("❌ " + e.message);
+  }
+}
+
+function menuSetupSalesDocTrigger() { SpreadsheetApp.getUi().alert(setupSalesDocTypeTrigger_V41()); }
+function menuRefreshSalesDoc() { SpreadsheetApp.getUi().alert(refreshSalesDocTypes_V41()); }
+
+/** V41: 從試算表選單清理屬性空間 */
+function menuCleanupProperties() {
+  var ui = SpreadsheetApp.getUi();
+  var before = Object.keys(PropertiesService.getScriptProperties().getProperties()).length;
+  cleanupSystemProperties();
+  var after = Object.keys(PropertiesService.getScriptProperties().getProperties()).length;
+  ui.alert("✅ 清理完成：" + before + " → " + after + " 個屬性");
 }
 
 const VISION_API_KEY = PropertiesService.getScriptProperties().getProperty('VISION_API_KEY');
 const FOLDER_ID = '1hbNDk90bax55PFjdCSCzGTPTCGy8ztwn';
 
 /** A 等級：初始化白名單分頁 (V2632.19 強制恢復標題) */
-function setupWhitelist_V24() {
+function setupWhitelist_V24(e) {
+  _requireSystemContext_(e);
   var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID);
   var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_WHITELIST);
   var headers = ["帳號啟用", "Email帳號", "姓名", "身分類型", "所屬分公司", "預設車牌", "是否可切換車輛", "手機號碼", "建立日期", "備註", "line通知人"];
@@ -65,6 +111,38 @@ function setupWhitelist_V24() {
 
 function getSS_V11() { return SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID); }
 
+/** V41: 戰情室快取 key（帶日期，換日自動失效）。所有讀 / 清除都必須走這兩個函式，不可再手寫字串 */
+function _warRoomCacheKey_(dateStr) {
+  var d = dateStr ? String(dateStr).replace(/\//g, '_') : Utilities.formatDate(new Date(), 'GMT+8', 'yyyy_MM_dd');
+  return 'war_room_data_v3_' + d;
+}
+function _clearWarRoomCache_(dateStr) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove(_warRoomCacheKey_());
+    // 派車常常是排明天的單，明天的 key 一起清
+    var tmr = new Date(Date.now() + 86400000);
+    cache.remove(_warRoomCacheKey_(Utilities.formatDate(tmr, 'GMT+8', 'yyyy/MM/dd')));
+    if (dateStr) cache.remove(_warRoomCacheKey_(dateStr));
+  } catch (e) { }
+}
+
+/**
+ * V41.22: 只寫回「有改到的列 × 有改到的欄」，不再整表 setValues 覆蓋。
+ * 整表覆蓋會把讀取快照之後、其他人 (例如司機結案) 寫進去的值蓋回舊值。
+ * colIdxs 會自動合併成連續區段以減少 API 呼叫。
+ */
+function _writeRowCells_(sheet, rowNum, rowArr, colIdxs) {
+  var cols = colIdxs.filter(function (c) { return c !== undefined && c !== null && c >= 0; }).sort(function (a, b) { return a - b; });
+  var i = 0;
+  while (i < cols.length) {
+    var start = cols[i], end = start;
+    while (i + 1 < cols.length && cols[i + 1] === end + 1) { i++; end = cols[i]; }
+    sheet.getRange(rowNum, start + 1, 1, end - start + 1).setValues([rowArr.slice(start, end + 1)]);
+    i++;
+  }
+}
+
 function getSafeVal(row, idx) {
   if (idx === undefined || idx === -1 || idx === null || idx >= row.length) return "";
   var val = row[idx];
@@ -87,7 +165,8 @@ function findHIdx_Core(headers, input) {
     "LAT": ["緯度", "Lat"],
     "LNG": ["經度", "Lng"],
     "FINISH_TIME": ["配送完成時間", "結案時間"],
-    "ARCHIVE": ["是否封存", "封存", "是否可切換車輛"],
+    "ARCHIVE": ["是否封存", "封存"],
+    "SWITCH_CAR": ["是否可切換車輛", "可切換車輛"],
     "ROLE": ["身分類型", "等級"],
     "WEIGHT": ["重量", "重量(kg)", "kg", "重量(KG)", "重量kg"],
     "NAME": ["姓名", "人員", "名稱"],
@@ -160,20 +239,14 @@ function cleanPlate_Core(p) {
  * 取使用者 Email，相容外部 Gmail 帳號 (V2632.3)
  */
 function getUserEmail_V11() {
-  var email = Session.getActiveUser().getEmail();
-  if (email && email !== "") return email;
+  // 匿名部署下多數訪客拿不到 email，回傳空字串即可；
+  // 舊版用 ScriptApp.getOAuthToken() 查 userinfo 的備援拿到的是「部署者」的 email，會把所有訪客都誤判成管理員，已移除。
   try {
-    var token = ScriptApp.getOAuthToken();
-    var response = UrlFetchApp.fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-      headers: { Authorization: "Bearer " + token },
-      muteHttpExceptions: true
-    });
-    var info = JSON.parse(response.getContentText());
-    if (info && info.email) return info.email;
+    var email = Session.getActiveUser().getEmail();
+    return email ? String(email) : "";
   } catch (e) {
-    Logger.log("getUserEmail_V11 Error: " + e.message);
+    return "";
   }
-  return "";
 }
 
 function getScriptUrl() {
@@ -186,6 +259,11 @@ function doGet(e) {
     return handleDealerApiRequest_V11(e);
   }
 
+  // 除錯用：回傳實際送出的頁面原始碼 (原始碼本來就在公開 repo，無敏感資料；userInfo 固定為訪客)
+  if (e && e.parameter && e.parameter.p === 'srcline') {
+    var f0 = ['Dashboard', 'Index', 'WebDashboard', 'tracking', 'Warehouse'].indexOf(e.parameter.f) !== -1 ? e.parameter.f : 'Dashboard';
+    return ContentService.createTextOutput(_renderPageHtml_(f0, { active: false, role: "訪客" }, 'admin'));
+  }
   var page = ((e && e.parameter && e.parameter.p) || 'index').toLowerCase();
   var title = '鈦傳速｜智能運控系統 V8.8';
   var fileName = 'Index';
@@ -207,20 +285,49 @@ function doGet(e) {
     fileName = 'tracking';
   }
   
-  var template = HtmlService.createTemplateFromFile(fileName);
   var email = getUserEmail_V11();
   var auth = checkAuth_V24(email);
-  template.userInfo = auth;
+  // V39.32: GAS 網頁實際渲染在 googleusercontent.com 的內部 iframe，
+  // client端 window.location.search 讀不到原始 exec 網址帶的 ?p=xxx，
+  // 改用伺服器端變數直接把 page 值塞進頁面，讓「?p=dispatch 自動開啟派車」這類邏輯可靠運作
+  var html = _renderPageHtml_(fileName, auth, page);
 
-  return template.evaluate()
+  return HtmlService.createHtmlOutput(html)
     .setTitle(title)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/**
+ * V41.9: 自行展開頁面，不走 HtmlService 樣板引擎。
+ * 原因：createTemplateFromFile().evaluate() 編譯時會做去註解處理，實測會把 JS 字串裡的 "https://..."
+ * 從 // 起截斷 (尤其緊接在 regex 字面值或樣板字串附近)，導致整個 <script> 語法錯誤。
+ * 改用 createHtmlOutputFromFile 取原始內容 + 自己做三種替換：
+ *   <?!= include('X'); ?>                       → X 檔案原始內容
+ *   <?!= JSON.stringify(userInfo || {}) ?>       → JSON
+ *   <?!= JSON.stringify(initialPage || '') ?>    → JSON 字串
+ */
+function _renderPageHtml_(fileName, userInfo, initialPage) {
+  var html = HtmlService.createHtmlOutputFromFile(fileName).getContent();
+  // createHtmlOutputFromFile 會把 HTML 文字節點裡的 <? 轉成 &lt;? (script 內則不會)，兩種形式都要接
+  html = html.replace(/(?:<|&lt;)\?!=\s*include\('([A-Za-z0-9_\-]+)'\);?\s*\?>/g, function (m, inc) {
+    try { return HtmlService.createHtmlOutputFromFile(inc).getContent(); } catch (err) { return "<!-- include " + inc + " failed: " + err.message + " -->"; }
+  });
+  var userJson = JSON.stringify(userInfo || {});
+  var pageJson = JSON.stringify(String(initialPage || ''));
+  html = html.replace(/<\?!=\s*JSON\.stringify\(userInfo(?:\s*\|\|\s*\{\})?\)\s*\?>/g, userJson);
+  html = html.replace(/<\?!=\s*JSON\.stringify\(initialPage(?:\s*\|\|\s*'')?\)\s*\?>/g, pageJson);
+  return html;
+}
+
 /** V11.20: LINE Webhook 捕捉 Group ID */
 function doPost(e) {
   try {
+    // V41: 先驗證來源 (Webhook URL 需帶 &key=<LINE_WEBHOOK_KEY>)，否則任何人都能 POST 假事件改寫 LINE_TARGET_ID
+    if (!_verifyLineWebhook_(e)) {
+      return ContentService.createTextOutput("forbidden");
+    }
+    _asSystem_('LINE_WEBHOOK');
     var data = JSON.parse(e.postData.contents);
     var botType = (e && e.parameter && e.parameter.bot) ? String(e.parameter.bot).toLowerCase().trim() : "";
     
@@ -240,10 +347,6 @@ function doPost(e) {
       pushLineMessage_V11("✅ 系統已成功連結此群組！\nID: " + sourceId);
     }
   } catch (err) {}
-}
-
-function getScriptUrl() {
-  return ScriptApp.getService().getUrl();
 }
 
 /** 支援 HTML 元件化包含 */
@@ -268,7 +371,7 @@ function checkAuth_V24(email) {
     var colRole = findHIdx_Core(h, "ROLE");
     var colCar = findHIdx_Core(h, "VEHICLE");
     var colBranch = findHIdx_Core(h, "BRANCH");
-    var colSwitch = findHIdx_Core(h, "ARCHIVE"); // 沿用原本邏輯
+    var colSwitch = findHIdx_Core(h, "SWITCH_CAR");
 
     if (colEmail === -1) return { active: false, error: "⚠️ 系統設定錯誤：白名單缺少「Email帳號」欄位" };
     if (colName === -1) return { active: false, error: "⚠️ 系統設定錯誤：白名單缺少「姓名」欄位" };
@@ -292,10 +395,10 @@ function checkAuth_V24(email) {
 }
 
 /** 戰情室資料抓取 V2633.2 (帶快取優化) */
-function getWarRoomData_V11(force, targetDateStr) {
+function getWarRoomData_V11(force, targetDateStr, token) {
+  _requireAdmin_(token);
   // V36.14: cache key 帶入今日日期，確保換日後自動失效，不再讀到昨日殘留快取
-  const todayCacheDate = Utilities.formatDate(new Date(), 'GMT+8', 'yyyy_MM_dd');
-  const cacheKey = targetDateStr ? 'war_room_data_v3_' + targetDateStr.replace(/\//g, '_') : 'war_room_data_v3_' + todayCacheDate;
+  const cacheKey = _warRoomCacheKey_(targetDateStr);
   const cache = CacheService.getScriptCache();
   if (force) cache.remove(cacheKey); // V36.3: 強制清除快取
 
@@ -341,9 +444,16 @@ function getWarRoomData_V11(force, targetDateStr) {
       lng: h.indexOf("經度"),
       archived: findHIdx_Core(h, "ARCHIVE"),
       timeSlot: h.indexOf("到貨時間"),
+      specifiedArrive: h.indexOf("指定到貨時間"), // V40: 強制指定到貨時間 (電梯管制)
       location: findHIdx_Core(h, "LOCATION"), // V4.1: 地點分頁
       thumbnail: findHIdx_Core(h, "THUMBNAIL") , // V36.6
-      shippingType: findHIdx_Core(h, "SHIPPING_TYPE")
+      shippingType: findHIdx_Core(h, "SHIPPING_TYPE"),
+      wrapSeal: findHIdx_Core(h, ["封膠膜", "膠膜", "封膜"]),
+      docTypeManual: h.indexOf("單據類型(人工)"),
+      finishTime: findHIdx_Core(h, "FINISH_TIME"),
+      note: findHIdx_Core(h, "NOTE"),
+      size: h.indexOf("尺寸"),
+      boxes: h.indexOf("箱數")
     };
 
     // 💡 建立 銷貨單單號 -> 現場簽收單照片 的動態對照表 (從送貨日誌中讀取)
@@ -384,6 +494,7 @@ function getWarRoomData_V11(force, targetDateStr) {
 
       // 隱藏「昨天以上 且 已完成/退貨完成/結案」的資料 (即使忘記手動封存也不顯示)
       // V5.2.1: 強化日期正規化，確保 yyyy/MM/dd 格式一致性，解決字串比對失效問題
+      var rowDate = ""; // V41: 每列重設，避免日期空白的列繼承上一列的日期
       if (idx.date !== -1) {
         var d = getSafeVal(row, idx.date);
         if (d instanceof Date) {
@@ -429,7 +540,7 @@ function getWarRoomData_V11(force, targetDateStr) {
 
       var rawCust = String(getSafeVal(row, idx.cust));
       var fTime = "";
-      var colFT = findHIdx_Core(h, "FINISH_TIME");
+      var colFT = idx.finishTime;
       if (colFT !== -1) {
         var ftVal = getSafeVal(row, colFT);
         if (ftVal instanceof Date) {
@@ -447,43 +558,61 @@ function getWarRoomData_V11(force, targetDateStr) {
         status: String(getSafeVal(row, idx.status)) || "待指派", seq: Number(getSafeVal(row, idx.seq)) || 0,
         lat: hasGPS ? lat : null, lng: hasGPS ? lng : null, weight: Number(getSafeVal(row, idx.weight)) || 0,
         timeSlot: String(getSafeVal(row, idx.timeSlot) || ""),  // V11.12.2
+        specifiedArrive: _fmtArriveTime_(getSafeVal(row, idx.specifiedArrive)),  // V40: 強制指定到貨時間
         rowIndex: i + 1, hasGPS: hasGPS, date: rowDate,
         location: String(getSafeVal(row, idx.location) || ""),
-        size: String(getSafeVal(row, h.indexOf("尺寸")) || ""),
-        boxes: String(getSafeVal(row, h.indexOf("箱數")) || ""),
+        size: String(getSafeVal(row, idx.size) || ""),
+        boxes: String(getSafeVal(row, idx.boxes) || ""),
         thumbnail: String(getSafeVal(row, idx.thumbnail) || ""), // V36.6
         signPhoto: signPhotoMap[orderId.toUpperCase().replace(/-[安高漢喜]$/, '').replace(/-[0-9]+$/, '')] || "", // V37.1
         shippingType: idx.shippingType !== -1 ? String(getSafeVal(row, idx.shippingType)) : "",
         wrapSeal: (function () {
           var ws = idx.wrapSeal !== -1 ? String(getSafeVal(row, idx.wrapSeal) || "").trim() : "";
           if (ws) return ws;
-          var noteIdx = findHIdx_Core(h, "NOTE");
-          var noteText = noteIdx !== -1 ? String(getSafeVal(row, noteIdx) || "").trim() : "";
+          var noteText = idx.note !== -1 ? String(getSafeVal(row, idx.note) || "").trim() : "";
           return noteText.indexOf("膠膜") !== -1 ? "封" : "";
         })(),
         finishTime: fTime
       });
     }
 
+    // V41.28: 樣品 / 退貨 判定 (供戰情室標籤)
+    try {
+      _annotateDocTypes_(tasks.map(function (t) {
+        var r0 = tData[t.rowIndex - 1] || [];
+        t.note = idx.note !== -1 ? String(getSafeVal(r0, idx.note) || "") : "";
+        t.rawCustomer = String(getSafeVal(r0, idx.cust) || "");
+        t.docTypeManual = idx.docTypeManual !== -1 ? String(getSafeVal(r0, idx.docTypeManual) || "").trim() : "";
+        return t;
+      }));
+      tasks.forEach(function (t) { delete t.rawCustomer; delete t.note; }); // 不回傳前端，減少 payload
+    } catch (dtErr) { console.log("docType 判定失敗: " + dtErr.message); }
+
     // V34.9: 讀取里程紀錄 (加總本日總里程)
     var totalKM_Val = 0;
+    var carStartTimes = {};
     var schSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
-    if (schSheet) {
-      var schD = schSheet.getRange(Math.max(1, schSheet.getLastRow() - 50), 1, Math.min(schSheet.getLastRow(), 51), schSheet.getLastColumn()).getValues();
-      var schH = schD[0].map(function (v) { return String(v).trim(); });
-      var colST = schH.indexOf("日期");
+    if (schSheet && schSheet.getLastRow() >= 2) {
+      // V41 Fix: 舊版把「最後 51 列」的第一列當標題，行程表一超過 51 列標題就對不到，總里程/上班時間永遠是 0/空白；
+      // 且 colCar 從未在本函式宣告 (ReferenceError)。改為：標題列單獨讀，資料只讀最後 50 列。
+      var schLastRow = schSheet.getLastRow(), schLastCol = schSheet.getLastColumn();
+      var schH = schSheet.getRange(1, 1, 1, schLastCol).getValues()[0].map(function (v) { return String(v).trim(); });
+      var schStart = Math.max(2, schLastRow - 49);
+      var schD = schSheet.getRange(schStart, 1, schLastRow - schStart + 1, schLastCol).getValues();
+      var colST = schH.indexOf("日期"); if (colST === -1) colST = 0;
+      var colSchCar = -1;
+      ["車牌", "車牌號碼", "車輛"].forEach(function (n) { if (colSchCar === -1 && schH.indexOf(n) !== -1) colSchCar = schH.indexOf(n); });
+      if (colSchCar === -1) colSchCar = 1;
       var colKM = -1;
-      ["當日總里程", "總里程", "單日里程"].forEach(function (n) { if (schH.indexOf(n) !== -1) colKM = schH.indexOf(n); });
-
+      ["當日總里程", "總里程", "單日里程"].forEach(function (n) { if (colKM === -1 && schH.indexOf(n) !== -1) colKM = schH.indexOf(n); });
       var colTimeIn = schH.indexOf("上班時間");
-      var carStartTimes = {};
 
-      for (var s = 1; s < schD.length; s++) {
-        var sDate = (schD[s][colST] instanceof Date) ? Utilities.formatDate(schD[s][colST], "GMT+8", "yyyy/MM/dd") : String(schD[s][colST]).substring(0, 10);
+      for (var s = 0; s < schD.length; s++) {
+        var sDate = normalizeDate_Core(schD[s][colST]);
         if (sDate === todayStr) {
           if (colKM !== -1) totalKM_Val += (parseFloat(schD[s][colKM]) || 0);
           if (colTimeIn !== -1 && schD[s][colTimeIn]) {
-            var cCar = cleanPlate_Core(schD[s][colCar]);
+            var cCar = cleanPlate_Core(schD[s][colSchCar]);
             carStartTimes[cCar] = String(schD[s][colTimeIn]);
           }
         }
@@ -584,31 +713,70 @@ function getWarRoomData_V11(force, targetDateStr) {
 
     const result = { success: true, tasks: tasks, vehicles: vehicles, vehiclePositions: vPos, kpi: stats, branchSalesMap: salesMap, ver: "V2633.4.5" };
     // 存進快取，有效 5 分鐘 (300秒)，使用帶日期的 key 確保換日後自動失效
-    cache.put(cacheKey, JSON.stringify(result), 300);
+    // V41: CacheService 單值上限 100KB，超過會 throw；超過就不快取，不能讓整個戰情室因此失敗
+    try {
+      var warJson = JSON.stringify(result);
+      if (warJson.length < 95000) cache.put(cacheKey, warJson, 300);
+      else console.log("戰情室資料 " + warJson.length + " 字元，超過快取上限，略過快取");
+    } catch (cacheErr) { console.log("戰情室快取寫入失敗: " + cacheErr.message); }
     return result;
   } catch (e) { return { success: false, error: e.message }; }
 }
 
 /** V5.1.12: 分析儀表板核心數據抓取 (近 60 天) */
-function getDashboardData(force) {
+/** V41.13: 清除分析中心分段快取 */
+function _clearDashboardCache_() {
+  try {
+    var c = CacheService.getScriptCache();
+    var meta = c.get('dashboard_stats_v3_meta');
+    var cnt = meta ? (JSON.parse(meta).count || 0) : 0;
+    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v3_' + i);
+    c.remove('dashboard_stats_v3_meta');
+  } catch (e) { }
+}
+
+function getDashboardData(force, token) {
+  _requireAdmin_(token);
   const cache = CacheService.getScriptCache();
+  // V41.13: 改用分段快取 (原本 95KB 上限幾乎每次都超過 → 等於沒有快取，每次開頁都重讀 3 張表)
+  const DASH_CACHE_KEY = 'dashboard_stats_v3';
   if (!force) {
-    const cached = cache.get('dashboard_stats_v2');
-    if (cached) return JSON.parse(cached);
+    const cachedObj = readChunkedCacheJson_V11(cache, DASH_CACHE_KEY);
+    if (cachedObj && cachedObj.success) return cachedObj;
   }
 
   try {
     const ss = getSS_V11();
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - 60);
+    cutoffDate.setDate(cutoffDate.getDate() - 186); // V41.17: 涵蓋「近半年」
     const cutoffStr = Utilities.formatDate(cutoffDate, "GMT+8", "yyyy/MM/dd");
 
     // 1. orders: 派送清單
-    const tSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
-    if (!tSheet) return { orders: [], schedule: [], error: "找不到派送清單分頁" };
-    
-    const tData = tSheet.getDataRange().getValues();
-    const tH = tData[0].map(v => String(v).trim());
+    // 1. orders: 派送清單 (合併載入主表與封存區，以取得完整對帳歷史)
+    var sheetsToLoad = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"];
+    var allRows = [];
+    var tH = null;
+
+    for (var sIdxVal = 0; sIdxVal < sheetsToLoad.length; sIdxVal++) {
+      var curSheet = ss.getSheetByName(sheetsToLoad[sIdxVal]);
+      if (!curSheet) continue;
+      var curData = curSheet.getDataRange().getValues();
+      if (curData.length < 2) continue;
+      
+      if (!tH) {
+        tH = curData[0].map(v => String(v).trim());
+      }
+      
+      // 跳過首行標頭，將資料列加入 allRows
+      for (var rIdx = 1; rIdx < curData.length; rIdx++) {
+        allRows.push(curData[rIdx]);
+      }
+    }
+
+    if (!tH || allRows.length === 0) {
+      return { orders: [], schedule: [], error: "找不到派送清單及封存區分頁" };
+    }
+
     const tIdx = {
       date: findHIdx_Core(tH, "DATE"),
       branch: findHIdx_Core(tH, "BRANCH"),
@@ -620,53 +788,174 @@ function getDashboardData(force) {
       finish: findHIdx_Core(tH, "FINISH_TIME"),
       archived: findHIdx_Core(tH, "ARCHIVE"),
       shippingType: findHIdx_Core(tH, "SHIPPING_TYPE"),
-      wrapSeal: findHIdx_Core(tH, ["封膠膜", "膠膜", "封膜"])
+      wrapSeal: findHIdx_Core(tH, ["封膠膜", "膠膜", "封膜"]),
+      address: findHIdx_Core(tH, "ADDRESS"),
+      whStatus: tH.indexOf("驗貨狀態"),
+      returnReason: findHIdx_Core(tH, "RETURN_REASON"),
+      specifiedArrive: tH.indexOf("指定到貨時間"),
+      
+      // 運費新欄位索引
+      freightEst: tH.indexOf("估算運費"),
+      freightDetail: tH.indexOf("運費計算明細"),
+      adjustedFee: tH.indexOf("調整後運費"),
+      carrierFlag: tH.indexOf("貨運行標示"),
+      carrierDiscount: tH.indexOf("貨運行折扣"),
+      isRemote: tH.indexOf("是否偏遠"),
+      isTimedDeliver: tH.indexOf("指定送貨"),
+      isTimedReturn: tH.indexOf("指定退貨"),
+      isOvertimeWait: tH.indexOf("等候超時"),
+      isHeavyCarry: tH.indexOf("加倍搬運"),
+      id: findHIdx_Core(tH, "單號"),
+      thumbnail: findHIdx_Core(tH, "THUMBNAIL"),
+      docTypeManual: tH.indexOf("單據類型(人工)")
     };
 
+    // V8.6: 品項欄位動態定位 (品項1編號~品項10編號 + 數量)
+    var itemCodeIdx = [], itemQtyIdx = [];
+    for (var it = 1; it <= 10; it++) {
+      itemCodeIdx.push(tH.indexOf("品項" + it + "編號"));
+      itemQtyIdx.push(tH.indexOf("品項" + it + "數量"));
+    }
+    var freightRatesInfo = loadFreightRates_V11();
+    var noteIdx = findHIdx_Core(tH, "NOTE"); // V41: 提到迴圈外
+
     const orders = [];
-    // 從後往前掃，提升大數據下的效能 (假設大致按日期排序)
-    for (let i = tData.length - 1; i >= 1; i--) {
-      const row = tData[i];
+    // 從後往前掃，提升大數據下的效能
+    for (let i = allRows.length - 1; i >= 0; i--) {
+      const row = allRows[i];
       const dVal = row[tIdx.date];
       if (!dVal) continue;
       
       const d = (dVal instanceof Date) ? dVal : new Date(dVal);
       if (!d || isNaN(d.getTime())) continue;
       if (d < cutoffDate) {
-         // 如果日期已經小於 60 天且這行不是空的，考慮是否提早結束循環
-         // 為了保險 (可能有無序插入)，我們多掃 200 行
-         if (orders.length > 50 && i < tData.length - orders.length - 200) break;
          continue;
       }
 
       const arch = String(getSafeVal(row, tIdx.archived));
       if (arch === "是" || arch === "手動刪除") continue;
 
+      var noteText = noteIdx !== -1 ? String(getSafeVal(row, noteIdx) || "").trim() : "";
+      var slotText = String(getSafeVal(row, tIdx.slot) || "").trim();
+      var shippingTypeVal = tIdx.shippingType !== -1 ? String(getSafeVal(row, tIdx.shippingType) || "").trim() : "";
+      var statusVal = String(getSafeVal(row, tIdx.status) || "").trim();
+      var addressVal = String(getSafeVal(row, tIdx.address) || "").trim();
+      var weightVal = parseFloat(getSafeVal(row, tIdx.weight)) || 0;
+
+      // 讀取/計算運費
+      var fEst = tIdx.freightEst !== -1 ? parseFloat(getSafeVal(row, tIdx.freightEst)) || 0 : 0;
+      var fDetail = tIdx.freightDetail !== -1 ? String(getSafeVal(row, tIdx.freightDetail) || "").trim() : "";
+      
+      var isRemoteVal = tIdx.isRemote !== -1 ? String(getSafeVal(row, tIdx.isRemote) || "").trim() : "";
+      var isTimedDeliver = tIdx.isTimedDeliver !== -1 ? String(getSafeVal(row, tIdx.isTimedDeliver) || "").trim() : "";
+      var isTimedReturn = tIdx.isTimedReturn !== -1 ? String(getSafeVal(row, tIdx.isTimedReturn) || "").trim() : "";
+      var isOvertimeWait = tIdx.isOvertimeWait !== -1 ? String(getSafeVal(row, tIdx.isOvertimeWait) || "").trim() : "";
+      var isHeavyCarry = tIdx.isHeavyCarry !== -1 ? String(getSafeVal(row, tIdx.isHeavyCarry) || "").trim() : "";
+
+      // 預設規則 (若儲存格空白)
+      if (!isTimedDeliver) {
+        // 如果「指定送貨」儲存格為空：
+        // 1. 若「指定到貨時間」欄位有值（表示OCR匯入時小姐有勾選指定時間並選擇或手動輸入了時間）
+        // 2. 或「備註」中包含「限時」或「指定」時
+        // 以上任一成立，則預設為「是」；否則預設為「否」（排除普通的AM/PM時段全量誤判）
+        var specifiedArriveVal = tIdx.specifiedArrive !== -1 ? String(getSafeVal(row, tIdx.specifiedArrive) || "").trim() : "";
+        isTimedDeliver = (specifiedArriveVal || noteText.indexOf("限時") !== -1 || noteText.indexOf("指定") !== -1) ? "是" : "否";
+      }
+      if (!isTimedReturn) {
+        // 退貨單且備註中指定時間，才預設為是
+        isTimedReturn = (statusVal.indexOf("退貨") !== -1 && noteText.indexOf("指定") !== -1) ? "是" : "否";
+      }
+      if (!isOvertimeWait) {
+        isOvertimeWait = (noteText.indexOf("等候") !== -1 || noteText.indexOf("等待") !== -1) ? "是" : "否";
+      }
+      if (!isHeavyCarry) {
+        isHeavyCarry = (noteText.indexOf("上樓") !== -1 || noteText.indexOf("搬運") !== -1) ? "是" : "否";
+      }
+
+      var carrierFlagVal = tIdx.carrierFlag !== -1 ? String(getSafeVal(row, tIdx.carrierFlag) || "").trim() : "";
+      var carrierDiscountVal = tIdx.carrierDiscount !== -1 ? parseFloat(getSafeVal(row, tIdx.carrierDiscount)) : 1.0;
+      if (isNaN(carrierDiscountVal) || carrierDiscountVal <= 0) {
+        carrierDiscountVal = 1.0;
+      } else if (carrierDiscountVal > 1.0) {
+        carrierDiscountVal = carrierDiscountVal / 100.0;
+      }
+
+      var calcResult = FreightEngine.calculateFreight(addressVal, weightVal, {
+        isTimedDeliver: isTimedDeliver,
+        isTimedReturn: isTimedReturn,
+        isOvertimeWait: isOvertimeWait,
+        isHeavyCarry: isHeavyCarry,
+        carrierFlag: carrierFlagVal,
+        carrierDiscount: carrierDiscountVal
+      });
+
+      // 如果試算表已經存有系統估計運費且不是 0，以試算表儲存的為優先；否則以計算引擎動態算的為準
+      var finalEst = fEst > 0 ? fEst : calcResult.estFee;
+      var finalDetail = fDetail ? fDetail : calcResult.detail;
+      var finalRemote = isRemoteVal ? isRemoteVal : calcResult.isRemote;
+
+      var adjFee = tIdx.adjustedFee !== -1 ? parseFloat(getSafeVal(row, tIdx.adjustedFee)) || 0 : 0;
+
       orders.push({
+        id: tIdx.id !== -1 ? String(getSafeVal(row, tIdx.id)) : "",
         date: normalizeDate_Core(dVal),
         branch: String(getSafeVal(row, tIdx.branch)),
         customer: cleanCustName_V11(getSafeVal(row, tIdx.cust)),
-        weight: parseFloat(getSafeVal(row, tIdx.weight)) || 0,
-        slot: String(getSafeVal(row, tIdx.slot)),
+        weight: weightVal,
+        slot: slotText,
         plate: String(getSafeVal(row, tIdx.plate)),
-        status: String(getSafeVal(row, tIdx.status)),
+        status: statusVal,
         finishTime: String(getSafeVal(row, tIdx.finish)),
-        shippingType: tIdx.shippingType !== -1 ? String(getSafeVal(row, tIdx.shippingType) || "").trim() : "",
+        shippingType: shippingTypeVal,
+        address: addressVal,
+        whStatus: tIdx.whStatus !== -1 ? String(getSafeVal(row, tIdx.whStatus) || "").trim() : "",
+        returnReason: tIdx.returnReason !== -1 ? String(getSafeVal(row, tIdx.returnReason) || "").trim() : "",
+        note: noteText,
+        rawCustomer: String(getSafeVal(row, tIdx.cust) || ""),
+        thumbnail: tIdx.thumbnail !== -1 ? String(getSafeVal(row, tIdx.thumbnail) || "") : "",
+        docTypeManual: tIdx.docTypeManual !== -1 ? String(getSafeVal(row, tIdx.docTypeManual) || "").trim() : "",
+        // V8.6: 品項陣列
+        items: (function () {
+          var list = [];
+          for (var ii = 0; ii < 10; ii++) {
+            var ci = itemCodeIdx[ii], qi = itemQtyIdx[ii];
+            var code = (ci !== -1 && ci < row.length) ? String(row[ci] || "").trim() : "";
+            var qty = (qi !== -1 && qi < row.length) ? String(row[qi] || "").trim() : "";
+            if (code) list.push({ code: code, qty: qty });
+          }
+          return list;
+        })(),
+        // 運費對帳屬性
+        isRemote: finalRemote,
+        estFee: finalEst,
+        detail: finalDetail,
+        adjustedFee: adjFee,
+        carrierFlag: carrierFlagVal,
+        carrierDiscount: carrierDiscountVal,
         wrapSeal: (function () {
           var ws = tIdx.wrapSeal !== -1 ? String(getSafeVal(row, tIdx.wrapSeal) || "").trim() : "";
           if (ws) return ws;
-          var noteIdx = findHIdx_Core(tH, "NOTE");
-          var noteText = noteIdx !== -1 ? String(getSafeVal(row, noteIdx) || "").trim() : "";
           return noteText.indexOf("膠膜") !== -1 ? "封" : "";
         })()
       });
     }
+
+    _annotateDocTypes_(orders); // V41.28: 樣品 / 退貨 / 銷貨
 
     // 2. schedule: 每日行程表
     const sSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     const schedule = [];
     if (sSheet) {
       const sData = sSheet.getDataRange().getValues();
+      // V41.13: 照片欄位可能是「📸 相片」富文本超連結 (forceUpdateAllScheduleTraces 轉的)，要用 RichText 取回網址
+      let sRich = null;
+      try { sRich = sSheet.getDataRange().getRichTextValues(); } catch (rtErr) { sRich = null; }
+      const linkOf = (r, c) => {
+        if (c < 0) return "";
+        try { const rt = sRich && sRich[r] && sRich[r][c]; const u = rt && rt.getLinkUrl ? rt.getLinkUrl() : ""; if (u) return u; } catch (e2) { }
+        const s = String(sData[r][c] || "").trim();
+        return s.indexOf("http") === 0 ? s : "";
+      };
       const sH = sData[0].map(v => String(v).trim());
       const findS = (names) => { for (let n of names) { let p = sH.indexOf(n); if (p !== -1) return p; } return -1; };
       
@@ -674,9 +963,21 @@ function getDashboardData(force) {
         date: sH.indexOf("日期"),
         plate: findS(["車牌", "車牌號碼", "車輛"]),
         totalKm: findS(["當日總里程", "總里程", "單日里程", "行駛里程"]),
+        startKm: findS(["起始里程", "起點里程"]),
+        endKm: findS(["結束里程", "終點里程"]),
         fuelAmt: findS(["加油金額", "油費金額", "油費"]),
-        fuelLit: findS(["加油公升數", "加油公升", "加油量", "公升數"])
+        fuelLit: findS(["加油公升數", "加油公升", "加油量", "公升數"]),
+        // V41.13: 司機行程記錄頁需要
+        driver: findS(["司機", "姓名", "人員", "駕駛"]),
+        timeIn: findS(["上班時間"]),
+        timeOut: findS(["下班時間"]),
+        photoExt: findS(["外觀照片"]),
+        photoInt: findS(["內裝照片"]),
+        photoFuel: findS(["加油發票照片", "發票照片", "加油發票"]),
+        trace: findS(["當日行程足跡", "行程足跡", "足跡"])
       };
+      const fmtT = (v) => { if (!v) return ""; if (v instanceof Date) return Utilities.formatDate(v, "GMT+8", "HH:mm"); const s = String(v).trim(); return s.length >= 5 && s.indexOf(':') !== -1 ? s.substring(0, 5) : s; };
+      const richLink = (v) => { const s = String(v || "").trim(); return s.indexOf("http") === 0 ? s : ""; };
 
       for (let i = sData.length - 1; i >= 1; i--) {
         const row = sData[i];
@@ -686,22 +987,313 @@ function getDashboardData(force) {
         if (!d || isNaN(d.getTime())) continue;
         if (d < cutoffDate) continue;
 
+        // V8.7: 里程異常值修正
+        // 單日里程 > 1000km 視為異常 (實務上貨車單日不超過 ~600km)
+        // 優先採用「結束里程 - 起始里程」重算；仍異常則整筆跳過，避免污染統計
+        var totalKmRaw = parseFloat(getSafeVal(row, sIdx.totalKm)) || 0;
+        if (totalKmRaw > 1000) {
+          var sKm = parseFloat(getSafeVal(row, sIdx.startKm)) || 0;
+          var eKm = parseFloat(getSafeVal(row, sIdx.endKm)) || 0;
+          var diffKm = (eKm > sKm && sKm > 0) ? (eKm - sKm) : 0;
+          if (diffKm > 0 && diffKm <= 1000) {
+            totalKmRaw = diffKm;
+          } else {
+            console.log("里程異常已跳過: " + normalizeDate_Core(dVal) + " " + String(getSafeVal(row, sIdx.plate)) + " 總里程=" + totalKmRaw);
+            continue;
+          }
+        }
+
         schedule.push({
           date: normalizeDate_Core(dVal),
           plate: String(getSafeVal(row, sIdx.plate)),
-          totalKm: parseFloat(getSafeVal(row, sIdx.totalKm)) || 0,
+          driver: String(getSafeVal(row, sIdx.driver) || ""),
+          totalKm: totalKmRaw,
+          startKm: parseFloat(getSafeVal(row, sIdx.startKm)) || 0,
+          endKm: parseFloat(getSafeVal(row, sIdx.endKm)) || 0,
           fuelAmt: parseFloat(getSafeVal(row, sIdx.fuelAmt)) || 0,
-          fuelLit: parseFloat(getSafeVal(row, sIdx.fuelLit)) || 0
+          fuelLit: parseFloat(getSafeVal(row, sIdx.fuelLit)) || 0,
+          timeIn: fmtT(getSafeVal(row, sIdx.timeIn)),
+          timeOut: fmtT(getSafeVal(row, sIdx.timeOut)),
+          photoExt: linkOf(i, sIdx.photoExt),
+          photoInt: linkOf(i, sIdx.photoInt),
+          photoFuel: linkOf(i, sIdx.photoFuel),
+          trace: String(getSafeVal(row, sIdx.trace) || "")
         });
       }
     }
 
-    const result = { success: true, orders: orders, schedule: schedule };
-    cache.put('dashboard_stats_v2', JSON.stringify(result), 300); // 快取 5 分鐘
+    var vehicleMap = {};
+    try { vehicleMap = getManagementData().vehicleMap || {}; } catch (vmErr) { }
+    const result = { success: true, orders: orders, schedule: schedule, freightRates: freightRatesInfo.rates, vehicleMap: vehicleMap, generatedAt: Date.now() };
+    writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, result, 600); // 10 分鐘；運費調整 / 申訴會清除
     return result;
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+/**
+ * V8.6: 建立/初始化「運費管理表」分頁（含基礎費率與附加費用）
+ * 由使用者於選單或測試執行一次，自動建分頁並填入費率。
+ */
+function setupFreightRateSheet_V11(e) {
+  _requireSystemContext_(e);
+  var ss = getSS_V11();
+  var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT);
+  if (!sheet) {
+    sheet = ss.insertSheet(V11_PROD_CONFIG.SHEET_FREIGHT);
+  }
+  sheet.clear();
+
+  // 1. 重量級距費率表
+  var baseWeightRows = [
+    ["重量上限(KG)", "基礎運費"],
+    [100, 200],
+    [300, 500],
+    [600, 800],
+    [1000, 1200],
+    [99999, 1800]
+  ];
+
+  // 2. 偏遠地區倍率
+  var remoteRows = [
+    ["偏遠地區關鍵字", "加乘倍率"],
+    ["宜蘭, 花蓮, 台東, 臺東, 屏東", 1.5],
+    ["基隆, 瑞芳, 新竹, 苗栗, 烏來, 坪林", 1.2]
+  ];
+
+  // 3. 其他附加服務費
+  var addonRows = [
+    ["附加項目", "費率/單價"],
+    ["指定時間送貨", 300],
+    ["指定時間退貨", 500],
+    ["等候超時費", 300],
+    ["加倍搬運費(每百公斤)", 100]
+  ];
+
+  sheet.getRange(1, 1, baseWeightRows.length, baseWeightRows[0].length).setValues(baseWeightRows);
+  sheet.getRange(1, 4, remoteRows.length, remoteRows[0].length).setValues(remoteRows);
+  sheet.getRange(1, 7, addonRows.length, addonRows[0].length).setValues(addonRows);
+
+  sheet.getRange("A1:B1").setBackground("#34495e").setFontColor("#ffffff").setFontWeight("bold");
+  sheet.getRange("D1:E1").setBackground("#27ae60").setFontColor("#ffffff").setFontWeight("bold");
+  sheet.getRange("G1:H1").setBackground("#d35400").setFontColor("#ffffff").setFontWeight("bold");
+  
+  sheet.autoResizeColumns(1, 8);
+  return "運費管理表已重新初始化";
+}
+
+/**
+ * V8.6: 讀取「運費管理表」的基礎費率與附加費用
+ * 回傳 { rates: [{minKg, maxKg, fee}], addons: {remoteMultiplier, timedDeliver, timedReturn, waitFee, heavyCarryPer100kg} }
+ */
+// ==========================================
+// V41.28: 單據類型判定 (樣品 / 退貨 / 銷貨)
+// 規則同「睡美人戰情室」isSampleRow，另加：退貨單不視為樣品
+//   同一單號的所有明細：任一列 類別含「退」 → 退貨
+//   否則 每一列都符合 (客戶編號結尾 -S/-S1 或 客戶名/品名/備註含關鍵字) 或 金額合計 = 0 → 樣品
+// ==========================================
+var SAMPLE_KEYWORD_RE = /樣品|陳列|贈|SAMPLE|送樣|扣帶/i;
+
+function _stripOrderSuffix_(id) {
+  return String(id || "").trim().toUpperCase().replace(/-[安高漢喜]$/, '').replace(/-[0-9]+$/, '');
+}
+
+var SALES_DOC_CACHE_SHEET = "單據類型快取";
+
+/**
+ * 單號 → {t: 類型, a: 金額} 對照。讀取順序：
+ *   1. CacheService (6 小時)
+ *   2. 「單據類型快取」分頁 (由 refreshSalesDocTypes_V41 每 2 小時排程寫入，持久)
+ *   3. 都沒有才現場讀該分公司銷售報表 (慢，約 2 秒)
+ */
+function _loadSalesDocTypeMap_(branch) {
+  var cfg = V11_PROD_CONFIG.SALES_REPORT[branch];
+  if (!cfg) return null;
+  var cache = CacheService.getScriptCache();
+  var key = 'salesdoc_' + branch + '_v1';
+  var hit = readChunkedCacheJson_V11(cache, key);
+  if (hit) return hit;
+  var fromSheet = _readSalesDocCacheSheet_(branch);
+  if (fromSheet) { writeChunkedCacheJson_V11(cache, key, fromSheet, 21600); return fromSheet; }
+  return _buildSalesDocTypeMapLive_(branch, cache, key);
+}
+
+function _readSalesDocCacheSheet_(branch) {
+  try {
+    var sheet = getSS_V11().getSheetByName(SALES_DOC_CACHE_SHEET);
+    if (!sheet || sheet.getLastRow() < 2) return null;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+    var map = {}, n = 0;
+    rows.forEach(function (r) { if (String(r[0]) === branch && r[1] !== "") { map[String(r[1])] = { t: String(r[2]), a: Number(r[3]) || 0 }; n++; } });
+    return n ? map : null;
+  } catch (e) { return null; }
+}
+
+/** [排程 / 選單] 重算三家報表的單據類型並寫入「單據類型快取」分頁，同時暖 CacheService */
+function refreshSalesDocTypes_V41(e) {
+  _requireSystemContext_(e);
+  var ss = getSS_V11();
+  var sheet = ss.getSheetByName(SALES_DOC_CACHE_SHEET) || ss.insertSheet(SALES_DOC_CACHE_SHEET);
+  var out = [["分公司", "單號", "類型", "金額", "更新時間"]];
+  var now = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd HH:mm");
+  var cache = CacheService.getScriptCache();
+  var summary = [];
+  Object.keys(V11_PROD_CONFIG.SALES_REPORT).forEach(function (branch) {
+    var map = _buildSalesDocTypeMapLive_(branch, cache, 'salesdoc_' + branch + '_v1');
+    if (!map) { summary.push(branch + ": 讀取失敗"); return; }
+    var c = { 樣品: 0, 退貨: 0, 銷貨: 0 };
+    Object.keys(map).forEach(function (no) { out.push([branch, no, map[no].t, map[no].a, now]); c[map[no].t] = (c[map[no].t] || 0) + 1; });
+    summary.push(branch + ": 樣品 " + c["樣品"] + " / 退貨 " + c["退貨"] + " / 銷貨 " + c["銷貨"]);
+  });
+  sheet.clearContents();
+  sheet.getRange(1, 1, out.length, 5).setValues(out);
+  sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#34495e").setFontColor("#ffffff");
+  _clearDashboardCache_();
+  var msg = "✅ 單據類型快取已更新 (" + (out.length - 1) + " 筆)\n" + summary.join("\n");
+  console.log(msg);
+  return msg;
+}
+
+/** [編輯器 / 選單] 建立每 2 小時的排程 */
+function setupSalesDocTypeTrigger_V41(e) {
+  _requireSystemContext_(e);
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'refreshSalesDocTypes_V41') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('refreshSalesDocTypes_V41').timeBased().everyHours(2).create();
+  var first = refreshSalesDocTypes_V41();
+  return "✅ 已建立每 2 小時更新單據類型的排程，並先跑了一次：\n" + first;
+}
+
+function _buildSalesDocTypeMapLive_(branch, cache, key) {
+  var cfg = V11_PROD_CONFIG.SALES_REPORT[branch];
+  if (!cfg) return null;
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.openById(cfg.ssId);
+    var sheet = ss.getSheetByName(cfg.sheet) || ss.getSheets().filter(function (sh) { return /報表/.test(sh.getName()); })[0];
+    if (!sheet) return null;
+    var lastRow = sheet.getLastRow(), lastCol = Math.min(sheet.getLastColumn(), 18);
+    var h = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (v) { return String(v).trim(); });
+    var idx = {
+      type: h.indexOf("類別"), code: h.indexOf("客戶編號"), cust: h.indexOf("客戶名稱"), no: h.indexOf("單號編號"),
+      prod: h.indexOf("產品名稱"), amt: h.indexOf("金額"), note: h.indexOf("產品備註")
+    };
+    if (idx.no === -1 || idx.amt === -1) return null;
+    var start = Math.max(2, lastRow - 6000);
+    var rows = sheet.getRange(start, 1, lastRow - start + 1, lastCol).getValues();
+    var agg = {};
+    rows.forEach(function (r) {
+      var no = String(r[idx.no] || "").trim();
+      if (!no) return;
+      var a = agg[no] || (agg[no] = { ret: false, allSample: true, amount: 0, n: 0 });
+      a.n++;
+      if (idx.type !== -1 && String(r[idx.type] || "").indexOf("退") !== -1) a.ret = true;
+      var code = idx.code !== -1 ? String(r[idx.code] || "").trim().toUpperCase() : "";
+      var text = [idx.cust !== -1 ? r[idx.cust] : "", idx.prod !== -1 ? r[idx.prod] : "", idx.note !== -1 ? r[idx.note] : ""].join(" ");
+      var lineSample = /-S1?$/.test(code) || SAMPLE_KEYWORD_RE.test(text);
+      if (!lineSample) a.allSample = false;
+      var amt = parseFloat(String(r[idx.amt] === undefined || r[idx.amt] === null ? "" : r[idx.amt]).replace(/,/g, ""));
+      if (!isNaN(amt)) a.amount += amt;
+    });
+    Object.keys(agg).forEach(function (no) {
+      var a = agg[no];
+      var type = a.ret ? "退貨" : ((a.allSample || Math.round(a.amount) === 0) ? "樣品" : "銷貨");
+      map[no] = { t: type, a: Math.round(a.amount) };
+    });
+    writeChunkedCacheJson_V11(cache, key, map, 21600);
+  } catch (e) {
+    console.log("讀取 " + branch + " 銷售報表失敗: " + e.message);
+    return null;
+  }
+  return map;
+}
+
+/** 單筆判定：優先查該分公司銷售報表；查不到 (或漢樺) 就看派送清單上的客戶名 / 備註關鍵字 */
+function _classifyDocType_(branch, orderId, customer, note, shippingType, mapCache) {
+  var b = String(branch || "").trim();
+  var st = String(shippingType || "");
+  if (st.indexOf("退") !== -1) return "退貨";
+  var key = Object.keys(V11_PROD_CONFIG.SALES_REPORT).filter(function (k) { return b.indexOf(k) !== -1; })[0];
+  if (key) {
+    if (!(key in mapCache)) mapCache[key] = _loadSalesDocTypeMap_(key);
+    var m = mapCache[key];
+    var hit = m && m[_stripOrderSuffix_(orderId)];
+    if (hit) return hit.t;
+  }
+  if (SAMPLE_KEYWORD_RE.test(String(customer || "") + " " + String(note || ""))) return "樣品";
+  return "銷貨";
+}
+
+/** 地址是否為「送回公司 / 倉庫」 */
+function _isHomeAddress_(addr) {
+  var a = String(addr || "").replace(/\s/g, "");
+  if (!a) return false;
+  return V11_PROD_CONFIG.HOME_ADDR_KEYWORDS.some(function (k) { return a.indexOf(k) !== -1; });
+}
+
+/**
+ * 對一批 {branch, id, customer, note, shippingType, address} 物件填入：
+ *   docType   樣品 / 退貨 / 銷貨
+ *   sampleTo  'home' (送回公司，不計單不計費) | 'out' (送去貨運行/加工廠/客戶，照常計費) | ''
+ *   isSample  只有「樣品且送回公司」才為 true → 統計預設排除的就是這種
+ */
+function _annotateDocTypes_(list) {
+  var mapCache = {};
+  (list || []).forEach(function (o) {
+    try {
+      var manual = String(o.docTypeManual || "").trim();
+      o.__manualSampleTo = '';
+      if (manual === "樣品收費") { o.docType = "樣品"; o.__manualSampleTo = 'out'; }
+      else if (manual === "樣品免費") { o.docType = "樣品"; o.__manualSampleTo = 'home'; }
+      else if (manual === "樣品" || manual === "銷貨" || manual === "退貨") {
+        o.docType = manual; // 人工判定永遠優先於規則
+      } else {
+        // 客戶名用原始值 (cleanCustName_V11 會把「-樣品」之類的後綴切掉)
+        o.docType = _classifyDocType_(o.branch, o.id, o.rawCustomer || o.customer, o.note, o.shippingType, mapCache);
+      }
+    } catch (e) { o.docType = "銷貨"; }
+    if (o.docType === "樣品") {
+      o.sampleTo = o.__manualSampleTo || (_isHomeAddress_(o.address) ? 'home' : 'out');
+      o.isSample = (o.sampleTo === 'home');
+    } else {
+      o.sampleTo = '';
+      o.isSample = false;
+    }
+  });
+  return list;
+}
+
+function loadFreightRates_V11() {
+  // V41: 舊版用正則找「100-300」區間，但 setupFreightRateSheet_V11 寫入的是單一「重量上限」，兩者永遠對不上 → rates 恆為 []。
+  // 改為直接沿用 FreightEngine 解析好的級距，轉成 {minKg, maxKg, fee} 供前端顯示。
+  var result = { rates: [], addons: {} };
+  try {
+    var r = (typeof FreightEngine !== 'undefined' && FreightEngine.loadRates) ? FreightEngine.loadRates() : null;
+    if (!r) return result;
+    var prev = 0;
+    (r.weightSlabs || []).forEach(function (s) {
+      result.rates.push({ minKg: prev, maxKg: s.maxKg, fee: s.fee });
+      prev = s.maxKg + 1;
+    });
+    result.addons = r.addonFees || {};
+  } catch (e) {
+    console.log("運費表讀取失敗: " + e.message);
+  }
+  return result;
+}
+
+/**
+ * V8.6: 依重量計算基礎運費
+ */
+function calcFreightBaseFee_V11(rates, weightKg) {
+  if (!rates || !rates.length) return 0;
+  var w = parseFloat(weightKg) || 0;
+  for (var i = 0; i < rates.length; i++) {
+    var r = rates[i];
+    if (w >= r.minKg && w <= r.maxKg) return r.fee;
+  }
+  // 超過最大級距：以最後一級的費率當作起價
+  return rates[rates.length - 1].fee;
 }
 
 /** V11.12: 客戶名稱智慧清洗邏輯 */
@@ -740,10 +1332,116 @@ function cleanCustName_V11(name) {
   return n.trim();
 }
 
+/** V38.x: 高雅瓷業務 LINE ID 對照（讀取「系統設定」分頁的 姓名/稱職 + LINEID 欄） */
+function _buildGaoYaCiSalesLineIdMap_V11() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('gyc_sales_lineid_map');
+  if (cached) return JSON.parse(cached);
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.GAOYACI_SS_ID);
+    var sheet = ss.getSheetByName("系統設定");
+    if (!sheet) return map;
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return map;
+    var headers = data[0].map(function(v) { return String(v).trim(); });
+    var idxName = headers.indexOf("姓名/稱職");
+    var idxLine = headers.indexOf("LINEID");
+    if (idxName === -1 || idxLine === -1) return map;
+    for (var i = 1; i < data.length; i++) {
+      var name = String(data[i][idxName] || "").trim();
+      var lineId = String(data[i][idxLine] || "").trim();
+      if (!name || !lineId) continue;
+      if (["高弘治", "謝博皓", "陳勁多", "潘右森"].indexOf(name) === -1) continue;
+      map[name] = lineId;
+    }
+    cache.put('gyc_sales_lineid_map', JSON.stringify(map), 300);
+  } catch (e) {
+    console.error("讀取系統設定業務 LINEID 失敗: " + e.message);
+  }
+  return map;
+}
+
+/** V38.x: 高雅瓷 客戶短名 → 負責業務 對照（讀取「業務分區」分頁） */
+function _buildGaoYaCiCustomerSalesMap_V11() {
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('gyc_cust_sales_map');
+  if (cached) return JSON.parse(cached);
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.GAOYACI_SS_ID);
+    var sheet = ss.getSheetByName("業務分區");
+    if (!sheet) return map;
+    var data = sheet.getDataRange().getValues();
+    if (data.length < 2) return map;
+    var headers = data[0].map(function(v) { return String(v).trim(); });
+    var idxCust = headers.indexOf("客戶");
+    var idxSales = headers.indexOf("負責業務");
+    if (idxCust === -1 || idxSales === -1) return map;
+    for (var i = 1; i < data.length; i++) {
+      var cust = String(data[i][idxCust] || "").trim();
+      var sales = String(data[i][idxSales] || "").trim();
+      if (!cust || !sales) continue;
+      var key = cleanCustName_V11(cust);
+      if (key) map[key] = sales;
+    }
+    cache.put('gyc_cust_sales_map', JSON.stringify(map), 300);
+  } catch (e) {
+    console.error("讀取業務分區失敗: " + e.message);
+  }
+  return map;
+}
+
+/** V38.x: 高雅瓷 配送完成 → LINE 個別通知負責業務（無聲推播，含司機簽收卡片 JPG） */
+function notifySalesForDelivery_V11(report, driverName, timeStr, photoId) {
+  try {
+    _requireCtx_();
+    // 收退貨單（客戶名含「收退」或 type 為收貨/退貨）不通知業務
+    var custRaw = String(report.customer || "");
+    var typeRaw = String(report.type || "");
+    if (custRaw.indexOf("收退") !== -1 || custRaw.indexOf("退貨") !== -1 || typeRaw === "收貨" || typeRaw === "退貨") return;
+
+    var custKey = cleanCustName_V11(custRaw);
+    if (!custKey) return;
+    var custMap = _buildGaoYaCiCustomerSalesMap_V11();
+    var salesName = custMap[custKey] || "";
+    if (!salesName) return;
+    var lineMap = _buildGaoYaCiSalesLineIdMap_V11();
+    var lineId = lineMap[salesName] || "";
+    if (!lineId) return;
+
+    // 只推司機生成的簽收卡片 JPG 一張（省 LINE push 額度，不附加文字訊息）
+    // 用 Google Drive lh3 直連網址（無 302 跳轉，LINE 才收得到）
+    if (!photoId) return;
+    pushLineMessageToId_V11(lineId, {
+      type: "image",
+      originalContentUrl: "https://lh3.googleusercontent.com/d/" + photoId,
+      previewImageUrl: "https://lh3.googleusercontent.com/d/" + photoId
+    }, "高雅瓷");
+  } catch (e) {
+    console.error("notifySalesForDelivery_V11: " + e.message);
+  }
+}
+
 /** A 等級：新增/更新臨時任務 (唯一鍵：單號+分公司) */
-function adminAddTempTask(data) {
+/**
+ * V39.24: 手動建單表單即時預估運費用 (前端每次改地址/重量/指定時間就呼叫一次)
+ */
+function estimateFreight_V11(address, weight, isTimedDeliver) {
+  try {
+    if (typeof FreightEngine === 'undefined' || !FreightEngine.calculateFreight) {
+      return { estFee: 0, detail: "運費引擎未載入" };
+    }
+    return FreightEngine.calculateFreight(address || "", weight || 0, { isTimedDeliver: isTimedDeliver ? "是" : "否" });
+  } catch (e) {
+    return { estFee: 0, detail: "計算失敗: " + e.message };
+  }
+}
+
+function adminAddTempTask(data, token) {
   var lock = LockService.getScriptLock();
   try {
+    _requireAdmin_(token);
     if (!lock.tryLock(10000)) return "❌ 系統忙碌中 (單據寫入鎖定)，請稍後再試。";
     var ss = getSS_V11();
     
@@ -822,7 +1520,13 @@ function adminAddTempTask(data) {
       shippingType: findHIdx_Core(h, "SHIPPING_TYPE"),
       size: h.indexOf("尺寸"),
       boxes: h.indexOf("箱數"),
-      driverCol: h.indexOf("派遣司機") !== -1 ? h.indexOf("派遣司機") : h.indexOf("司機") // V13: 業務表欄位識別
+      specifiedArrive: h.indexOf("指定到貨時間"), // V40: 強制指定到貨時間
+      driverCol: h.indexOf("派遣司機") !== -1 ? h.indexOf("派遣司機") : h.indexOf("司機"), // V13: 業務表欄位識別
+      // V39.24: 運費對帳欄位 - 手動建單時也要跟 OCR 建單一樣計算並寫入，不然這裡新增的單完全沒有運費估算
+      isRemote: h.indexOf("是否偏遠"),
+      freightEst: h.indexOf("估算運費"),
+      freightDetail: h.indexOf("運費計算明細"),
+      isTimedDeliver: h.indexOf("指定送貨")
     };
 
     var rowValues = new Array(h.length).fill("");
@@ -841,6 +1545,19 @@ function adminAddTempTask(data) {
     setByCol(indices.boxes, data.boxes || "");
     setByCol(indices.note, data.notes || data.note || "");
     setByCol(indices.wrapSeal, normalizeWrapSeal_Core(data.wrapSeal || data.sealWrap || data.wrap || data.noteWrap));
+    // V40: 強制指定到貨時間
+    setByCol(indices.specifiedArrive, data.specifiedArrive || "");
+    // V39.24: 手動建單也計算運費，跟 OCR 建單同一套邏輯 (FreightEngine)
+    var isTimedDeliverFlag = data.specifiedArrive ? "是" : "否";
+    setByCol(indices.isTimedDeliver, isTimedDeliverFlag);
+    if (typeof FreightEngine !== 'undefined' && FreightEngine.calculateFreight) {
+      try {
+        var freightCalc = FreightEngine.calculateFreight(data.address || "", data.weight || 0, { isTimedDeliver: isTimedDeliverFlag });
+        setByCol(indices.isRemote, freightCalc.isRemote);
+        setByCol(indices.freightEst, freightCalc.estFee);
+        setByCol(indices.freightDetail, freightCalc.detail);
+      } catch (fe) { /* 運費計算失敗不影響任務建立 */ }
+    }
     // 時段
     var slotIdx = h.indexOf("時段");
     if (slotIdx !== -1) rowValues[slotIdx] = data.timeSlot || "";
@@ -870,7 +1587,7 @@ function adminAddTempTask(data) {
       }
     }
 
-    CacheService.getScriptCache().remove('war_room_data_v3'); // V2633.2: 清除戰情室快取
+    _clearWarRoomCache_(); // V2633.2: 清除戰情室快取
     if (targetRow !== -1) {
       sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
       return "✅ 單號 " + orderIdStr + " 已成功覆蓋更新";
@@ -890,6 +1607,15 @@ function adminAddTempTask(data) {
 }
 
 function ensureHeaders_V11(sheet) {
+  if (!sheet) {
+    try {
+      var ss = getSS_V11();
+      sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    } catch(e) {
+      console.error("ensureHeaders 找不到預設工作表: " + e.message);
+    }
+  }
+  if (!sheet) return;
   var lastCol = sheet.getLastColumn();
   if (sheet.getLastRow() === 0) return;
   if (lastCol < 1) lastCol = 1;
@@ -903,10 +1629,15 @@ function ensureHeaders_V11(sheet) {
     required = ["上班時間", "下班時間"];
   }
   
-  // V11.20: 強制包含退回原因欄位
+  // V11.20: 強制包含退回原因欄位與運費對帳欄位 (全新簡化後台，獨立指定時間判斷)
   if (sheetName === V11_PROD_CONFIG.SHEET_TASKS) {
     if (required.indexOf("退回原因") === -1) required.push("退回原因");
     if (required.indexOf("封膠膜") === -1) required.push("封膠膜");
+    if (required.indexOf("單據類型(人工)") === -1) required.push("單據類型(人工)");
+    var freightCols = ["是否偏遠", "估算運費", "運費計算明細", "調整後運費", "貨運行標示", "貨運行折扣", "指定送貨", "指定退貨", "等候超時", "加倍搬運"];
+    freightCols.forEach(function(col) {
+      if (required.indexOf(col) === -1) required.push(col);
+    });
   }
 
   var changed = false;
@@ -944,7 +1675,8 @@ function ensureHeaders_V11(sheet) {
  * 補上今天的日期，變成完整格式 (yyyy/MM/dd HH:mm:ss)。
  * 請在 Apps Script 編輯器中手動執行一次即可。
  */
-function fixVehicleStatusDates() {
+function fixVehicleStatusDates(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_STATUS);
   if (!sheet) { Logger.log("找不到車輛即時狀態表"); return; }
@@ -972,9 +1704,10 @@ function fixVehicleStatusDates() {
   Logger.log("✅ 完成，共修正 " + count + " 筆");
 }
 
-function adminDispatchTasks(tasksData, car) {
+function adminDispatchTasks(tasksData, car, token) {
   var lock = LockService.getScriptLock();
   try {
+    _requireAdmin_(token);
     if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
 
     var ss = getSS_V11(), sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
@@ -1014,6 +1747,17 @@ function adminDispatchTasks(tasksData, car) {
     var affectedCars = new Set([car]);
     var habitTasks = [];
     var habitDriverName = car;
+    var touchedRows = []; // V41.22: 只寫回這些列
+
+    // V41: 司機名稱查表只做一次 (舊版在每筆任務迴圈內整表讀取)
+    var drvNameOfCar = car;
+    if (typeof getDrivers_V3 === 'function') {
+      var drvRes = getDrivers_V3();
+      if (drvRes.success) {
+        var mDrv = drvRes.drivers.find(function (d) { return d.plate === car; });
+        if (mDrv) drvNameOfCar = mDrv.name;
+      }
+    }
 
     // 處理每一筆指派請求
     for (var j = 0; j < tasksData.length; j++) {
@@ -1043,17 +1787,11 @@ function adminDispatchTasks(tasksData, car) {
         data[targetRow - 1][idx.sq] = curMax;
         
         // ⚡️ 統一寫入派遣司機與車次
-        var drvName = car; // Fallback
-        if (typeof getDrivers_V3 === 'function') {
-           var drvRes = getDrivers_V3();
-           if(drvRes.success) {
-             var m = drvRes.drivers.find(d => d.plate === car);
-             if(m) drvName = m.name;
-           }
-        }
+        var drvName = drvNameOfCar;
         habitDriverName = drvName;
         if (idx.ds !== -1) data[targetRow - 1][idx.ds] = drvName;
         if (idx.dx !== -1) data[targetRow - 1][idx.dx] = "1";
+        touchedRows.push(targetRow);
 
         habitTasks.push({
           id: String(data[targetRow - 1][idx.id]),
@@ -1068,8 +1806,8 @@ function adminDispatchTasks(tasksData, car) {
       }
     }
 
-    // 執行一次性批次寫入 (提升 10 倍以上效能)
-    sheet.getRange(1, 1, data.length, h.length).setValues(data);
+    // V41.22: 只寫回改到的列與欄 (舊版整表覆蓋會蓋掉司機同時間的結案)
+    touchedRows.forEach(function (r) { _writeRowCells_(sheet, r, data[r - 1], [idx.v, idx.s, idx.sq, idx.ds, idx.dx]); });
 
     if (habitTasks.length > 0 && typeof logDispatchHabit_V8 === 'function') {
       var totalHabitWeight = habitTasks.reduce(function (sum, t) { return sum + (Number(t.weight) || 0); }, 0);
@@ -1084,7 +1822,7 @@ function adminDispatchTasks(tasksData, car) {
     }
 
     // 清除快取並強制同步受影響車輛的行程足跡
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     affectedCars.forEach(function (c) { if (c) updateScheduleTrace_V12(c); });
 
     return "✅ 成功完成 " + tasksData.length + " 筆任務指派 (" + car + ")";
@@ -1096,9 +1834,10 @@ function adminDispatchTasks(tasksData, car) {
 }
 
 /** V11.15: 單筆或批次取消指派 */
-function adminUnassignTask(tasksData) {
+function adminUnassignTask(tasksData, token) {
   var lock = LockService.getScriptLock();
   try {
+    _requireAdmin_(token);
     if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
 
     var ss = getSS_V11(), sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
@@ -1136,11 +1875,11 @@ function adminUnassignTask(tasksData) {
         data[targetRow - 1][idx.v] = "";
         data[targetRow - 1][idx.s] = "待指派";
         data[targetRow - 1][idx.sq] = "";
+        _writeRowCells_(sheet, targetRow, data[targetRow - 1], [idx.v, idx.s, idx.sq]); // V41.22
       }
     }
 
-    sheet.getRange(1, 1, data.length, h.length).setValues(data);
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     affectedCars.forEach(function (c) { if (c) updateScheduleTrace_V12(c); });
 
     return "✅ 單據已成功收回至待指派庫";
@@ -1149,8 +1888,9 @@ function adminUnassignTask(tasksData) {
 }
 
 /** V11.12.2: 清除所有訂單的司機指派，用於重新分配 */
-function adminResetAllAssignments() {
+function adminResetAllAssignments(token) {
   try {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     if (!sheet) throw new Error("找不到任務工作表");
@@ -1162,13 +1902,20 @@ function adminResetAllAssignments() {
     var colStatus = findAny(["狀態", "配送狀態"]);
     if (colCar < 0) throw new Error("找不到車牌欄 (已嘗試: 車牌/配送車輛/指派車輛)");
     var count = 0;
+    var carCol = [], seqCol = [];
     for (var i = 1; i < data.length; i++) {
       var status = colStatus >= 0 ? String(data[i][colStatus] || "") : "";
-      if (status === "已完成") continue;
-      sheet.getRange(i + 1, colCar + 1).setValue("");
-      if (colSeq >= 0) sheet.getRange(i + 1, colSeq + 1).setValue("");
-      count++;
+      var keep = (status === "已完成");
+      carCol.push([keep ? data[i][colCar] : ""]);
+      if (colSeq >= 0) seqCol.push([keep ? data[i][colSeq] : ""]);
+      if (!keep) count++;
     }
+    // V41: 一次寫回整欄 (舊版逐格 setValue，每筆兩次來回)
+    if (carCol.length) {
+      sheet.getRange(2, colCar + 1, carCol.length, 1).setValues(carCol);
+      if (colSeq >= 0) sheet.getRange(2, colSeq + 1, seqCol.length, 1).setValues(seqCol);
+    }
+    _clearWarRoomCache_();
     return "✅ 已清除 " + count + " 筆指派，可重新分配";
   } catch (e) { return "❌ 操作失敗: " + e.message; }
 }
@@ -1185,9 +1932,10 @@ function ensureKPISheet_V12() {
   return sheet;
 }
 
-function updateTaskOrder(tasks) {
+function updateTaskOrder(tasks, token) {
   var lock = LockService.getScriptLock();
   try {
+    var ctx = _requireDriver_(token);
     if (!lock.tryLock(15000)) throw new Error("系統忙碌中，更新失敗。");
 
     var ss = getSS_V11(), sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS), data = sheet.getDataRange().getValues();
@@ -1195,6 +1943,12 @@ function updateTaskOrder(tasks) {
     var idxId = h.indexOf("單號"), idxSq = h.indexOf("順序"), idxBr = h.indexOf("分公司"), idxV = h.indexOf("車牌");
 
     var affectedCars = new Set();
+    var carAllowMemo = {}; // V41.22: 同一車牌只查一次權限
+    var mayUse = function (car) {
+      var k = cleanPlate_Core(car);
+      if (!(k in carAllowMemo)) carAllowMemo[k] = _driverMayUseCar_(ctx, car);
+      return carAllowMemo[k];
+    };
 
     for (var j = 0; j < tasks.length; j++) {
       var target = tasks[j];
@@ -1206,15 +1960,16 @@ function updateTaskOrder(tasks) {
         var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
 
         if (rowId === targetId && (targetBr === "" || rowBr === targetBr)) {
+          if (ctx.role === 'driver' && idxV !== -1 && !mayUse(data[i][idxV])) break; // V41: 不可動他車的單
           data[i][idxSq] = j + 1;
+          _writeRowCells_(sheet, i + 1, data[i], [idxSq]); // V41.22: 只寫順序欄
           if (idxV !== -1) affectedCars.add(String(data[i][idxV]).trim());
           break;
         }
       }
     }
 
-    sheet.getRange(1, 1, data.length, h.length).setValues(data);
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     affectedCars.forEach(function (c) { if (c) updateScheduleTrace_V12(c); });
 
     return "✅ 順序已更新並同步足跡";
@@ -1225,11 +1980,12 @@ function updateTaskOrder(tasks) {
 /**
  * V11.18: 刪除訂單 (邏輯為封存，不上演物理刪除)
  */
-function adminDeleteTask_V11(taskId, branch) {
+function adminDeleteTask_V11(taskId, branch, token) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return "❌ 系統忙碌中，刪除失敗";
 
   try {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var data = sheet.getDataRange().getValues();
@@ -1258,11 +2014,11 @@ function adminDeleteTask_V11(taskId, branch) {
 
       if (isMatch) {
         sheet.getRange(i + 1, archiveIdx + 1).setValue("手動刪除"); // 以手動刪除作為封存標記，隱藏於畫面上
-        CacheService.getScriptCache().remove('war_room_data_v2'); // V36.3: 清除快取
+        _clearWarRoomCache_(); // V36.3: 清除快取
         return "✅ 任務 " + taskId + (branch ? " (" + branch + ")" : "") + " 已刪除";
       }
     }
-    CacheService.getScriptCache().remove('war_room_data_v2'); // V36.3: 清除快取
+    _clearWarRoomCache_(); // V36.3: 清除快取
     return "❌ 找不到指定單號" + (branch ? " (" + branch + ")" : "");
   } catch (e) {
     return "❌ 刪除失敗: " + e.message;
@@ -1277,17 +2033,14 @@ function adminDeleteTask_V11(taskId, branch) {
  * 加油登記 → 每日行程表 (加油金額/公升/照片)
  * 車輛保養 → 車輛保養工作表 (精確欄位對位)
  */
-// 一次性設定：跟「鈦傳速倉庫工作日誌」系統對接發車/收工自動打卡用的共用密鑰，兩邊要設成同一組值。
-// 在 Apps Script 編輯器手動執行一次即可，執行完之後這個函式跟這行密鑰就可以從原始碼刪掉。
-function tempSetWorklogSecret() {
-  PropertiesService.getScriptProperties().setProperty('WORKLOG_SERVICE_SECRET', 'b790128d25a9a674bf60d2ac9a0e266937c0ee269348bead');
-  Logger.log('已設定 WORKLOG_SERVICE_SECRET');
-}
+// WORKLOG_SERVICE_SECRET：與「鈦傳速倉庫工作日誌」對接的共用密鑰，請直接在「專案設定 → 指令碼屬性」設定，
+// 不要寫進原始碼（舊版曾把密鑰寫在這裡並推上公開 repo，該組密鑰已視為外洩，兩邊都必須換新）。
 
 // 請假按鈕用：拿司機姓名跟倉庫工作日誌系統換一條該司機的專屬連結（伺服器對伺服器呼叫，
 // 密鑰不會出現在前端程式碼或網路請求裡讓司機看到）
-function getLeaveLinkForDriver(driverName) {
+function getLeaveLinkForDriver(driverName, token) {
   try {
+    var ctx = _requireDriver_(token); if (ctx.role === 'driver') driverName = ctx.name; // 司機只能拿自己的連結
     var secret = PropertiesService.getScriptProperties().getProperty('WORKLOG_SERVICE_SECRET');
     if (!secret) return { success: false, error: '尚未設定密鑰，請聯絡主管' };
     var url = 'https://script.google.com/macros/s/AKfycbyFugaIiv_I5yTfj-AYwo6yEadPQLhKtmmb5MeIlQmeyB4iTYNdjZWpBH7ZIy1gDwSy/exec'
@@ -1303,6 +2056,7 @@ function getLeaveLinkForDriver(driverName) {
 
 function submitQuickReport(report) {
   try {
+    var ctx = _requireDriver_(report && report.token); if (!_driverMayUseCar_(ctx, report && report.car)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + (report && report.car));
     // V2633.1: 身分安全性核封 (V34.27: 已廢棄 token 驗證，改為全信任前端姓名配置)
     // const decoded = _verifyToken(report.token);
     if ((report.type === '上班打卡' || report.type === '下班打卡') && (!report.mileage || isNaN(Number(report.mileage)))) {
@@ -1387,7 +2141,7 @@ function submitQuickReport(report) {
       // V6.2: 如果是下班打卡，清除該車的「目前導航目標」
       if (report.type === '下班打卡') {
         try { logDeparture_V24(report.car, ""); } catch (e) { }
-        try { CacheService.getScriptCache().remove('war_room_data_v2'); } catch (e) { }
+        _clearWarRoomCache_();
       }
 
       // V35.5: 上下班打卡不再寫入送貨日誌，僅更新行程表時間
@@ -1433,6 +2187,7 @@ function submitQuickReport(report) {
       setLog("單號", report.orderId || "");
       setLog("客戶名稱", cleanCustName_V11(report.customer));
       setLog("送貨地址", "臨時派遣");
+      setLog("指定到貨時間", report.specifiedArrive || ""); // V40
       setLog("配送完成時間", timeStr);
       setLog("備註", report.note);
       setLog("貨物破損", "否");
@@ -1549,9 +2304,7 @@ function submitQuickReport(report) {
       mSheet.appendRow(newMaintRow);
     }
 
-    if (report.clientUUID) {
-      try { PropertiesService.getScriptProperties().setProperty(report.clientUUID, "1"); } catch (e) { }
-    }
+    _markUUIDDone_(report.clientUUID);
     return "✅ 「" + report.type + "」回報已送達！(當日資料已同步更新)";
   } catch (e) { return "❌ 提交失敗: " + e.message; }
 }
@@ -1559,8 +2312,9 @@ function submitQuickReport(report) {
 /**
  * V11.10 新增：檢查今日是否已上班打卡
  */
-function checkTodayAttendance(car) {
+function checkTodayAttendance(car, token) {
   try {
+    _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     var data = sheet.getDataRange().getValues();
@@ -1627,8 +2381,9 @@ function checkTodayAttendance(car) {
 }
 
 /** V35.9: 司機重新回報 (撤回結案) */
-function driverRedoTask(orderId, branch) {
+function driverRedoTask(orderId, branch, token) {
   try {
+    _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var data = sheet.getDataRange().getValues();
@@ -1640,7 +2395,7 @@ function driverRedoTask(orderId, branch) {
         sheet.getRange(i + 1, idxS + 1).setValue("配送中");
         var oldNote = String(data[i][idxN] || "");
         sheet.getRange(i + 1, idxN + 1).setValue(oldNote + " (撤回重報 " + Utilities.formatDate(new Date(), "GMT+8", "HH:mm") + ")");
-        CacheService.getScriptCache().remove('war_room_data_v2');
+        _clearWarRoomCache_();
         return { success: true, message: "✅ 已重設狀態，請點擊「拍照結案」重新回報。" };
       }
     }
@@ -1749,7 +2504,8 @@ function getLastMaintRecord_V11(car) {
 /**
  * 整合包：一次獲取上期里程資料與各零件上次保養日期
  */
-function getVehicleMaintContext_V11(car) {
+function getVehicleMaintContext_V11(car, token) {
+  _requireDriver_(token);
   var history = getMaintenanceHistory(car);
   var lastRecord = getLastMaintRecord_V11(car);
   return {
@@ -1761,8 +2517,9 @@ function getVehicleMaintContext_V11(car) {
 /**
  * V11.9 營運補強：抓取昨日最後里程
  */
-function getYesterdayMileage_V11p9(car) {
+function getYesterdayMileage_V11p9(car, token) {
   try {
+    _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     var data = sheet.getDataRange().getValues();
@@ -1872,9 +2629,10 @@ function getManagementData() {
         return { error: "⚠️ 系統設定錯誤：白名單缺少「Email帳號」或「姓名」欄位", vehicleMap: vMap, whiteList: [] };
       }
 
+      var exposeEmail = !!__AUTH_CTX__; // V41: 登入前 (司機選名畫面) 不回傳 email
       for (var j = 1; j < wData.length; j++) {
         var name = String(wData[j][cName] || "").trim();
-        var email = String(wData[j][cEmail] || "").trim().toLowerCase();
+        var email = exposeEmail ? String(wData[j][cEmail] || "").trim().toLowerCase() : "";
         if (name) {
           whiteList.push({
             name: name,
@@ -1899,6 +2657,7 @@ function getManagementData() {
 
 function submitFinalDelivery(report) {
   try {
+    var ctx = _requireDriver_(report && report.token); if (!_driverMayUseCar_(ctx, report && report.car)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + (report && report.car));
     var ss = getSS_V11(), now = new Date(), timeStr = Utilities.formatDate(now, "GMT+8", "yyyy/MM/dd HH:mm:ss");
     if (checkUUIDDuplicate(ss, report.clientUUID)) return { success: true, duplicated: true };
 
@@ -1908,9 +2667,10 @@ function submitFinalDelivery(report) {
       driverName = vInfo.vehicleMap[report.car] || "";
     }
 
-    var photoId = "", photoUrl = "";
+    var photoId = "", photoUrl = "", tgBlob = null;
     if (report.photo_sign && report.photo_sign.contents) {
       var blob = Utilities.newBlob(Utilities.base64Decode(report.photo_sign.contents.split(',')[1]), report.photo_sign.mimeType, "SIGN_" + report.orderId + "_" + Date.now());
+      tgBlob = blob;
       var folder = getSafeFolder_V11();
       var file = folder.createFile(blob);
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -1929,7 +2689,10 @@ function submitFinalDelivery(report) {
     var idxId = findHIdx_Core(h, "ID"),
       idxBranch = findHIdx_Core(h, "BRANCH"),
       idxStatus = findHIdx_Core(h, "STATUS"),
-      idxFinish = findHIdx_Core(h, "FINISH_TIME");
+      idxFinish = findHIdx_Core(h, "FINISH_TIME"),
+      idxSpecified = h.indexOf("指定到貨時間");
+
+    var specifiedArrive = "";
 
     if (idxId !== -1) {
       var foundRow = -1;
@@ -1952,6 +2715,7 @@ function submitFinalDelivery(report) {
         }
 
         foundRow = i + 1;
+        if (idxSpecified !== -1) specifiedArrive = _fmtArriveTime_(getSafeVal(tData[i], idxSpecified)); // V40
         break;
       }
 
@@ -1978,10 +2742,13 @@ function submitFinalDelivery(report) {
     setLog("單號", report.orderId || "");
     setLog("客戶名稱", report.customer);
     setLog("送貨地址", report.address);
+    setLog("指定到貨時間", specifiedArrive); // V40: 強制指定到貨時間 (電梯管制)
+    setLog("配送完成時間", timeStr);
     var currentSignType = report.signType || "本人親簽";
     var isUnattendedSign = (currentSignType.indexOf("無人") !== -1 || currentSignType.indexOf("放置指定位置") !== -1);
     var signPrefixTag = isUnattendedSign ? "[" + currentSignType + "] " : "";
     setLog("備註", (finalStatus === "沒有送達" ? "[配送失敗] " : signPrefixTag) + (report.note || ""));
+    setLog("司機說明", report.driverIssue || ""); // V40: 司機狀況回報 (統計用)
     setLog("貨物破損", report.isDamaged === '是' ? '是' : '否');
     setLog("破損照片", dmgUrl);
     setLog("簽收單照片", photoUrl);
@@ -2024,8 +2791,10 @@ function submitFinalDelivery(report) {
           setBt("單號", btId);
           setBt("客戶名稱", bt.customer || "");
           setBt("送貨地址", bt.address || "");
+          setBt("指定到貨時間", specifiedArrive); // V40
           setBt("配送完成時間", timeStr);
           setBt("備註", "[批次結案] 同地址合併");
+          setBt("司機說明", report.driverIssue || ""); // V40
           setBt("貨物破損", "否");
           setBt("簽收單照片", photoUrl);
           setBt("是否有退貨", "否");
@@ -2042,11 +2811,31 @@ function submitFinalDelivery(report) {
     // V34.3: 同步更新「車輛即時狀態」，確保地圖圓點同步移動
     updateVehicleLocation(report.car, report.lat, report.lng);
 
-    // V6.6.5: 結案時強制清除導航目標，確保戰情室狀態正確回復
-    try { 
-      updateVehicleNavigation_V24(report.car, ""); 
-      CacheService.getScriptCache().remove('war_room_data_v2'); 
-    } catch (e) { }
+    // V38.x: 配送完成 → 自動推送簽收卡片到 Telegram 到貨群組（依分公司分流，狀態已寫入後統計才正確）
+    if (tgBlob) {
+      try {
+        var tgBranch = String(report.branch || "").trim();
+        var tgStatusEmoji = (finalStatus === "沒有送達") ? '❌' : (report.isDamaged === '是' ? '🚨' : '✅');
+        var tgStats = _getBranchTodayStats_V11(tgBranch);
+        var tgCaption = "<b>" + tgStatusEmoji + " " + (driverName || "司機") + "</b>\n"
+          + "今日合計 " + tgStats.total + " 筆　已送達 " + tgStats.delivered + " 筆";
+        pushTelegramDeliveryPhoto_V11(tgBlob, tgCaption, tgBranch);
+      } catch (tgErr) {
+        console.error("TG 推送錯誤: " + tgErr.message);
+      }
+    }
+
+    // V38.x: 高雅瓷配送完成 → LINE 個別通知負責業務
+    try {
+      var lineBranch = String(report.branch || "").trim();
+      if (lineBranch === "高雅瓷" && finalStatus === "已完成") {
+        notifySalesForDelivery_V11(report, driverName, timeStr, photoId);
+      }
+    } catch (salesErr) {
+      console.error("LINE 業務通知錯誤: " + salesErr.message);
+    }
+
+    // V6.6.5: 結案時清除導航目標 → 由下方 logDeparture_V24(report.car, "") 處理 (舊版呼叫的 updateVehicleNavigation_V24 從未存在)
 
     // V5.2.2: 結案後自動更新下一站，供戰情室計算 ETA
 
@@ -2060,7 +2849,7 @@ function submitFinalDelivery(report) {
 
     // V6.2: 不論有無下一站，只要結案就強制清除當前目標並重新整理快取
     // (確保上一動的 targetAddr 不會殘留在 SHEET_STATUS)
-    try { CacheService.getScriptCache().remove('war_room_data_v2'); } catch (e) { }
+    _clearWarRoomCache_();
 
     // V6.6: 取得該車牌剩餘的所有任務 (用於前端判斷同地址與下一站選擇)
     var remainingTasks = [];
@@ -2068,6 +2857,7 @@ function submitFinalDelivery(report) {
     var colStatus = findHIdx_Core(h, "STATUS");
     var colV = findHIdx_Core(h, "VEHICLE");
     var colSeq = findHIdx_Core(h, "SEQ");
+    var colCustR = findHIdx_Core(h, "CUSTOMER");
     
     for (var k = 1; k < tData.length; k++) {
       var kId = String(tData[k][idxId] || "").trim();
@@ -2079,7 +2869,7 @@ function submitFinalDelivery(report) {
         if (!['已完成', '結案', '退貨完成', '沒有送達'].includes(stat)) {
           remainingTasks.push({
             id: kId,
-            customer: String(tData[k][findHIdx_Core(h, "CUSTOMER")] || ""),
+            customer: String(tData[k][colCustR] || ""),
             address: String(tData[k][colAddr] || ""),
             seq: parseInt(tData[k][colSeq]) || 99
           });
@@ -2103,7 +2893,7 @@ function submitFinalDelivery(report) {
       finalArrival = String(row[findHIdx_Core(h, "到貨時間")] || row[9] || "--").trim();
     }
 
-    return { 
+    var __finalResult = { 
       success: true, 
       status: finalStatus,
       signTypeDesc: finalSignTypeDesc,
@@ -2123,6 +2913,8 @@ function submitFinalDelivery(report) {
       remainingTasks: remainingTasks,
       batchTasks: (report.batchTasks && Array.isArray(report.batchTasks)) ? report.batchTasks : []
     };
+    _markUUIDDone_(report.clientUUID);
+    return __finalResult;
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -2131,8 +2923,9 @@ function submitFinalDelivery(report) {
 /**
  * V6.6: 計算司機目前位置到目標站點的 ETA 並記入戰情室狀態
  */
-function calculateAndLogETA_V6(car, taskId, fromLat, fromLng, toLat, toLng) {
+function calculateAndLogETA_V6(car, taskId, fromLat, fromLng, toLat, toLng, token) {
   try {
+    _requireDriver_(token);
     // 1. 直線距離計算 (Haversine)
     function deg2rad(deg) { return deg * (Math.PI/180); }
     var R = 6371; // Earth radius in km
@@ -2165,7 +2958,7 @@ function calculateAndLogETA_V6(car, taskId, fromLat, fromLng, toLat, toLng) {
       }
     }
     
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     return { success: true, mins: mins, km: dist.toFixed(1) };
   } catch (e) {
     return { success: false, error: e.message };
@@ -2176,8 +2969,9 @@ function calculateAndLogETA_V6(car, taskId, fromLat, fromLng, toLat, toLng) {
  * V6.6: 動態調整任務順序
  * 司機選定下一站後，該站與同地址站點設為 SEQ=1，其餘往後排
  */
-function adjustTaskSequence_V6(carPlate, selectedTaskId) {
+function adjustTaskSequence_V6(carPlate, selectedTaskId, token) {
   try {
+    var ctx = _requireDriver_(token); if (!_driverMayUseCar_(ctx, carPlate)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + carPlate);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var data = sheet.getDataRange().getValues();
@@ -2227,16 +3021,18 @@ function adjustTaskSequence_V6(carPlate, selectedTaskId) {
       return a.oldSeq - b.oldSeq;
     });
     
-    // 4. 批次寫回順序
+    // 4. 批次寫回順序 (V41: 修改記憶體中的欄位後一次 setValues，不再逐格寫)
     var currentSeq = 1;
     var lastAddr = "";
+    var seqColVals = data.slice(1).map(function (r) { return [r[idxSeq]]; });
     for (var j = 0; j < myTasks.length; j++) {
       if (j > 0 && myTasks[j].addr !== lastAddr) {
         currentSeq++;
       }
-      sheet.getRange(myTasks[j].row, idxSeq + 1).setValue(currentSeq);
+      seqColVals[myTasks[j].row - 2][0] = currentSeq;
       lastAddr = myTasks[j].addr;
     }
+    if (seqColVals.length) sheet.getRange(2, idxSeq + 1, seqColVals.length, 1).setValues(seqColVals);
     
     // V6.6.8 同步邏輯：不只是改順序，也要「靜默告訴」戰情室目前新的目標
     // 這樣司機手機就不會亂跳 Google Maps，但戰情室會立即有預估時間
@@ -2244,7 +3040,7 @@ function adjustTaskSequence_V6(carPlate, selectedTaskId) {
       try { logDeparture_V24(carPlate, targetAddr); } catch(e) {}
     }
     
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -2255,8 +3051,9 @@ function adjustTaskSequence_V6(carPlate, selectedTaskId) {
  * V37.22: 將 Drive 上的簽收照片轉成 base64 回傳，供 Dashboard Canvas 繪製美化框
  * (繞過瀏覽器 CORS 限制，讓 drawImage 可以讀取 lh3 圖片)
  */
-function getSignPhotoBase64(fileId) {
+function getSignPhotoBase64(fileId, token) {
   try {
+    _requireAdmin_(token);
     if (!fileId) return { success: false, error: "缺少 fileId" };
     var file = DriveApp.getFileById(fileId);
     var blob = file.getBlob();
@@ -2271,8 +3068,9 @@ function getSignPhotoBase64(fileId) {
  * V37.20: 將前端產生的美化簽收單圖片上傳至 Drive，並更新送貨日誌的「簽收單照片」欄位
  * 前端在 showSuccess() canvas 生成完畢後呼叫此函式
  */
-function updateBeautifiedSignPhoto(orderId, branch, photoDataUrl) {
+function updateBeautifiedSignPhoto(orderId, branch, photoDataUrl, token) {
   try {
+    _requireDriver_(token);
     if (!orderId || !photoDataUrl) return { success: false, error: "缺少必要參數" };
 
     // 解析 base64
@@ -2300,7 +3098,7 @@ function updateBeautifiedSignPhoto(orderId, branch, photoDataUrl) {
       if (rowId === normTarget) {
         logSheet.getRange(r + 1, colSignPhoto + 1).setValue(newUrl);
         // 清除 War Room 快取，確保前台立即看到新圖
-        try { CacheService.getScriptCache().remove('war_room_data_v3_' + Utilities.formatDate(new Date(), 'GMT+8', 'yyyy_MM_dd')); } catch(e) {}
+        _clearWarRoomCache_();
         return { success: true, url: newUrl };
       }
     }
@@ -2316,8 +3114,9 @@ function updateBeautifiedSignPhoto(orderId, branch, photoDataUrl) {
  * 在主資料夾下建立「簽收單_YYMMDD」子資料夾，複製所有今日簽收照片進去後回傳資料夾連結
  * 檔名格式：客戶名_地址_日期
  */
-function createTodaySignPhotoZip(dateStr, branchFilter) {
+function createTodaySignPhotoZip(dateStr, branchFilter, token) {
   try {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var logSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
     if (!logSheet) return { success: false, error: "找不到送貨日誌" };
@@ -2407,7 +3206,8 @@ function createTodaySignPhotoZip(dateStr, branchFilter) {
   }
 }
 
-function uploadFile(f, name) {
+function uploadFile(f, name, token) {
+  _requireDriver_(token);
   if (!f || !f.contents) return "";
   try {
     var base64Data = f.contents;
@@ -2451,7 +3251,8 @@ function getSafeFolder_V11() {
   }
 }
 
-function updateVehicleLocation(v, lat, lng) {
+function updateVehicleLocation(v, lat, lng, token) {
+  var ctx = _requireDriver_(token); if (!_driverMayUseCar_(ctx, v)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + v);
   var ss = getSS_V11();
   var now = new Date();
   var timeStr = Utilities.formatDate(now, "GMT+8", "HH:mm:ss");
@@ -2481,8 +3282,9 @@ function updateVehicleLocation(v, lat, lng) {
 }
 
 /** V6.0 A 等級：記錄司機出發意圖 (支援動態標題與車牌模糊比對) */
-function logDeparture_V24(car, targetAddr) {
+function logDeparture_V24(car, targetAddr, token) {
   try {
+    var ctx = _requireDriver_(token); if (!_driverMayUseCar_(ctx, car)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + car);
     var ss = getSS_V11();
     var sSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_STATUS);
     var data = sSheet.getDataRange().getValues();
@@ -2533,7 +3335,8 @@ function logDeparture_V24(car, targetAddr) {
  * V2633.2: 設定每日定時執行美化樣式的觸發器
  * 建議在凌晨 3:00 執行，避免干擾白天作業
  */
-function setupDailyStyleTrigger() {
+function setupDailyStyleTrigger(e) {
+  _requireSystemContext_(e);
   const funcName = 'applyProfessionalStyles_V11';
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(t => { if (t.getHandlerFunction() === funcName) ScriptApp.deleteTrigger(t); });
@@ -2549,165 +3352,10 @@ function setupDailyStyleTrigger() {
 
 
 // ==========================================
-// V2633 安全性模組 (Security Module)
+// 安全性模組已移至 Auth.js
+// (sysVerifyPwd / setAdminPassword / checkAdminSession / verifyNameAndIssueToken /
+//  generateParamUrlForDriver / _requireAdmin_ / _requireDriver_ / _requireSystemContext_)
 // ==========================================
-
-/**
- * [GAS 後台專用] 設定或重設管理員密碼
- * 部署後請在 GAS 編輯器執行一次此函式，或透過設定介面初次設定
- */
-function setAdminPassword(newPwd) {
-  if (!newPwd) throw new Error("密碼不可為空");
-  PropertiesService.getScriptProperties().setProperty('ADMIN_PASSWORD', String(newPwd).trim());
-  return "✅ 管理員密碼已成功設定於系統屬性中";
-}
-
-/**
- * 驗證管理員密碼並發放 Session (CacheService)
- */
-function sysVerifyPwd(pwd) {
-  CacheService.getUserCache().put('admin_verified', '1', 86400);
-  return { success: true, token: "bypass_token", message: "身分驗證成功" };
-}
-
-/**
- * [內部套用] 檢查是否具備管理員權限
- */
-function _requireAdmin() {
-  return true;
-}
-
-/**
- * 姓名登入驗證並發放存取權杖 (Issue Token by Name)
- * V34.16: 取代原本的 Email 驗證模式，改為從白名單比對姓名
- */
-function verifyNameAndIssueToken(name) {
-  try {
-    const ss = getSS_V11();
-    const sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_WHITELIST);
-    if (!sheet) return { error: '⚠️ 系統尚未初始化白名單' };
-
-    const data = sheet.getDataRange().getValues();
-    const h = data[0].map(v => String(v).trim());
-    const colName = findHIdx_Core(h, "NAME");
-    const colEmail = findHIdx_Core(h, "EMAIL");
-    const colRole = findHIdx_Core(h, "ROLE");
-    const colCar = findHIdx_Core(h, "VEHICLE");
-    const colBranch = findHIdx_Core(h, "BRANCH");
-
-    let found = null;
-    for (let i = 1; i < data.length; i++) {
-      if (String(data[i][colName]).trim() === String(name).trim()) {
-        found = {
-          name: name,
-          email: String(getSafeVal(data[i], colEmail)),
-          role: String(getSafeVal(data[i], colRole)) || "司機",
-          defaultCar: String(getSafeVal(data[i], colCar)),
-          branch: String(getSafeVal(data[i], colBranch))
-        };
-        break;
-      }
-    }
-
-    if (!found) return { error: '⚠️ 找不到此姓名，請聯繫管理員確認白名單' };
-
-    // 產生權杖
-    const token = Utilities.getUuid();
-    const sessionData = {
-      ...found,
-      issuedAt: new Date().getTime()
-    };
-
-    // 將 Token 存入腳本快取，有效 4 小時
-    CacheService.getScriptCache().put('tk_' + token, JSON.stringify(sessionData), 14400);
-
-    // V6.5：產生帶參數的專屬 URL (用於個人連結三層保險)
-    const scriptUrl = getScriptUrl();
-    const paramUrl = scriptUrl 
-      + "?name=" + encodeURIComponent(found.name)
-      + "&car=" + encodeURIComponent(found.defaultCar || "")
-      + "&token=" + encodeURIComponent(token)
-      + "&ts=" + new Date().getTime();
-
-    return {
-      token: token,
-      name: found.name,
-      email: found.email,
-      defaultCar: found.defaultCar,
-      role: found.role,
-      paramUrl: paramUrl,
-      scriptUrl: scriptUrl
-    };
-  } catch (e) {
-    return { error: "驗證發生錯誤: " + e.message };
-  }
-}
-
-/**
- * V6.5: 為管理員產生特定司機的專屬登入連結 (generate link for dispatcher)
- */
-function generateParamUrlForDriver(name) {
-  try {
-    const ss = getSS_V11();
-    const sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_WHITELIST);
-    const data = sheet.getDataRange().getValues();
-    const h = data[0].map(v => String(v).trim());
-    const colName = findHIdx_Core(h, "NAME");
-    const colCar = findHIdx_Core(h, "VEHICLE");
-    const colEmail = findHIdx_Core(h, "EMAIL");
-    const colRole = findHIdx_Core(h, "ROLE");
-    const colBranch = findHIdx_Core(h, "BRANCH");
-
-    let found = null;
-    for (let i = 1; i < data.length; i++) {
-        if (String(data[i][colName]).trim() === String(name).trim()) {
-            found = {
-                name: name,
-                email: String(getSafeVal(data[i], colEmail)),
-                role: String(getSafeVal(data[i], colRole)) || "司機",
-                defaultCar: String(getSafeVal(data[i], colCar)),
-                branch: String(getSafeVal(data[i], colBranch))
-            };
-            break;
-        }
-    }
-    if (!found) return { error: "找不到該司機" };
-
-    const token = Utilities.getUuid();
-    // 使用 Object.assign 代替 spread operator 提高相容性
-    const sessionData = Object.assign({}, found, { issuedAt: new Date().getTime() });
-    CacheService.getScriptCache().put('tk_' + token, JSON.stringify(sessionData), 14400);
-
-    const scriptUrl = getScriptUrl();
-    const paramUrl = scriptUrl 
-      + "?name=" + encodeURIComponent(found.name)
-      + "&car=" + encodeURIComponent(found.defaultCar || "")
-      + "&token=" + encodeURIComponent(token)
-      + "&ts=" + new Date().getTime();
-
-    return { paramUrl: paramUrl };
-  } catch (e) {
-    return { error: e.message };
-  }
-}
-
-/**
- * [封存] 登入驗證並發放存取權杖 (已改用 verifyNameAndIssueToken)
- */
-function verifyEmailAndIssueToken(email) {
-  console.log("verifyEmailAndIssueToken is deprecated");
-  return verifyNameAndIssueToken(email); // 備援轉發
-}
-
-/**
- * [內部套用] 驗證 Token 效力並核對身分
- */
-function _verifyToken(token) {
-  if (!token) throw new Error("未登入或身分遺失");
-  const data = CacheService.getScriptCache().get('tk_' + token);
-  if (!data) throw new Error("身分已過期，請重新登入");
-  return JSON.parse(data);
-}
 
 
 /** V34.13: 更新行程足跡路名 (富文本支援)
@@ -2744,7 +3392,7 @@ function updateScheduleTrace_V12(car, lat, lng, eventName, taskAddr) {
 
     // 偵錯輔助：顯示索引資訊
     if (eventName === 'FORCE_SYNC') {
-      SpreadsheetApp.getActive().toast("正在處理 " + car + " (列:" + targetRow + ", 欄:" + (colTrace + 1) + ")", "資料比對中", 1);
+      try { SpreadsheetApp.getActive().toast("正在處理 " + car + " (列:" + targetRow + ", 欄:" + (colTrace + 1) + ")", "資料比對中", 1); } catch (e2) { }
     }
 
     // 2. 獲取上班/下班時間 (對應戰情室的起點與終點)
@@ -2890,16 +3538,18 @@ function updateScheduleTrace_V12(car, lat, lng, eventName, taskAddr) {
     range.setRichTextValue(richValue.build()).setHorizontalAlignment("left").setVerticalAlignment("middle");
 
     if (eventName === 'FORCE_SYNC') {
-      SpreadsheetApp.getActive().toast("✅ " + car + " 足跡更新成功", "進度", 1);
+      try { SpreadsheetApp.getActive().toast("✅ " + car + " 足跡更新成功", "進度", 1); } catch (e2) { }
     }
   } catch (err) {
     Logger.log("updateScheduleTrace_V12 Error: " + err.message);
-    SpreadsheetApp.getActive().toast("❌ " + car + " 發生錯誤: " + err.message, "錯誤", 5);
+    // V41: toast 在 Web App 情境會再拋錯並蓋掉原本的錯誤，只在 FORCE_SYNC (Sheets 選單) 時顯示
+    if (eventName === 'FORCE_SYNC') { try { SpreadsheetApp.getActive().toast("❌ " + car + " 發生錯誤: " + err.message, "錯誤", 5); } catch (e2) { } }
   }
 }
 
-function getRouteHistory_V11p9(carName) {
+function getRouteHistory_V11p9(carName, token) {
   try {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_ROUTE);
     if (!sheet) return [];
@@ -2935,6 +3585,20 @@ function getRouteHistory_V11p9(carName) {
 /** V11.11 使用 Google Maps Distance Matrix 計算真實路網時間 */
 function calculatePreciseMinutes_V11(lat1, lon1, lat2, lon2) {
   if (!lat1 || !lon1 || !lat2 || !lon2) return null;
+  // V41.13: 車輛位置與目標都沒變 (取到小數 3 位 ≈ 100 公尺) 就沿用上次結果，省下約 80% 的 Distance Matrix 額度
+  var r3 = function (v) { return (Math.round(parseFloat(v) * 1000) / 1000).toFixed(3); };
+  var etaKey = 'eta_' + r3(lat1) + '_' + r3(lon1) + '_' + r3(lat2) + '_' + r3(lon2);
+  var etaCache = CacheService.getScriptCache();
+  try {
+    var hit = etaCache.get(etaKey);
+    if (hit !== null && hit !== undefined) return hit === 'null' ? null : parseInt(hit, 10);
+  } catch (ce) { }
+  var val = _calculatePreciseMinutesLive_(lat1, lon1, lat2, lon2);
+  try { etaCache.put(etaKey, val === null ? 'null' : String(val), 900); } catch (ce2) { }
+  return val;
+}
+
+function _calculatePreciseMinutesLive_(lat1, lon1, lat2, lon2) {
   try {
     var matrix = Maps.newDistanceMatrix()
       .addOrigin(lat1, lon1)
@@ -2950,7 +3614,8 @@ function calculatePreciseMinutes_V11(lat1, lon1, lat2, lon2) {
   } catch (e) { return null; }
 }
 
-function calculateSimpleETA(lat1, lon1, lat2, lon2) {
+function calculateSimpleETA(lat1, lon1, lat2, lon2, token) {
+  _requireAdmin_(token);
   if (!lat1 || !lon1 || !lat2 || !lon2) return "N/A";
   try {
     var matrix = Maps.newDistanceMatrix()
@@ -2978,7 +3643,33 @@ function calculateSimpleETA(lat1, lon1, lat2, lon2) {
   return "計算中";
 }
 
-function getTodayTasks(carPlate, queryDate) {
+/** V40: 把「指定到貨時間」正規化成純 HH:MM 或 HH:MM~HH:MM。
+ *  試算表若把時間存成 Date（例如 1899-12-30 14:00:00 GMT+0800），直接取時分。
+ *  已帶欄位名或純文字則原樣去除多餘空白。 */
+function _fmtArriveTime_(v) {
+  if (!v) return "";
+  if (v instanceof Date) {
+    var hh = ("0" + v.getHours()).slice(-2);
+    var mm = ("0" + v.getMinutes()).slice(-2);
+    return hh + ":" + mm;
+  }
+  var str = String(v).trim();
+  if (!str) return "";
+  // 可能是「1899-12-30 14:00:00」這種字串化日期
+  var m = str.match(/(\d{1,2}):(\d{2})/);
+  if (m) {
+    // 只擷取第一個時間，若是時段「10:30~11:00」保留完整
+    var range = str.match(/(\d{1,2}):(\d{2})\s*[~至\-到]\s*(\d{1,2}):(\d{2})/);
+    if (range) {
+      return ("0" + parseInt(range[1], 10) % 24).slice(-2) + ":" + range[2] + "~" + ("0" + parseInt(range[3], 10) % 24).slice(-2) + ":" + range[4];
+    }
+    return ("0" + parseInt(m[1], 10) % 24).slice(-2) + ":" + m[2];
+  }
+  return str;
+}
+
+function getTodayTasks(carPlate, queryDate, token) {
+  _requireDriver_(token); // 放在 try 外：驗證失敗要讓前端 failureHandler 收到，而不是被 catch 吞成空陣列
   try {
     var ss = getSS_V11(), sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS), data = sheet.getDataRange().getValues();
     var h = data[0].map(function (v) { return String(v).trim(); });
@@ -3002,7 +3693,8 @@ function getTodayTasks(carPlate, queryDate) {
       shippingType: findHIdx_Core(h, "SHIPPING_TYPE"),
       wrapSeal: findHIdx_Core(h, ["封膠膜", "膠膜", "封膜"]),
       size: findCol(['尺寸', '尺寸(cm)', '規格', '規格尺寸']),
-      items: findCol(['ITEMS', '明細', '品項明細', '產品明細'])
+      items: findCol(['ITEMS', '明細', '品項明細', '產品明細']),
+      specifiedArrive: findCol(['指定到貨時間', '指定時間']) // V40: 強制指定到貨時間 (電梯管制)
     };
 
     // 伺服器端診斷日誌
@@ -3018,6 +3710,15 @@ function getTodayTasks(carPlate, queryDate) {
 
     var vInfo = getManagementData(), driverName = vInfo.vehicleMap[carPlate] || "", res = [];
     var target = String(carPlate || "").trim();
+    // V41: 品項欄位索引只算一次 (舊版每列都重新掃 10 次表頭)
+    var itemCols = [];
+    for (var n0 = 1; n0 <= 5; n0++) {
+      itemCols.push({ code: findCol(['品項' + n0 + '編號', 'ITEM' + n0, 'ITEM' + n0 + '_CODE']), qty: findCol(['品項' + n0 + '數量', 'ITEM' + n0 + '_QTY']) });
+    }
+    var noteColFallback = idx.n;
+    if (noteColFallback === -1) {
+      ['備註', '注意', '說明', '備注', '特殊需求', '說明事項'].forEach(function (nc) { if (noteColFallback === -1 && h.indexOf(nc) !== -1) noteColFallback = h.indexOf(nc); });
+    }
     for (var i = 1; i < data.length; i++) {
       if (idx.archived !== -1 && ["是", "手動刪除"].indexOf(String(getSafeVal(data[i], idx.archived))) !== -1) continue;
 
@@ -3053,8 +3754,8 @@ function getTodayTasks(carPlate, queryDate) {
         var rowSize = idx.size !== -1 ? String(getSafeVal(data[i], idx.size) || '').trim() : '';
         var sizeArr = rowSize ? rowSize.split(/[,，、；;\/]+/).map(function (s) { return String(s).trim(); }).filter(Boolean) : [];
         for (var n = 1; n <= 5; n++) {
-          var codeIdx = findCol(['品項' + n + '編號', 'ITEM' + n, 'ITEM' + n + '_CODE']);
-          var qtyIdx = findCol(['品項' + n + '數量', 'ITEM' + n + '_QTY']);
+          var codeIdx = itemCols[n - 1].code;
+          var qtyIdx = itemCols[n - 1].qty;
           if (codeIdx !== -1 && qtyIdx !== -1) {
             var codeVal = String(getSafeVal(data[i], codeIdx) || '').trim();
             var qtyVal = String(getSafeVal(data[i], qtyIdx) || '').trim();
@@ -3079,24 +3780,14 @@ function getTodayTasks(carPlate, queryDate) {
           phone: String(getSafeVal(data[i], idx.p)), seq: Number(getSafeVal(data[i], idx.sq)) || 99,
           weight: Number(getSafeVal(data[i], idx.w)) || 0, rowIndex: i + 1,
           shippingType: idx.shippingType !== -1 ? String(getSafeVal(data[i], idx.shippingType)) : "送貨",
-          note: (function () {
-            // V35.7.1: 強化備註欄搜尋 - 先用 findHIdx_Core，失敗則直接掃表表頭
-            var ni = idx.n;
-            if (ni === -1) {
-              var noteCandidates = ['備註', '注意', '說明', '備注', '特殊需求', '說明事項'];
-              for (var nc = 0; nc < noteCandidates.length; nc++) {
-                var hit = h.indexOf(noteCandidates[nc]);
-                if (hit !== -1) { ni = hit; break; }
-              }
-            }
-            return ni !== -1 ? String(getSafeVal(data[i], ni)).trim() : '';
-          })(), // V35.7.1: 備註欄多重容錯
+          note: noteColFallback !== -1 ? String(getSafeVal(data[i], noteColFallback)).trim() : '', // V35.7.1: 備註欄多重容錯 (V41: 索引提到迴圈外)
           contact: String(getSafeVal(data[i], idx.contact)), // V36.2
           date: rowDate, // V2632.16
           location: String(getSafeVal(data[i], idx.location) || ""),
           size: rowSize,
           thumbnail: String(getSafeVal(data[i], idx.thumbnail) || ""), // V36.6
           wrapSeal: idx.wrapSeal !== -1 ? String(getSafeVal(data[i], idx.wrapSeal) || "").trim() : "",
+          specifiedArrive: idx.specifiedArrive !== -1 ? _fmtArriveTime_(getSafeVal(data[i], idx.specifiedArrive)) : "", // V40
           items: itemsArr
         });
       }
@@ -3111,8 +3802,9 @@ function getTodayTasks(carPlate, queryDate) {
   } catch (e) { return []; }
 }
 
-function getDriverTaskItemDetails_V11(orderIds) {
+function getDriverTaskItemDetails_V11(orderIds, token) {
   try {
+    _requireDriver_(token);
     var ids = {};
     (orderIds || []).forEach(function (id) {
       var key = String(id || '').trim();
@@ -3129,6 +3821,10 @@ function getDriverTaskItemDetails_V11(orderIds) {
     var idxSize = findCol(['尺寸', '尺寸(cm)', '規格', '規格尺寸']);
     var productMap = lookupProductMasterData_V11();
     var result = {};
+    var itemCols = [];
+    for (var n0 = 1; n0 <= 5; n0++) {
+      itemCols.push({ code: findCol(['品項' + n0 + '編號', 'ITEM' + n0, 'ITEM' + n0 + '_CODE']), qty: findCol(['品項' + n0 + '數量', 'ITEM' + n0 + '_QTY']) });
+    }
 
     for (var i = 1; i < data.length; i++) {
       var orderId = String(getSafeVal(data[i], idxId) || '').trim();
@@ -3138,8 +3834,8 @@ function getDriverTaskItemDetails_V11(orderIds) {
       var itemsArr = [];
 
       for (var n = 1; n <= 5; n++) {
-        var codeIdx = findCol(['品項' + n + '編號', 'ITEM' + n, 'ITEM' + n + '_CODE']);
-        var qtyIdx = findCol(['品項' + n + '數量', 'ITEM' + n + '_QTY']);
+        var codeIdx = itemCols[n - 1].code;
+        var qtyIdx = itemCols[n - 1].qty;
         if (codeIdx === -1 || qtyIdx === -1) continue;
         var codeVal = String(getSafeVal(data[i], codeIdx) || '').trim();
         var qtyVal = String(getSafeVal(data[i], qtyIdx) || '').trim();
@@ -3282,8 +3978,9 @@ function onEdit_V11_Sync_Core(e) {
 }
 
 /** V36.4: 手動強制同步所有司機的足跡樣式 (過去 5 天) */
-function forceUpdateAllScheduleTraces() {
+function forceUpdateAllScheduleTraces(e) {
   try {
+    _requireSystemContext_(e);
     var ss = getSS_V11();
     var schSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     var data = schSheet.getDataRange().getValues();
@@ -3350,7 +4047,8 @@ function forceUpdateAllScheduleTraces() {
 /**
  * V11.10: 批量補足經緯度 (可在工具選單手動執行)
  */
-function batchGeocodeAllTasks() {
+function batchGeocodeAllTasks(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
   var data = sheet.getDataRange().getValues();
@@ -3386,8 +4084,9 @@ function batchGeocodeAllTasks() {
  * V11.17: 前一天任務封存 (取代實體刪除)
  * 將日期小於今日且已完成/結案的訂單標記為「是否封存 = 是」
  */
-function archiveYesterdayTasks() {
+function archiveYesterdayTasks(e) {
   try {
+    _requireSystemContext_(e);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var data = sheet.getDataRange().getValues();
@@ -3436,8 +4135,13 @@ function archiveYesterdayTasks() {
 function checkUUIDDuplicate(ss, uuid) {
   if (!uuid) return false;
   try {
-    var props = PropertiesService.getScriptProperties();
-    if (props.getProperty(uuid)) return true;
+    // V41: 改用 CacheService (6 小時) 做快速去重；舊版把每個 UUID 永久寫進 ScriptProperties，
+    // 是 Cleanup.js 要清的「UUID=1 垃圾屬性」的根因 (屬性空間 500KB 上限)。
+    // 長期去重靠送貨日誌的 clientUUID 欄位掃描 (最近 300 筆)。
+    // V41.22: 這裡只「檢查」，成功寫入後由 _markUUIDDone_ 標記；否則寫入失敗的重送會被誤判成重複而遺失
+    var cache = CacheService.getScriptCache();
+    var ck = 'uuid_' + String(uuid).substring(0, 200);
+    if (cache.get(ck)) return true;
     var logSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
     if (!logSheet) return false;
     var data = logSheet.getDataRange().getValues();
@@ -3447,18 +4151,24 @@ function checkUUIDDuplicate(ss, uuid) {
       var startIdx = Math.max(1, data.length - 300);
       for (var i = data.length - 1; i >= startIdx; i--) {
         if (String(data[i][idx]) === String(uuid)) {
-          props.setProperty(uuid, "1");
+          cache.put(ck, "1", 21600);
           return true;
         }
       }
     }
-    props.setProperty(uuid, "1");
     return false;
   } catch (e) { return false; }
 }
 
+/** V41.22: 寫入成功後才把 clientUUID 標記為已處理 (6 小時) */
+function _markUUIDDone_(uuid) {
+  if (!uuid) return;
+  try { CacheService.getScriptCache().put('uuid_' + String(uuid).substring(0, 200), "1", 21600); } catch (e) { }
+}
+
 /** A 等級：Vision OCR 串接解析 */
-function getVisionOCRData_V24(base64Image) {
+function getVisionOCRData_V24(base64Image, token) {
+  _requireAdmin_(token);
   if (!VISION_API_KEY) return { error: "尚未設定 VISION_API_KEY" };
   try {
     var payload = {
@@ -3495,7 +4205,8 @@ function parseOCR_V24(text) {
 }
 
 /** V11.11: 手動/自動安裝 onEdit 觸發器 */
-function installTrigger_V11() {
+function installTrigger_V11(e) {
+  _requireSystemContext_(e);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(function (t) { if (t.getHandlerFunction() === "onEdit_V11") ScriptApp.deleteTrigger(t); });
@@ -3503,7 +4214,8 @@ function installTrigger_V11() {
   SpreadsheetApp.getUi().alert("✅ 成功！自動經緯度觸發器已重新安裝。");
 }
 /** V2632.11: 專業樣式與條件格式同步 */
-function applyProfessionalStyles_V11() {
+function applyProfessionalStyles_V11(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var logSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
   var taskSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
@@ -3690,8 +4402,9 @@ function applyProfessionalStyles_V11() {
 }
 
 /** V2632.16: 司機端取消任務 */
-function adminCancelTaskV2(taskId, branch) {
+function adminCancelTaskV2(taskId, branch, token) {
   try {
+    var ctx = _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var data = sheet.getDataRange().getValues();
@@ -3699,6 +4412,7 @@ function adminCancelTaskV2(taskId, branch) {
     var idIdx = h.indexOf("單號");
     var statusIdx = h.indexOf("狀態");
     var branchIdx = h.indexOf("分公司");
+    var vehIdx = findHIdx_Core(h, "VEHICLE");
     if (idIdx === -1 || statusIdx === -1) return "找不到單號或狀態欄位";
 
     for (var i = 1; i < data.length; i++) {
@@ -3706,9 +4420,13 @@ function adminCancelTaskV2(taskId, branch) {
         // 有傳入分公司時才比對，沒傳入時僅比對單號（相容舊版）
         var branchMatch = (!branch || branchIdx === -1) ? true : String(data[i][branchIdx]).trim() === String(branch).trim();
         if (idMatch && branchMatch) {
+            // V41: 司機只能取消自己車上的單
+            if (ctx.role === 'driver' && vehIdx !== -1 && !_driverMayUseCar_(ctx, data[i][vehIdx])) {
+              return "🔒 無權取消其他車輛的任務: " + taskId;
+            }
             sheet.getRange(i + 1, statusIdx + 1).setValue("已取消");
             // 清除戰情室快取，防止舊狀態覆蓋回來
-            CacheService.getScriptCache().remove('war_room_data_v2');
+            _clearWarRoomCache_();
             return "✅ 任務 " + taskId + " 已取消成功";
         }
     }
@@ -3730,8 +4448,19 @@ function getColumnLetter(col) {
 }
 
 /** V2632.11: 3 天數據清理與自動封存 (防止系統變慢) */
-function cleanupOldLogsAndTasks_V11() {
-  var ss = getSS_V11();
+function cleanupOldLogsAndTasks_V11(e) {
+  _requireSystemContext_(e);
+  // V41: 整個封存流程加鎖。舊版 clearContents() → setValues() 之間沒有鎖，司機此時 appendRow 的資料會被整批覆蓋掉
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { console.error("cleanupOldLogsAndTasks_V11: 取得鎖失敗，本次略過"); return; }
+  try {
+    _cleanupOldLogsAndTasksCore_(getSS_V11());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function _cleanupOldLogsAndTasksCore_(ss) {
   var cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - 3);
   var cutoffStr = Utilities.formatDate(cutoffDate, "GMT+8", "yyyy/MM/dd");
@@ -3805,7 +4534,8 @@ function cleanupOldLogsAndTasks_V11() {
  * 🌙 每日凌晨 12 點自動重置車隊狀態 (V5.2)
  * 此函式僅重置即時定位與出發時間，不移動任務資料（保留原有的 15 天封存機制）
  */
-function autoResetAndArchive_Midnight() {
+function autoResetAndArchive_Midnight(e) {
+  _requireSystemContext_(e);
   console.log("🚀 啟動年度凌晨狀態重置程序...");
   var ss = getSS_V11();
   
@@ -3829,14 +4559,15 @@ function autoResetAndArchive_Midnight() {
   }
   
   // 2. 清除快取，迫使 Dashboard 下次載入時重新抓取
-  CacheService.getScriptCache().remove('war_room_data_v2');
+  _clearWarRoomCache_();
   console.log("✨ 每日狀態重置完成。");
 }
 
 /**
  * 🛠️ 一鍵啟動：設定每日凌晨重置觸發器
  */
-function setupMidnightResetTrigger() {
+function setupMidnightResetTrigger(e) {
+  _requireSystemContext_(e);
   const funcName = 'autoResetAndArchive_Midnight';
   const triggers = ScriptApp.getProjectTriggers();
   
@@ -3860,8 +4591,9 @@ function setupMidnightResetTrigger() {
  * V2634.3 緊急復原工具
  * 將「派送清單_封存區」中，日期晚於 3/13 的資料移回「派送清單」
  */
-function emergencyRestoreTasks() {
+function emergencyRestoreTasks(e) {
   try {
+    _requireSystemContext_(e);
     var ss = getSS_V11();
     var taskSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
     var archiveSheet = ss.getSheetByName("派送清單_封存區");
@@ -3917,7 +4649,7 @@ function emergencyRestoreTasks() {
       archiveSheet.clearContents();
       archiveSheet.getRange(1, 1, toKeep.length, toKeep[0].length).setValues(toKeep);
 
-      CacheService.getScriptCache().remove('war_room_data_v2');
+      _clearWarRoomCache_();
       applyProfessionalStyles_V11();
       return "✅ 成功復原 " + toRestore.length + " 筆訂單（近 7 天），請重新整理頁面。";
     }
@@ -3931,7 +4663,8 @@ function emergencyRestoreTasks() {
  */
 
 /** V11.26: 手動同步舊有的送貨日誌單號 (支援封存區與多重欄位比對) */
-function syncOldLogsOrderId_V11() {
+function syncOldLogsOrderId_V11(e) {
+  _requireSystemContext_(e);
   var ss = getSS_V11();
   var logSheetNames = [V11_PROD_CONFIG.SHEET_LOG, V11_PROD_CONFIG.SHEET_LOG + "_封存區"];
   var taskSheetNames = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區", "派進清單_封存區"]; // 包含可能的錯別字分頁
@@ -4031,7 +4764,8 @@ function syncOldLogsOrderId_V11() {
  * @param {Array} sequenceData - 格式: [{id: "單號", seq: 數字}, ...]
  * @param {String} vehicleName - 車牌/司機代碼
  */
-function adminUpdateSequence_V11(sequenceData, vehicleName) {
+function adminUpdateSequence_V11(sequenceData, vehicleName, token) {
+  _requireAdmin_(token);
   if (!sequenceData || !sequenceData.length) return "無更新資料";
   
   const ss = getSS_V11();
@@ -4045,15 +4779,18 @@ function adminUpdateSequence_V11(sequenceData, vehicleName) {
   if (colId === -1 || colSeq === -1) return "❌ 找不到單號或順序欄位";
   
   let updatedCount = 0;
+  const seqColVals = data.slice(1).map(r => [r[colSeq]]);
   sequenceData.forEach(item => {
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][colId]) === String(item.id)) {
-        sheet.getRange(i + 1, colSeq + 1).setValue(item.seq);
+        seqColVals[i - 1][0] = item.seq;
         updatedCount++;
         break;
       }
     }
   });
+  if (updatedCount > 0) sheet.getRange(2, colSeq + 1, seqColVals.length, 1).setValues(seqColVals); // V41: 一次寫回
+  _clearWarRoomCache_();
   
   return "✅ 成功更新 " + updatedCount + " 筆任務順序 (" + vehicleName + ")";
 }
@@ -4083,6 +4820,7 @@ function shortenUrl_V11(longUrl) {
  * V11.25: 批次縮網址並推送 LINE (優化正則偵測)
  */
 function pushLineMessageWithShortUrls_V11(msg) {
+  _requireCtx_();
   // 精準捕捉網址，避免抓到後面的換行或空白
   const urlRegex = /https?:\/\/[a-zA-Z0-9\-\.\/\?&%=_]+/g;
   const urls = msg.match(urlRegex);
@@ -4104,9 +4842,10 @@ function pushLineMessageWithShortUrls_V11(msg) {
 }
 
 /** V11.20: 批次退回分公司邏輯 */
-function adminBatchReturnTasks_V11(updates) {
+function adminBatchReturnTasks_V11(updates, token) {
   var lock = LockService.getScriptLock();
   try {
+    _requireAdmin_(token);
     if (!lock.tryLock(15000)) throw new Error("系統忙碌中");
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
@@ -4174,7 +4913,7 @@ function adminBatchReturnTasks_V11(updates) {
     });
 
     sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     applyProfessionalStyles_V11();
     
     return { success: true, message: "成功退回，並已同步至業務配送清單" };
@@ -4187,6 +4926,7 @@ function adminBatchReturnTasks_V11(updates) {
  * 此功能會自動比對產品主檔，帶出圖片與規格
  */
 function upsertPickingItems_V11(uniqueKey, items) {
+  _requireCtx_();
   if (!items || items.length === 0) return;
   
   var ss = getSS_V11();
@@ -4198,35 +4938,26 @@ function upsertPickingItems_V11(uniqueKey, items) {
     sheet.getRange("1:1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
   }
   
-  // 先刪除舊的明細 (為了覆蓋更新)
-  var data = sheet.getDataRange().getValues();
-  for (var i = data.length - 1; i >= 1; i--) {
-    if (String(data[i][0]) === String(uniqueKey)) {
-      sheet.deleteRow(i + 1);
-    }
-  }
-  
-  // 獲取產品主檔數據
+  // V41 加速：舊版逐列 deleteRow + 逐筆 appendRow (每次都是一趟 API)，改為一次讀、記憶體過濾、一次寫
   var productMap = lookupProductMasterData_V11();
-  
-  // 逐筆寫入
   var now = new Date();
-  items.forEach(function(item) {
+  var newRows = items.map(function (item) {
     var pInfo = findProductInfo_V11(productMap, item.code);
     if (!pInfo || !pInfo.name) pInfo = { name: "未建檔", size: "", img: "", pcsPerBox: "", kgPerBox: "" };
-    sheet.appendRow([
-      uniqueKey, 
-      item.seq, 
-      item.code, 
-      item.qty, 
-      item.lot, 
-      pInfo.img, 
-      pInfo.name, 
-      pInfo.size, 
-      "待撿貨", 
-      now
-    ]);
+    return [uniqueKey, item.seq, item.code, item.qty, item.lot, pInfo.img, pInfo.name, pInfo.size, "待撿貨", now];
   });
+
+  var lastRow = sheet.getLastRow();
+  var data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 10).getValues() : [];
+  var hasOld = data.some(function (r) { return String(r[0]) === String(uniqueKey); });
+  if (!hasOld) {
+    // 沒有舊明細：直接整塊附加
+    sheet.getRange(lastRow + 1, 1, newRows.length, 10).setValues(newRows);
+    return;
+  }
+  var kept = data.filter(function (r) { return String(r[0]) !== String(uniqueKey); }).concat(newRows);
+  if (data.length > 0) sheet.getRange(2, 1, data.length, 10).clearContent();
+  if (kept.length > 0) sheet.getRange(2, 1, kept.length, 10).setValues(kept);
 }
 
 function normalizeProductCode_V11(code) {
@@ -4319,19 +5050,13 @@ function writeChunkedCacheJson_V11(cache, baseKey, value, seconds) {
  */
 function lookupProductMasterData_V11() {
   var cache = CacheService.getScriptCache();
-  cache.remove("product_master_map_v13_pack");
-  cache.remove("product_master_map_v14_pack");
-  cache.remove("product_master_map_v15_pack");
-  var cacheKey = "product_master_map_v16_pack";
+  // V41: 舊 key (v13~v20) 早已自然過期 (最長 6 小時)，不需要每次呼叫都 remove 8 次
+  var cacheKey = "product_master_map_v21_pack";
   var cachedData = readChunkedCacheJson_V11(cache, cacheKey);
-  if (cachedData) return cachedData;
+  if (cachedData && Object.keys(cachedData).length > 0) return cachedData;
   
   try {
-    var sourceIds = [
-      "16QNID9hLs2K1iy_ePo7MxYxhW4kpDrDlfEIZ2p83ixo", // 安帝嘉
-      "1uFKKWBfulg-GmCbJsSomimT5LW5r0N2w28rubrPveTA", // 喜悅納
-      "1G5q-GixMWSdJJeF8ZiXWMOfrx4FMobER25jNc8m4Zds"  // 高雅瓷
-    ];
+    var sourceIds = V11_PROD_CONFIG.PRODUCT_MASTER_SS_IDS;
     var map = {};
     var findHeader = function (header, names) {
       var normalized = header.map(function (h) { return String(h || "").trim().toLowerCase().replace(/\s/g, ""); });
@@ -4347,21 +5072,59 @@ function lookupProductMasterData_V11() {
     };
 
     sourceIds.forEach(function (ssId) {
+     try { // V39.15: 單一來源價目表打不開/讀取失敗時，不應拖垮其他來源的資料(否則明細的箱/片換算會全部消失)
       var ss = SpreadsheetApp.openById(ssId);
-      var sheet = ss.getSheetByName("編號價目表");
-      if (!sheet) return;
-      var data = sheet.getDataRange().getValues();
-      if (!data || data.length < 2) return;
-      var header = data[0].map(function (v) { return String(v).trim(); });
-      
-        var idxCode = findHeader(header, ["編號"]);
-        var idxName = findHeader(header, ["中文系列", "系列"]);
-        var idxOrigName = findHeader(header, ["原廠品名", "原廠名稱", "英文品名", "品名名"]);
-        var idxSize = findHeader(header, ["尺寸(cm)", "尺寸"]);
-        var idxImg = findHeader(header, ["單片連結網址", "主圖URL", "雲端圖片"]);
-        var idxPcsPerBox = findHeader(header, ["片/箱", "片箱", "每箱片數"]);
-        var idxKgPerBox = findHeader(header, ["KG/箱", "kg/箱", "公斤/箱"]);
-      if (idxCode === -1) return;
+      var data = null, header = null;
+      var idxCode = -1, idxName = -1, idxOrigName = -1, idxSize = -1, idxImg = -1, idxPcsPerBox = -1, idxKgPerBox = -1;
+
+      // V39.17: 原本邏輯是「掃全部分頁，抓到第一個有『編號』欄位的就停」，
+      // 這樣如果同一份試算表裡有別的分頁(例如客戶對照表)剛好也有一欄叫「編號」，
+      // 會誤抓到錯的表，抓出來的商品碼完全對不上實際訂單、也不會報錯或是空的，難以察覺。
+      // 改成分三個優先層級找分頁，且候選分頁必須同時找到「編號」跟「片/箱」欄位才算數：
+      // 第一層：分頁名稱完全等於「編號價目表」
+      // 第二層：分頁名稱含有「編號」或「價目」或「價格」字樣
+      // 第三層(最後手段)：其餘所有分頁
+      var allSheets = ss.getSheets();
+      var tier1 = [], tier2 = [], tier3 = [];
+      allSheets.forEach(function (s) {
+        var sName = s.getName();
+        if (sName === "編號價目表") tier1.push(s);
+        else if (/編號|價目|價格/.test(sName)) tier2.push(s);
+        else tier3.push(s);
+      });
+      var sheetsToScan = tier1.concat(tier2, tier3);
+
+      for (var si = 0; si < sheetsToScan.length; si++) {
+        var cand = sheetsToScan[si];
+        var candData = cand.getDataRange().getValues();
+        if (!candData || candData.length < 2) continue;
+        var candHeader = candData[0].map(function (v) { return String(v).trim(); });
+
+        // V39.21: 真正的 bug 根因！原本寫成 ["漢樺編號","編號"]，"漢樺編號" 排最優先。
+        // 但安帝嘉/喜悅納/高雅瓷的價目表裡，「編號」(自己的商品編號，如 RN61298) 跟「漢樺編號」
+        // (跨公司對照用的另一欄) 是「同時並存」的兩個不同欄位，優先抓到漢樺編號那欄，
+        // 導致整批商品都用錯欄位的內容當編號，跟訂單上實際出現的編號完全對不上。
+        // 改成優先找「編號」，「漢樺編號」只在完全沒有「編號」欄時才當備案(給漢樺自己的表用)。
+        var cIdxCode = findHeader(candHeader, ["編號", "漢樺編號"]);
+        // V39.18: 確認分頁名稱一律是「編號價目表」，不再要求同一分頁必須連「片/箱」欄位都找到，
+        // 避免片/箱欄位命名對不上關鍵字時，連名稱/尺寸都一起抓不到（比原本更糟）。
+        // 只要求「編號」欄位存在即可判定為有效商品表，片/箱欄位另外用完整關鍵字表去找。
+        if (cIdxCode === -1) continue;
+
+        idxCode = cIdxCode;
+        idxName = findHeader(candHeader, ["中文系列", "系列"]);
+        idxOrigName = findHeader(candHeader, ["原廠品名", "原廠名稱", "英文品名", "品名名"]);
+        idxSize = findHeader(candHeader, ["尺寸(cm)", "尺寸"]);
+        idxImg = findHeader(candHeader, ["單片圖", "單片連結網址", "主圖URL", "雲端圖片"]);
+        idxPcsPerBox = findHeader(candHeader, ["片/箱", "片箱", "每箱片數", "每箱片", "箱裝片數", "裝箱片數", "每箱入數", "箱入數", "入數", "入り数"]);
+        idxKgPerBox = findHeader(candHeader, ["KG/箱", "kg/箱", "公斤/箱"]);
+
+        // 回填比對成功的這張表
+        data = candData;
+        header = candHeader;
+        break;
+      }
+      if (idxCode === -1 || !data) return;
       
       for (var i = 1; i < data.length; i++) {
         var rawCode = String(data[i][idxCode]).trim();
@@ -4393,9 +5156,17 @@ function lookupProductMasterData_V11() {
           kgPerBox: idxKgPerBox !== -1 ? data[i][idxKgPerBox] || "" : ""
         };
       }
+     } catch (srcErr) {
+      console.log("主檔來源讀取失敗 (ssId=" + ssId + "): " + srcErr.message);
+     }
     });
-    
-    writeChunkedCacheJson_V11(cache, cacheKey, map, 3600);
+
+    // V39.16: 抓到的商品數過少(例如全部來源都失敗)時不寫入快取，避免把壞結果凍結一小時，下次呼叫會重新嘗試
+    if (Object.keys(map).length > 0) {
+      writeChunkedCacheJson_V11(cache, cacheKey, map, 3600);
+    } else {
+      console.log("主檔讀取結果為空，略過快取寫入");
+    }
     return map;
   } catch (e) {
     console.log("主檔讀取失敗: " + e.message);
@@ -4404,7 +5175,8 @@ function lookupProductMasterData_V11() {
 }
 
 /** V11.20: LINE 推播核心 */
-function pushLineMessage_V11(msg) {
+function pushLineMessage_V11(msg, token) {
+  _requireAdmin_(token);
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
   var targetId = PropertiesService.getScriptProperties().getProperty('LINE_TARGET_ID');
   if (!token || !targetId) return;
@@ -4427,12 +5199,189 @@ function pushLineMessage_V11(msg) {
 }
 
 /**
+ * 📨 Telegram 到貨通知：初始化（Token + 各分公司到貨群組 Chat ID 寫入 Script Properties）
+ * 分流架構：每個分公司對應一個專屬到貨群組。目前高雅瓷已設定，安帝嘉/喜悅納待補。
+ * 用法：部署後第一次結案會自動呼叫；亦可手動執行確保已設定。
+ */
+function _initTelegramDelivery_V11() {
+  try {
+    _requireSystemContext_();
+    var props = PropertiesService.getScriptProperties();
+    // TG_TOKEN 請在「專案設定 → 指令碼屬性」手動設定，不寫進原始碼
+    // (舊版曾寫死在此並推上公開 repo，該 bot token 已視為外洩，請至 @BotFather /revoke 後換新)
+    if (!props.getProperty('TG_TOKEN')) console.warn("⚠️ TG_TOKEN 尚未設定，Telegram 到貨通知不會發送");
+    // 各分公司 → 到貨群組 Chat ID
+    props.setProperty('TG_BRANCH_GROUPS', JSON.stringify({
+      "高雅瓷": "-5590086103",
+      "安帝嘉": "-1004388719757", // V39.22: 群組升級成 supergroup 後 chat_id 改變，舊的 -5567522188 已失效
+      "喜悅納": "-5418269706"
+    }));
+    console.log("✅ Telegram 到貨通知設定完成（三家公司分流已啟用）");
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * 📨 Telegram 到貨通知：確保設定就緒（無則自動初始化）
+ */
+function _ensureTelegramDelivery_V11() {
+  var props = PropertiesService.getScriptProperties();
+  if (!props.getProperty('TG_BRANCH_GROUPS')) {
+    props.setProperty('TG_BRANCH_GROUPS', JSON.stringify({
+      "高雅瓷": "-5590086103",
+      "安帝嘉": "-1004388719757",
+      "喜悅納": "-5418269706"
+    }));
+    return;
+  }
+  // 若既有 map 有分公司群組為空（舊版預留空字串），自動補上目前設定值
+  try {
+    var map = JSON.parse(props.getProperty('TG_BRANCH_GROUPS') || "{}");
+    var defaults = {
+      "高雅瓷": "-5590086103",
+      "安帝嘉": "-1004388719757", // V39.22: 群組升級成 supergroup 後 chat_id 改變，舊的 -5567522188 已失效
+      "喜悅納": "-5418269706"
+    };
+    var changed = false;
+    for (var key in defaults) {
+      if (!map[key]) { map[key] = defaults[key]; changed = true; }
+    }
+    // V39.22: 安帝嘉群組已從一般群組升級成 supergroup，Telegram 會換發新的 chat_id，
+    // 舊 id 對這個群組來說永久失效，不會是「暫時抓不到」，所以就算 map 裡已經有值(非空)也要強制覆蓋成新的
+    if (map["安帝嘉"] === "-5567522188") {
+      map["安帝嘉"] = "-1004388719757";
+      changed = true;
+    }
+    if (changed) {
+      props.setProperty('TG_BRANCH_GROUPS', JSON.stringify(map));
+      console.log("✅ Telegram 到貨群組設定已自動補齊");
+    }
+  } catch (e) {
+    console.error("自動補齊 TG 群組設定失敗: " + e.message);
+  }
+}
+
+/**
+ * 📨 Telegram 到貨通知：取得指定分公司的到貨群組 Chat ID
+ * @param {string} branch 分公司名稱（如「高雅瓷」）
+ * @return {string} Chat ID；未設定回傳空字串
+ */
+function _getTgGroupIdForBranch_V11(branch) {
+  try {
+    _ensureTelegramDelivery_V11();
+    var props = PropertiesService.getScriptProperties();
+    var map = JSON.parse(props.getProperty('TG_BRANCH_GROUPS') || "{}");
+    var b = String(branch || "").trim();
+    // 直接比對
+    if (map[b]) return map[b];
+    // 模糊比對：分公司值可能帶其他字樣
+    for (var key in map) {
+      if (key && b.indexOf(key) !== -1) return map[key];
+    }
+    return "";
+  } catch (e) {
+    return "";
+  }
+}
+
+/**
+ * 📨 Telegram 到貨通知：統計指定分公司「今日配送」筆數
+ * 今日合計 = 該分公司日期為今天的所有單據；已送達 = 狀態已完成/已送達/結案
+ * @param {string} branch 分公司名稱
+ * @return {Object} { total, delivered }
+ */
+function _getBranchTodayStats_V11(branch) {
+  var total = 0, delivered = 0;
+  try {
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) return { total: total, delivered: delivered };
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (v) { return String(v).trim(); });
+    var idxDate = findHIdx_Core(h, "DATE");
+    var idxBranch = findHIdx_Core(h, "BRANCH");
+    var idxStatus = findHIdx_Core(h, "STATUS");
+    if (idxDate === -1 || idxBranch === -1 || idxStatus === -1) return { total: total, delivered: delivered };
+
+    var todayStr = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
+    for (var i = 1; i < data.length; i++) {
+      var rowBranch = String(data[i][idxBranch] || "").trim();
+      if (!rowBranch || rowBranch.indexOf(branch) === -1) continue;
+      var d = data[i][idxDate];
+      var dateStr = (d instanceof Date)
+        ? Utilities.formatDate(d, "GMT+8", "yyyy/MM/dd")
+        : String(d || "").split(' ')[0].trim();
+      if (dateStr !== todayStr) continue;
+      total++;
+      var status = String(data[i][idxStatus] || "").trim();
+      if (status === "已完成" || status === "已送達" || status === "結案") delivered++;
+    }
+  } catch (e) {
+    console.error("統計今日配送失敗: " + e.message);
+  }
+  return { total: total, delivered: delivered };
+}
+
+/**
+ * 📨 Telegram 到貨通知：推送簽收卡片圖片 + 文字摘要（依分公司分流）
+ * @param {Blob} photoBlob 簽收卡片圖檔 (JPEG)
+ * @param {string} caption 文字摘要
+ * @param {string} branch 分公司名稱（決定發送到哪個群組）
+ */
+function pushTelegramDeliveryPhoto_V11(photoBlob, caption, branch) {
+  try {
+    _requireCtx_();
+    _ensureTelegramDelivery_V11();
+    var props = PropertiesService.getScriptProperties();
+    var token = props.getProperty('TG_TOKEN');
+    var chatId = _getTgGroupIdForBranch_V11(branch);
+    if (!token || !chatId) { console.log("TG 未設定群組（分公司: " + branch + "），略過"); return false; }
+
+    var formData = {
+      'chat_id': chatId,
+      'caption': caption,
+      'parse_mode': 'HTML'
+    };
+    var boundary = "----tg" + Date.now();
+    var body = [];
+    for (var key in formData) {
+      body.push("--" + boundary + "\r\nContent-Disposition: form-data; name=\"" + key + "\"\r\n\r\n" + formData[key] + "\r\n");
+    }
+    var bytes = photoBlob.getBytes();
+    body.push("--" + boundary + "\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"delivery.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n");
+    var prefix = body.join("");
+    var suffix = "\r\n--" + boundary + "--\r\n";
+
+    var payload = Utilities.newBlob(prefix).getBytes()
+      .concat(bytes)
+      .concat(Utilities.newBlob(suffix).getBytes());
+
+    var options = {
+      method: 'post',
+      headers: { 'Content-Type': 'multipart/form-data; boundary=' + boundary },
+      payload: payload,
+      muteHttpExceptions: true
+    };
+    var resp = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/sendPhoto", options);
+    var json = JSON.parse(resp.getContentText());
+    if (json.ok) { console.log("📨 TG 到貨卡片推送成功"); return true; }
+    console.error("TG 推送失敗: " + resp.getContentText());
+    return false;
+  } catch (e) {
+    console.error("TG 推送異常: " + e.message);
+    return false;
+  }
+}
+
+/**
  * 🚀 核心功能：同步「業務配送清單」的司機下拉選單
  * 功用：自動讀取系統白名單，找出該列對應分公司的「業務」與「司機」，套用到下拉選單中！
  */
 function syncAllDriverValidationsByBranch() {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getSS_V11();
     var sheetW = ss.getSheetByName("系統白名單");
     var sheetT = ss.getSheetByName("業務配送清單");
     
@@ -4504,15 +5453,16 @@ function keepSystemAlive_V11() {
 /**
  * 查詢指定車牌最近 15 筆里程紀錄 (起始/結束里程、行駛里程與對應工作表列號)
  */
-function getMileageHistory_V11(car) {
+function getMileageHistory_V11(car, yearMonth, token) {
   try {
+    _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     if (!sheet) return { success: false, msg: "找不到行程表" };
     var data = sheet.getDataRange().getValues();
-    if (data.length < 2) return { success: true, list: [] };
+    if (data.length < 2) return { success: true, list: [], months: [], currentMonth: yearMonth || "" };
     var h = data[0].map(function (v) { return String(v).trim(); });
-    
+
     var findSCol = function (names) { for (var n of names) { var p = h.indexOf(n); if (p !== -1) return p; } return -1; };
     var colDate = findSCol(["日期"]);
     var colCar = findSCol(["車牌", "車牌號碼", "車輛"]);
@@ -4521,41 +5471,66 @@ function getMileageHistory_V11(car) {
     var colTotal = findSCol(["當日總里程", "總里程", "單日里程", "行駛里程"]);
     var colAmt = findSCol(["加油金額", "油費金額", "油費"]);
     var colLit = findSCol(["加油公升數", "加油公升", "加油量", "公升數"]);
-    
+
     if (colDate === -1) colDate = 0;
     if (colCar === -1) colCar = 1;
-    
-    var list = [];
+
     var normCar = String(car).trim().toUpperCase().replace(/[-\s]/g, "");
-    
-    // 逆向掃描最後 15 筆符合此車牌的紀錄
-    for (var i = data.length - 1; i >= 1; i--) {
+
+    // V39.12: 改為「按月」查詢，不再固定抓最近15筆。
+    // 原本固定15筆的問題：加油不是每天發生，最近15筆「里程」紀錄很可能一筆加油都沒有，
+    // 加油歷史畫面篩選完就變空清單、看起來像「沒反應」。改按月抓取，該月全部紀錄都會顯示，
+    // 同時回傳這台車「有資料的月份清單」，前端可以做月份切換。
+    var allRows = [];
+    var monthSet = {};
+    for (var i = 1; i < data.length; i++) {
       var rowCar = String(data[i][colCar]).trim().toUpperCase().replace(/[-\s]/g, "");
-      if (rowCar === normCar) {
-        var dateVal = data[i][colDate];
-        var formattedDate = "";
-        if (dateVal) {
-          if (dateVal instanceof Date) {
-            formattedDate = Utilities.formatDate(dateVal, "GMT+8", "yyyy/MM/dd");
-          } else {
-            formattedDate = String(dateVal).split(" ")[0];
-          }
+      if (rowCar !== normCar) continue;
+
+      var dateVal = data[i][colDate];
+      var formattedDate = "", sortKey = 0, ym = "";
+      var dObj = null;
+      if (dateVal) {
+        if (dateVal instanceof Date) {
+          dObj = dateVal;
+          formattedDate = Utilities.formatDate(dateVal, "GMT+8", "yyyy/MM/dd");
+        } else {
+          formattedDate = String(dateVal).split(" ")[0];
+          var parsed = new Date(formattedDate.replace(/\//g, "-"));
+          if (!isNaN(parsed.getTime())) dObj = parsed;
         }
-        
-        list.push({
-          rowNum: i + 1, // 1-indexed sheet row number
-          date: formattedDate,
-          start: colStartMile >= 0 ? String(data[i][colStartMile]).trim() : "",
-          end: colEndMile >= 0 ? String(data[i][colEndMile]).trim() : "",
-          total: colTotal >= 0 ? String(data[i][colTotal]).trim() : "",
-          amount: colAmt >= 0 ? String(data[i][colAmt]).trim() : "",
-          litres: colLit >= 0 ? String(data[i][colLit]).trim() : ""
-        });
-        
-        if (list.length >= 15) break;
+        if (dObj) {
+          sortKey = dObj.getTime();
+          ym = Utilities.formatDate(dObj, "GMT+8", "yyyy-MM");
+        }
       }
+      if (ym) monthSet[ym] = true;
+
+      allRows.push({
+        rowNum: i + 1, // 1-indexed sheet row number
+        date: formattedDate,
+        ym: ym,
+        sortKey: sortKey,
+        start: colStartMile >= 0 ? String(data[i][colStartMile]).trim() : "",
+        end: colEndMile >= 0 ? String(data[i][colEndMile]).trim() : "",
+        total: colTotal >= 0 ? String(data[i][colTotal]).trim() : "",
+        amount: colAmt >= 0 ? String(data[i][colAmt]).trim() : "",
+        litres: colLit >= 0 ? String(data[i][colLit]).trim() : ""
+      });
     }
-    return { success: true, list: list };
+
+    var months = Object.keys(monthSet).sort().reverse(); // 有資料的月份，新到舊
+    // 預設(未指定 yearMonth)：最近一個月 = 有資料的月份中最新的那個；若該車完全沒資料，退回本月
+    var targetYm = yearMonth || months[0] || Utilities.formatDate(new Date(), "GMT+8", "yyyy-MM");
+
+    var list = allRows.filter(function (r) { return r.ym === targetYm; });
+    list.sort(function (a, b) {
+      if (b.sortKey !== a.sortKey) return b.sortKey - a.sortKey;
+      return b.rowNum - a.rowNum;
+    });
+    list.forEach(function (r) { delete r.sortKey; delete r.ym; }); // 排序用欄位不回傳給前端
+
+    return { success: true, list: list, months: months, currentMonth: targetYm };
   } catch (e) {
     return { success: false, error: e.message };
   }
@@ -4567,8 +5542,9 @@ function getMileageHistory_V11(car) {
  * @param {string} type 'start' (上班里程) 或 'end' (下班里程)
  * @param {number} newMileage 新的里程數字
  */
-function updateMileageRecord_V11(rowNum, type, newMileage) {
+function updateMileageRecord_V11(rowNum, type, newMileage, token) {
   try {
+    var ctx = _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     if (!sheet) return { success: false, msg: "找不到行程表" };
@@ -4581,6 +5557,7 @@ function updateMileageRecord_V11(rowNum, type, newMileage) {
     
     var val = Number(newMileage);
     if (isNaN(val) || val <= 0) return { success: false, msg: "請輸入有效的正數里程" };
+    if (!_rowBelongsToDriver_(sheet, h, rowNum, ctx)) return { success: false, msg: "🔒 無權修改其他車輛的紀錄" };
     
     var targetCol = -1;
     if (type === 'start') {
@@ -4606,7 +5583,7 @@ function updateMileageRecord_V11(rowNum, type, newMileage) {
     }
     
     // 清除快取
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     
     return { success: true, msg: "✅ 里程修正成功！" };
   } catch (e) {
@@ -4620,8 +5597,9 @@ function updateMileageRecord_V11(rowNum, type, newMileage) {
  * @param {string} type 'amt' (加油金額) 或 'lit' (加油公升數)
  * @param {number} newVal 新的數值
  */
-function updateFuelRecord_V11(rowNum, type, newVal) {
+function updateFuelRecord_V11(rowNum, type, newVal, token) {
   try {
+    var ctx = _requireDriver_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     if (!sheet) return { success: false, msg: "找不到行程表" };
@@ -4633,6 +5611,7 @@ function updateFuelRecord_V11(rowNum, type, newVal) {
     
     var val = Number(newVal);
     if (isNaN(val) || val < 0) return { success: false, msg: "請輸入有效的數值" };
+    if (!_rowBelongsToDriver_(sheet, h, rowNum, ctx)) return { success: false, msg: "🔒 無權修改其他車輛的紀錄" };
     
     var targetCol = -1;
     if (type === 'amt') {
@@ -4646,12 +5625,24 @@ function updateFuelRecord_V11(rowNum, type, newVal) {
     sheet.getRange(rowNum, targetCol + 1).setValue(val);
     
     // 清除快取
-    CacheService.getScriptCache().remove('war_room_data_v2');
+    _clearWarRoomCache_();
     
     return { success: true, msg: "✅ 加油紀錄修正成功！" };
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+/** V41: 行程表第 rowNum 列的車牌是否為此司機可操作的車 (admin 一律允許) */
+function _rowBelongsToDriver_(sheet, h, rowNum, ctx) {
+  if (!ctx || ctx.role !== 'driver') return true;
+  var r = parseInt(rowNum, 10);
+  if (isNaN(r) || r < 2 || r > sheet.getLastRow()) return false;
+  var colCar = -1;
+  ["車牌", "車牌號碼", "車輛"].forEach(function (n) { if (colCar === -1 && h.indexOf(n) !== -1) colCar = h.indexOf(n); });
+  if (colCar === -1) colCar = 1;
+  var car = String(sheet.getRange(r, colCar + 1).getValue() || "").trim();
+  return _driverMayUseCar_(ctx, car);
 }
 
 function formatLastUpdate(timestamp) {
@@ -4677,5 +5668,265 @@ function formatLastUpdate(timestamp) {
     return month + "/" + day + " " + hour + ":" + minute;
   } catch (e) {
     return "";
+  }
+}
+
+/**
+ * 申訴 API：分公司對某一筆訂單的運費提出申訴
+ */
+function submitFreightAppeal(taskId, branch, reason, expectedFee, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    _requireAdmin_(token);
+    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
+    
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) throw new Error("找不到派送清單");
+    
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(v => String(v).trim());
+    var idxId = h.indexOf("單號");
+    var idxBr = h.indexOf("分公司");
+    var idxStatus = h.indexOf("申訴狀態");
+    var idxReason = h.indexOf("申訴理由");
+    var idxAdjust = h.indexOf("調整後運費");
+    
+    if (idxId === -1 || idxStatus === -1 || idxReason === -1) {
+      throw new Error("系統欄位不完整，無法申訴。請管理員重新初始化欄位。");
+    }
+    
+    var targetRow = -1;
+    for (var i = 1; i < data.length; i++) {
+      var rowId = String(data[i][idxId]).trim();
+      var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+      if (rowId === String(taskId) && (branch === "全部" || rowBr === branch)) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    
+    if (targetRow === -1) throw new Error("找不到該筆訂單");
+    
+    // 寫入申訴資料
+    sheet.getRange(targetRow, idxStatus + 1).setValue("申訴中");
+    sheet.getRange(targetRow, idxReason + 1).setValue(reason + " (期望金額: $" + expectedFee + ")");
+    if (idxAdjust !== -1) {
+      sheet.getRange(targetRow, idxAdjust + 1).setValue(""); // 清空舊的調整後金額
+    }
+    
+    // 清除快取
+    _clearDashboardCache_();
+    
+    return { success: true, message: "✅ 申訴已成功提交！" };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * 審批 API：管理端同意調整或駁回申訴
+ */
+function resolveFreightAppeal(taskId, status, replyNote, finalFee, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    _requireAdmin_(token);
+    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
+    
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) throw new Error("找不到派送清單");
+    
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(v => String(v).trim());
+    var idxId = h.indexOf("單號");
+    var idxStatus = h.indexOf("申訴狀態");
+    var idxReply = h.indexOf("申訴處理說明");
+    var idxAdjust = h.indexOf("調整後運費");
+    
+    if (idxId === -1 || idxStatus === -1 || idxReply === -1 || idxAdjust === -1) {
+      throw new Error("系統欄位不完整");
+    }
+    
+    var targetRow = -1;
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][idxId]).trim() === String(taskId)) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    
+    if (targetRow === -1) throw new Error("找不到該筆訂單");
+    
+    sheet.getRange(targetRow, idxStatus + 1).setValue(status); // "已調整" 或 "已駁回"
+    sheet.getRange(targetRow, idxReply + 1).setValue(replyNote);
+    if (status === "已調整") {
+      sheet.getRange(targetRow, idxAdjust + 1).setValue(parseFloat(finalFee) || 0);
+    } else {
+      sheet.getRange(targetRow, idxAdjust + 1).setValue(""); // 駁回則無調整金額
+    }
+    
+    _clearDashboardCache_();
+    return { success: true, message: "✅ 申訴案件已處理完成！" };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * V39.23: 對帳頁面直接手動調整核定運費 (不經過申訴流程，供內部管理端直接改)
+ * @param {string} taskId 單號
+ * @param {string} branch 分公司 (可傳空字串，僅比對單號)
+ * @param {number} newFee 新的核定運費金額
+ */
+function manualAdjustFreight_V11(taskId, branch, newFee, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    _requireAdmin_(token);
+    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
+
+    var feeVal = parseFloat(newFee);
+    if (isNaN(feeVal) || feeVal < 0) throw new Error("請輸入有效的運費金額");
+
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) throw new Error("找不到派送清單");
+
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (v) { return String(v).trim(); });
+    var idxId = h.indexOf("單號");
+    var idxBr = h.indexOf("分公司");
+    var idxAdjust = h.indexOf("調整後運費");
+    if (idxId === -1 || idxAdjust === -1) throw new Error("系統欄位不完整");
+
+    var targetRow = -1;
+    for (var i = 1; i < data.length; i++) {
+      var rowId = String(data[i][idxId]).trim();
+      var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+      if (rowId === String(taskId) && (!branch || rowBr === branch)) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+    if (targetRow === -1) throw new Error("找不到該筆訂單 [" + taskId + "]");
+
+    sheet.getRange(targetRow, idxAdjust + 1).setValue(feeVal);
+    _clearDashboardCache_();
+    return { success: true, message: "✅ 運費已調整為 $" + feeVal, newFee: feeVal };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ==========================================
+// V41.13: 運費設定 (分析中心「運費統計 → 設定」用)
+// 直接讀寫「運費管理表」，格式與 setupFreightRateSheet_V11 一致：
+//   A-B 重量上限(KG)/基礎運費、D-E 偏遠地區關鍵字/加乘倍率、G-H 附加項目/費率
+// ==========================================
+function getFreightSettings_V41(token) {
+  _requireAdmin_(token);
+  try {
+    var r = FreightEngine.loadRates();
+    if (!r) return { success: false, error: "找不到運費管理表，請先執行 setupFreightRateSheet_V11" };
+    return {
+      success: true,
+      weightSlabs: r.weightSlabs,                       // [{maxKg, fee}]
+      remoteAreas: r.remoteAreas.map(function (a) { return { keywords: a.keywords.join(", "), multiplier: a.multiplier }; }),
+      addonFees: Object.keys(r.addonFees).map(function (k) { return { item: k, rate: r.addonFees[k] }; })
+    };
+  } catch (e) { return { success: false, error: e.message }; }
+}
+
+function saveFreightSettings_V41(cfg, token) {
+  _requireAdmin_(token);
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試");
+    if (!cfg) throw new Error("缺少設定內容");
+    var slabs = (cfg.weightSlabs || []).map(function (s) { return [parseFloat(s.maxKg), parseFloat(s.fee)]; })
+      .filter(function (s) { return !isNaN(s[0]) && !isNaN(s[1]) && s[0] > 0; })
+      .sort(function (a, b) { return a[0] - b[0]; });
+    var remotes = (cfg.remoteAreas || []).map(function (a) { return [String(a.keywords || "").trim(), parseFloat(a.multiplier)]; })
+      .filter(function (a) { return a[0] && !isNaN(a[1]) && a[1] > 0; });
+    var addons = (cfg.addonFees || []).map(function (a) { return [String(a.item || "").trim(), parseFloat(a.rate)]; })
+      .filter(function (a) { return a[0] && !isNaN(a[1]); });
+    if (!slabs.length) throw new Error("至少要有一個重量級距");
+
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT) || ss.insertSheet(V11_PROD_CONFIG.SHEET_FREIGHT);
+    // 備份舊設定到「運費管理表_歷史」
+    try {
+      var hist = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT + "_歷史") || ss.insertSheet(V11_PROD_CONFIG.SHEET_FREIGHT + "_歷史");
+      var oldVals = sheet.getDataRange().getValues();
+      if (oldVals.length) {
+        hist.appendRow(["=== " + Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd HH:mm") + " 變更前 ==="]);
+        hist.getRange(hist.getLastRow() + 1, 1, oldVals.length, oldVals[0].length).setValues(oldVals);
+      }
+    } catch (hErr) { console.log("運費設定歷史備份失敗: " + hErr.message); }
+
+    sheet.clear();
+    var rows = Math.max(slabs.length, remotes.length, addons.length) + 1;
+    var grid = [];
+    for (var i = 0; i < rows; i++) grid.push(["", "", "", "", "", "", "", ""]);
+    grid[0] = ["重量上限(KG)", "基礎運費", "", "偏遠地區關鍵字", "加乘倍率", "", "附加項目", "費率/單價"];
+    slabs.forEach(function (s, i) { grid[i + 1][0] = s[0]; grid[i + 1][1] = s[1]; });
+    remotes.forEach(function (a, i) { grid[i + 1][3] = a[0]; grid[i + 1][4] = a[1]; });
+    addons.forEach(function (a, i) { grid[i + 1][6] = a[0]; grid[i + 1][7] = a[1]; });
+    sheet.getRange(1, 1, grid.length, 8).setValues(grid);
+    sheet.getRange("A1:B1").setBackground("#34495e").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.getRange("D1:E1").setBackground("#27ae60").setFontColor("#ffffff").setFontWeight("bold");
+    sheet.getRange("G1:H1").setBackground("#d35400").setFontColor("#ffffff").setFontWeight("bold");
+    FreightEngine._cachedRates = null;
+    _clearDashboardCache_();
+    return { success: true, message: "✅ 運費設定已儲存 (舊設定已備份至「運費管理表_歷史」)" };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
+}
+
+
+/**
+ * V41.34: 人工改判單據類型 (分析中心明細面板用)。寫入派送清單「單據類型(人工)」欄，規則判定會被覆蓋。
+ * docType: '樣品' | '銷貨' | '' (清除人工判定，回到規則)
+ */
+function setDocTypeOverride_V41(taskId, branch, docType, token) {
+  _requireAdmin_(token);
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試");
+    var val = String(docType || "").trim();
+    if (["樣品", "樣品收費", "樣品免費", "銷貨", "退貨", ""].indexOf(val) === -1) throw new Error("不支援的類型: " + val);
+    var ss = getSS_V11();
+    var targets = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"];
+    for (var s = 0; s < targets.length; s++) {
+      var sheet = ss.getSheetByName(targets[s]);
+      if (!sheet) continue;
+      var data = sheet.getDataRange().getValues();
+      var h = data[0].map(function (v) { return String(v).trim(); });
+      var idxId = h.indexOf("單號"), idxBr = h.indexOf("分公司"), idxT = h.indexOf("單據類型(人工)");
+      if (idxId === -1) continue;
+      if (idxT === -1) { idxT = h.length; sheet.getRange(1, idxT + 1).setValue("單據類型(人工)"); }
+      for (var i = 1; i < data.length; i++) {
+        if (String(data[i][idxId]).trim() !== String(taskId).trim()) continue;
+        if (branch && idxBr !== -1 && String(data[i][idxBr]).trim() !== String(branch).trim()) continue;
+        sheet.getRange(i + 1, idxT + 1).setValue(val);
+        _clearDashboardCache_();
+        _clearWarRoomCache_();
+        return { success: true, message: "✅ " + taskId + " 已改為「" + (val || "依規則判定") + "」" };
+      }
+    }
+    return { success: false, error: "找不到單號 " + taskId };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
   }
 }

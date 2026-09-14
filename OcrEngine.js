@@ -218,9 +218,12 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
     // 💡 排除 S/N 批號的干擾：因商品型號尾碼可能為 -S，若剛好與下一行的「S/N批號」相接，
     // 換行空白化後會變成「-S S/N」，其「S S」會被誤判成「SS (喜悅納)」分公司，因此需預先將「S/N」替換。
     // 同時，為了防止品項編號或客戶代碼如 AA-61250, AA 61250 誤判為分公司章，正則後面加上了 negative lookahead 排除後方緊鄰數字的情形。
+    // V39.34: 分公司浮水印章有時會被 OCR 疊字誤讀成 3 個以上同字母(如「E E」被讀成「EEE」)，
+    // 導致 \b(E\s*E)\b 因「EEE」中間沒有字界而完全抓不到，誤判成預設值(漢樺)。
+    // 改用「同一字母重複 2 次以上」的寫法，並統一正規化回 2 碼再查表，容錯 OCR 疊字。
     var textForBranch = preprocessedText.replace(/S\/N/gi, "");
-    var branchMatch = textForBranch.match(/\b(A\s*A|E\s*E|S\s*S|W\s*W)\b(?!\s*[-/]?\s*\d)/i);
-    var code = branchMatch ? branchMatch[0].replace(/\s/g, '').toUpperCase() : "";
+    var branchMatch = textForBranch.match(/\b([AESW])(?:\s*\1)+\b(?!\s*[-/]?\s*\d)/i);
+    var code = branchMatch ? (branchMatch[1] + branchMatch[1]).toUpperCase() : "";
     result.branch = String(branchMap[code] || loginBranch || "漢樺").trim();
 
     // 2. 原始單號 (V35.6: 補回單號解析，支持 6~11 碼純數字)
@@ -502,8 +505,11 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
         candidates.forEach(cand => {
             const c = cand.code;
             if (isWW) {
-                if (/^\d{6}$/.test(c)) {
-                    if (hasAnyDbMatch && !cand.isDbMatch) return; // 優先保障價目表內的代號
+                // 漢樺：編號為純數字，前導零為正式格式（如 0424001），長度可達 9 碼以上
+                // 表內有匹配的直接接受；否則只接受傳統六碼，避免抓入電話/單號雜訊
+                var isSixDigit = /^\d{6}$/.test(c);
+                if (cand.isDbMatch || isSixDigit) {
+                    if (hasAnyDbMatch && !cand.isDbMatch && !isSixDigit) return;
                     filteredCodes.push(c);
                 }
             } else {
@@ -634,10 +640,10 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
     // V36.27+: 改為全域搜尋，支援單號在表格下方的單據 (如雅麗佳案例)
     const directMap = getDirectMap_V20();
     var directMatch = text.match(/(?:指\s*送|直\s*送)\s*[:：\s]*\s*([^\s\x00-\x1f/]{2,100})/);
+    var foundDirect = null;
     if (directMatch) {
         var directText = directMatch[1].replace(/^[:：\s]+/, "").trim();
         var directKeyword = directText.toUpperCase();
-        var foundDirect = null;
 
         // Step A: 先嘗試匹配預設清單 (加工廠/貨運行)
         for (let m of directMap) {
@@ -668,6 +674,17 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
         }
     }
 
+    // V39.28: 判斷是否為既有貨運行/加工廠清單(getDirectMap_V20)裡的地址，
+    // 若是，前端「貨運行集貨(打5折)」按鈕預設打勾，小姐不用每次手動勾
+    result.suggestCarrier = false;
+    if (foundDirect) {
+        result.suggestCarrier = true;
+    } else if (result.address) {
+        result.suggestCarrier = directMap.some(function (m) {
+            return result.address.indexOf(m.fullName) !== -1 || m.address === result.address;
+        });
+    }
+
     // 唯一鍵
     if (result.branch && result.orderId) {
         result.uniqueKey = result.branch + "-" + result.orderId;
@@ -686,7 +703,8 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
 /**
  * 前端呼叫入口：處理圖片辨識並回傳解析結果
  */
-function processVisionOcr_Backend(base64Image, loginBranch) {
+function processVisionOcr_Backend(base64Image, loginBranch, token) {
+    _requireAdmin_(token); // V41: Vision API 按次計費，只允許已登入的管理端呼叫
     try {
         // 1. 呼叫 Google Vision API 取得純文字
         var rawText = callVisionAI(base64Image);
@@ -749,14 +767,34 @@ function callVisionAI(base64Data) {
     return "";
 }
 
-function upsertOrderFromOcr_V2(parsedData) {
-    if (!parsedData.isValid) {
-        return { success: false, error: parsedData.error };
+function upsertOrderFromOcr_V2(parsedData, token) {
+    _requireAdmin_(token);
+    if (!parsedData || !parsedData.isValid) {
+        return { success: false, error: (parsedData && parsedData.error) || "資料無效" };
+    }
+
+    // V41 加速：地理編碼不需要試算表鎖，先在鎖外做，讓前端多筆並行時彼此不卡
+    // (縮圖上傳改在鎖內、確認允許寫入之後才做，避免「禁止覆蓋」的單也留下公開分享的孤兒檔案)
+    var uploadThumbIfNeeded = function () {
+        if (parsedData.thumbnailB64 && !parsedData.thumbnail) {
+            try {
+                var thumbUrl = uploadFile({ contents: parsedData.thumbnailB64, mimeType: "image/jpeg", folderName: "OCR_Thumbnails" }, "OCR_" + (parsedData.orderId || ""));
+                parsedData.thumbnail = (thumbUrl && thumbUrl.indexOf("Error") === -1) ? thumbUrl : "";
+            } catch (thErr) { parsedData.thumbnail = ""; }
+        }
+        delete parsedData.thumbnailB64;
+    };
+    var lat = "", lng = "";
+    if (parsedData.address) {
+        try {
+            var geo = Maps.newGeocoder().geocode(parsedData.address).results[0];
+            if (geo) { lat = geo.geometry.location.lat; lng = geo.geometry.location.lng; }
+        } catch (e) { }
     }
 
     var lock = LockService.getScriptLock();
     try {
-        if (!lock.tryLock(10000)) return { success: false, error: "系統忙碌中 (單據寫入鎖定)，請稍後再試。" };
+        if (!lock.tryLock(30000)) return { success: false, error: "系統忙碌中 (單據寫入鎖定)，請稍後再試。" };
 
         var ss = typeof getSS_V11 === 'function' ? getSS_V11() : SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID);
         
@@ -802,6 +840,7 @@ function upsertOrderFromOcr_V2(parsedData) {
             size: headers.indexOf("尺寸"),
             boxes: headers.indexOf("箱數"),
             eta: headers.indexOf("到貨時間"),
+            specifiedArrive: headers.indexOf("指定到貨時間"), // V40: 強制指定到貨時間
             note: headers.indexOf("備註"),
             wrapSeal: typeof findHIdx_Core === 'function' ? findHIdx_Core(headers, ["封膠膜", "膠膜", "封膜"]) : headers.indexOf("封膠膜"),
             vehicle: headers.indexOf("車牌"),
@@ -810,8 +849,18 @@ function upsertOrderFromOcr_V2(parsedData) {
             lat: headers.indexOf("緯度"),
             lng: headers.indexOf("經度"),
             contact: typeof findHIdx_Core === 'function' ? findHIdx_Core(headers, "CONTACT") : headers.indexOf("聯絡人"),
-            thumbnail: typeof findHIdx_Core === 'function' ? findHIdx_Core(headers, "THUMBNAIL") : headers.indexOf("貨單縮圖") // V36.6
+            thumbnail: typeof findHIdx_Core === 'function' ? findHIdx_Core(headers, "THUMBNAIL") : headers.indexOf("貨單縮圖"), // V36.6
+            // V39.23: 偏遠地區/貨運行折扣，掃描建單當下就寫入，不用等對帳頁面才動態算
+            isRemote: headers.indexOf("是否偏遠"),
+            carrierFlag: headers.indexOf("貨運行標示"),
+            carrierDiscount: headers.indexOf("貨運行折扣")
         };
+
+        // V39.23: 掃描地址時就判定偏遠地區(FreightEngine 只需要地址，不用等重量/結案才算)
+        var remoteInfo = { isRemote: "否" };
+        if (parsedData.address && typeof FreightEngine !== 'undefined' && FreightEngine.getRemoteInfo) {
+            try { remoteInfo = FreightEngine.getRemoteInfo(parsedData.address); } catch (e) { }
+        }
 
         for (var n = 1; n <= maxItemsSupported; n++) {
             idx["itemCode" + n] = headers.indexOf("品項" + n + "編號");
@@ -834,54 +883,47 @@ function upsertOrderFromOcr_V2(parsedData) {
             }
         }
 
-        // 呼叫 Google Maps 轉換經緯度
-        var lat = "", lng = "";
-        if (parsedData.address) {
-            try {
-                var res = Maps.newGeocoder().geocode(parsedData.address).results[0];
-                if (res) {
-                    lat = res.geometry.location.lat;
-                    lng = res.geometry.location.lng;
-                }
-            } catch (e) { }
-        }
+        // (經緯度已在鎖外算好)
 
         // V36.2: 地址重複檢查 (防止跨公司重複配送)
         var addressConflict = null;
         var todayStr = parsedData.date || Utilities.formatDate(new Date(), "Asia/Taipei", "yyyy/MM/dd");
 
-        CacheService.getScriptCache().remove('war_room_data_v2'); // V36.2: 成功寫入後清除快取
+        if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_(); // V36.2: 成功寫入後清除快取
         if (targetRow !== -1) {
             // 情境 B: 已存在
             if (currentStatus === "待指派" || currentStatus === "未指派" || currentStatus === "未派車" || currentStatus === "") {
-                // 允許覆蓋
-                if (idx.weight !== -1 && parsedData.weight) sheet.getRange(targetRow, idx.weight + 1).setValue(parsedData.weight);
-                if (idx.size !== -1 && parsedData.size) sheet.getRange(targetRow, idx.size + 1).setValue(parsedData.size);
-                if (idx.boxes !== -1 && parsedData.boxes) sheet.getRange(targetRow, idx.boxes + 1).setValue(parsedData.boxes);
-                if (idx.note !== -1 && parsedData.note) sheet.getRange(targetRow, idx.note + 1).setValue(parsedData.note);
-                if (idx.wrapSeal !== -1) sheet.getRange(targetRow, idx.wrapSeal + 1).setValue((typeof normalizeWrapSeal_Core === 'function' ? normalizeWrapSeal_Core(parsedData.wrapSeal) : (String(parsedData.wrapSeal || "").indexOf("封") !== -1 ? "封" : "")));
-                if (idx.address !== -1 && parsedData.address) sheet.getRange(targetRow, idx.address + 1).setValue(parsedData.address);
-                if (idx.location !== -1 && parsedData.location) sheet.getRange(targetRow, idx.location + 1).setValue(parsedData.location);
-                if (idx.phone !== -1 && parsedData.phone) sheet.getRange(targetRow, idx.phone + 1).setValue("'" + parsedData.phone);
-                if (idx.contact !== -1 && parsedData.contactName) sheet.getRange(targetRow, idx.contact + 1).setValue(parsedData.contactName);
-                if (idx.eta !== -1 && parsedData.etaTime) sheet.getRange(targetRow, idx.eta + 1).setValue(parsedData.etaTime);
-                if (idx.thumbnail !== -1 && parsedData.thumbnail) sheet.getRange(targetRow, idx.thumbnail + 1).setValue(parsedData.thumbnail); // V36.6
+                uploadThumbIfNeeded();
+                // 允許覆蓋 —— V41: 改為修改整列陣列後一次 setValues (舊版最多 ~40 次 setValue，每次一趟來回)
+                var rowVals = data[targetRow - 1].slice();
+                while (rowVals.length < headers.length) rowVals.push("");
+                var setCell = function (ci, val) { if (ci !== -1 && ci !== undefined) rowVals[ci] = val; };
+                if (parsedData.weight) setCell(idx.weight, parsedData.weight);
+                if (parsedData.size) setCell(idx.size, parsedData.size);
+                if (parsedData.boxes) setCell(idx.boxes, parsedData.boxes);
+                if (parsedData.note) setCell(idx.note, parsedData.note);
+                setCell(idx.wrapSeal, (typeof normalizeWrapSeal_Core === 'function' ? normalizeWrapSeal_Core(parsedData.wrapSeal) : (String(parsedData.wrapSeal || "").indexOf("封") !== -1 ? "封" : "")));
+                if (parsedData.address) setCell(idx.address, parsedData.address);
+                if (parsedData.location) setCell(idx.location, parsedData.location);
+                if (parsedData.phone) setCell(idx.phone, "'" + parsedData.phone);
+                if (parsedData.contactName) setCell(idx.contact, parsedData.contactName);
+                if (parsedData.etaTime) setCell(idx.eta, parsedData.etaTime);
+                if (parsedData.specifiedArrive) setCell(idx.specifiedArrive, parsedData.specifiedArrive); // V40
+                if (parsedData.thumbnail) setCell(idx.thumbnail, parsedData.thumbnail); // V36.6
+                setCell(idx.isRemote, remoteInfo.isRemote); // V39.23
+                setCell(idx.carrierFlag, parsedData.carrierFlag || ""); // V39.23
+                setCell(idx.carrierDiscount, parsedData.carrierDiscount || 1); // V39.23
+                if (lat && lng) { setCell(idx.lat, lat); setCell(idx.lng, lng); }
 
-                if (lat && lng) {
-                    if (idx.lat !== -1) sheet.getRange(targetRow, idx.lat + 1).setValue(lat);
-                    if (idx.lng !== -1) sheet.getRange(targetRow, idx.lng + 1).setValue(lng);
-                }
-                
                 // 寫入品項明細到主表欄位
                 if (parsedData.items && parsedData.items.length > 0) {
                     for (var n = 1; n <= maxItemsSupported; n++) {
                         var item = parsedData.items[n - 1] || { code: "", qty: "" };
-                        var colCodeIdx = idx["itemCode" + n];
-                        var colQtyIdx = idx["itemQty" + n];
-                        if (colCodeIdx !== -1) sheet.getRange(targetRow, colCodeIdx + 1).setValue(item.code);
-                        if (colQtyIdx !== -1) sheet.getRange(targetRow, colQtyIdx + 1).setValue(item.qty);
+                        setCell(idx["itemCode" + n], item.code);
+                        setCell(idx["itemQty" + n], item.qty);
                     }
                 }
+                sheet.getRange(targetRow, 1, 1, rowVals.length).setValues([rowVals]);
 
                 // V11.26: 同步寫入子表 (撿貨明細)
                 if (parsedData.items && parsedData.items.length > 0) {
@@ -894,6 +936,7 @@ function upsertOrderFromOcr_V2(parsedData) {
             }
         } else {
             // 情境 A: 不存在 -> 新增一筆
+            uploadThumbIfNeeded();
             var newRow = new Array(headers.length).fill("");
             if (idx.date !== -1) newRow[idx.date] = parsedData.date || todayStr;
             if (idx.branch !== -1) newRow[idx.branch] = parsedData.branch;
@@ -907,6 +950,10 @@ function upsertOrderFromOcr_V2(parsedData) {
             if (idx.size !== -1 && parsedData.size) newRow[idx.size] = parsedData.size;
             if (idx.boxes !== -1 && parsedData.boxes) newRow[idx.boxes] = parsedData.boxes;
             if (idx.eta !== -1) newRow[idx.eta] = parsedData.etaTime;
+            if (idx.specifiedArrive !== -1) newRow[idx.specifiedArrive] = parsedData.specifiedArrive || ""; // V40
+            if (idx.isRemote !== -1) newRow[idx.isRemote] = remoteInfo.isRemote; // V39.23
+            if (idx.carrierFlag !== -1) newRow[idx.carrierFlag] = parsedData.carrierFlag || ""; // V39.23
+            if (idx.carrierDiscount !== -1) newRow[idx.carrierDiscount] = parsedData.carrierDiscount || 1; // V39.23
             if (idx.note !== -1) newRow[idx.note] = parsedData.note;
             if (idx.wrapSeal !== -1) newRow[idx.wrapSeal] = (typeof normalizeWrapSeal_Core === 'function' ? normalizeWrapSeal_Core(parsedData.wrapSeal) : (String(parsedData.wrapSeal || "").indexOf("封") !== -1 ? "封" : ""));
             if (idx.status !== -1) newRow[idx.status] = "待指派";

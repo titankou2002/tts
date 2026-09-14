@@ -8,7 +8,8 @@
 /**
  * 核心清理函式：執行此函式可清空所有垃圾
  */
-function cleanupSystemProperties() {
+function cleanupSystemProperties(e) {
+  _requireSystemContext_(e);
   var props = PropertiesService.getScriptProperties();
   var allData = props.getProperties();
   var deleteCount = 0;
@@ -16,12 +17,15 @@ function cleanupSystemProperties() {
   
   console.log("🚀 開始掃描屬性... 總數: " + keys.length);
   
+  var kept = {};
   for (var key in allData) {
     var value = allData[key];
     
     // 垃圾判斷邏輯：
-    // 1. UUID 類型的 Key (長度 36 或類似) 且值為 "1"
+    // 1. 標準 UUID (36 碼含連字號) 且值為 "1"
     var isUuidJunk = (key.length >= 32 && value === "1" && key.includes('-'));
+    // 1b. V41: 司機端 genUUID() 產生的格式：u + 13 位時間戳 + 4~8 位亂碼 (例如 u1757600000000abc123)，值為 "1"
+    var isDriverUuidJunk = (value === "1" && /^u\d{13}[a-z0-9]{3,10}$/.test(key));
     
     // 2. 舊的地理位置快取 (GEO_ 開頭)
     var isGeoCache = (key.indexOf('GEO_') === 0);
@@ -29,11 +33,14 @@ function cleanupSystemProperties() {
     // 3. 追蹤快取 (TRACE_ 打頭，通常為舊資料)
     var isTraceCache = (key.indexOf('TRACE_') === 0);
 
-    if (isUuidJunk || isGeoCache || isTraceCache) {
-      props.deleteProperty(key);
+    if (isUuidJunk || isDriverUuidJunk || isGeoCache || isTraceCache) {
       deleteCount++;
+    } else {
+      kept[key] = value;
     }
   }
+  // V41: 一次性覆寫 (deleteAllOthers=true)，不再逐筆 deleteProperty (4000+ 筆會超過 6 分鐘)
+  if (deleteCount > 0) props.setProperties(kept, true);
   
   console.log("✅ 清理完成！");
   console.log("🗑️ 刪除垃圾數量: " + deleteCount);
@@ -45,23 +52,23 @@ function cleanupSystemProperties() {
  * 🛠️ 快速設定 Google Maps API Key
  * 請在下方填入您的 KEY 後，點擊執行。
  */
-function setGoogleMapsApiKey() {
-  // 將下方的文字替換為您的實體 API KEY
-  var API_KEY = "YOUR_REAL_GOOGLE_MAPS_API_KEY_HERE";
-  
-  if (API_KEY.includes("YOUR_REAL")) {
-    console.warn("⚠️ 請先將代碼中的 'YOUR_REAL_GOOGLE_MAPS_API_KEY_HERE' 替換為您的 API 金鑰！");
+function setGoogleMapsApiKey(apiKey) {
+  // V41: 金鑰改由參數傳入 (在編輯器執行 setGoogleMapsApiKey('你的KEY'))，不再寫進原始碼；建議直接在「專案設定 → 指令碼屬性」設定
+  _requireSystemContext_();
+  var API_KEY = String(apiKey || "").trim();
+  if (!API_KEY || API_KEY.includes("YOUR_REAL")) {
+    console.warn("⚠️ 請以參數傳入 API 金鑰：setGoogleMapsApiKey('AIza...')");
     return;
   }
-  
-  PropertiesService.getScriptProperties().setProperty("GOOGLE_MAPS_API_KEY", API_KEY.trim());
+  PropertiesService.getScriptProperties().setProperty("GOOGLE_MAPS_API_KEY", API_KEY);
   console.log("✅ GOOGLE_MAPS_API_KEY 設定成功！");
 }
 
 /**
  * 🔍 檢查目前的 API Key 是否存在
  */
-function checkSystemKeys() {
+function checkSystemKeys(e) {
+  _requireSystemContext_(e);
   var props = PropertiesService.getScriptProperties().getProperties();
   var keys = ["GOOGLE_MAPS_API_KEY", "GEMINI_API_KEY", "VISION_API_KEY"];
   
@@ -78,8 +85,9 @@ function checkSystemKeys() {
  * 🛠️ 救回「狀態」下拉選單
  * 目的：修復 Google Sheets H 欄 (狀態) 下拉選單消失的問題
  */
-function restoreStatusValidation() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+function restoreStatusValidation(e) {
+  _requireSystemContext_(e);
+  var ss = getSS_V11();
   var sheet = ss.getSheetByName("派送清單") || ss.getSheets()[0];
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var colStatus = -1;

@@ -2,7 +2,8 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>鈦傳速｜數據分析儀表板 V5.2.4</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鈦傳速｜智慧物流對帳與分析中心</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -13,6 +14,7 @@
             --success: #22c55e;
             --warning: #f59e0b;
             --danger: #ef4444;
+            --pink: #f472b6;
             --text-main: #f8fafc;
             --text-dim: #94a3b8;
             --glass-border: rgba(255, 255, 255, 0.1);
@@ -38,13 +40,6 @@
             background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; z-index: 100;
         }
 
-        /* 轉址內嵌 iframe 時自動向下微調，防止被 negative margin 推移剪裁 */
-        body.embedded-iframe {
-            padding-top: 55px !important;
-        }
-        body.embedded-iframe header {
-            top: 55px !important;
-        }
         .logo { font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
         .logo i { color: var(--accent); }
 
@@ -52,23 +47,28 @@
             padding: 8px 20px; background: var(--card-bg); display: flex; flex-wrap: wrap; gap: 15px;
             border-bottom: 1px solid var(--glass-border); align-items: center;
         }
-        .filter-group { display: flex; align-items: center; gap: 8px; }
+        .filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .filter-group label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
         .filter-group select, .filter-group input {
             background: #020617; border: 1px solid var(--glass-border);
             color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;
         }
 
-        .btn-preset { 
+        .btn-preset, .btn-branch {
             background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-dim);
-            padding: 2px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: 0.2s;
+            padding: 3px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; transition: 0.2s; font-weight: 600;
         }
-        .btn-preset:hover { background: var(--accent); color: #000; }
+        .btn-preset:hover, .btn-branch:hover { background: rgba(56,189,248,0.25); color: #fff; }
+        .btn-preset.active, .btn-branch.active { background: var(--accent); color: #000; }
+        .btn-branch.b-高雅瓷.active { background: #f472b6; }
+        .btn-branch.b-安帝嘉.active { background: #34d399; }
+        .btn-branch.b-喜悅納.active { background: #60a5fa; }
+        .btn-branch.b-漢樺.active { background: #fbbf24; }
 
-        .tabs { display: flex; gap: 2px; padding: 8px 20px 0; border-bottom: 1px solid var(--glass-border); background: #0f172a; }
+        .tabs { display: flex; gap: 2px; padding: 8px 20px 0; border-bottom: 1px solid var(--glass-border); background: #0f172a; overflow-x: auto; }
         .tab-btn {
             padding: 10px 18px; border: none; background: transparent; color: var(--text-dim); cursor: pointer;
-            font-weight: 600; border-radius: 8px 8px 0 0; font-size: 14px; transition: 0.2s;
+            font-weight: 600; border-radius: 8px 8px 0 0; font-size: 14px; transition: 0.2s; white-space: nowrap;
         }
         .tab-btn.active { background: var(--card-bg); color: var(--accent); border-bottom: 2px solid var(--accent); }
 
@@ -77,9 +77,12 @@
         .tab-pane.active { display: block; animation: fadeIn 0.3s ease; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .section-title { font-size: 15px; font-weight: 800; color: var(--accent); margin: 26px 0 10px; display: flex; align-items: center; gap: 8px; }
+        .section-title:first-child { margin-top: 0; }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
         .stat-card {
-            background: var(--card-bg); padding: 18px; border-radius: 12px; border: 1px solid var(--glass-border);
+            background: var(--card-bg); padding: 16px; border-radius: 12px; border: 1px solid var(--glass-border);
             text-align: center; display: flex; flex-direction: column; justify-content: center;
         }
         .stat-label { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; font-weight: 500; }
@@ -89,53 +92,135 @@
         .charts-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; }
         .chart-container {
             background: var(--card-bg); padding: 20px; border-radius: 15px; border: 1px solid var(--glass-border);
-            height: 340px; position: relative;
+            height: 320px; position: relative;
         }
         .chart-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--accent); display: flex; align-items: center; gap: 8px; }
         .chart-desc { font-size: 11px; color: var(--text-dim); margin-bottom: 12px; }
-        
+
         .span-1 { grid-column: span 1; }
         .span-2 { grid-column: span 2; }
         .span-3 { grid-column: span 3; }
         .span-4 { grid-column: span 4; }
 
-        .results-table-container { margin-top: 20px; border-radius: 12px; overflow: hidden; border: 1px solid var(--glass-border); }
+        .results-table-container { margin-top: 15px; border-radius: 12px; overflow: hidden; border: 1px solid var(--glass-border); }
+        .table-scroll { max-height: 72vh; overflow: auto; }
         table { width: 100%; border-collapse: collapse; background: var(--card-bg); font-size: 12px; }
-        th { background: rgba(0,0,0,0.3); padding: 12px; text-align: left; color: var(--text-dim); font-weight: 700; }
-        td { padding: 12px; border-top: 1px solid var(--glass-border); vertical-align: middle; }
+        th { background: #0b1222; padding: 12px; text-align: left; color: var(--text-dim); font-weight: 700; position: sticky; top: 0; z-index: 5; box-shadow: inset 0 -1px 0 var(--glass-border); }
+        td { padding: 10px 12px; border-top: 1px solid var(--glass-border); vertical-align: middle; }
         tr:hover { background: rgba(255,255,255,0.03); }
 
         .btn-refresh { background: var(--accent); color: #000; border: none; padding: 6px 15px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-action { background: var(--accent); color: #000; border: none; padding: 4px 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 11px; }
+        .btn-action:hover { opacity: 0.9; }
+        .btn-ghost { background: rgba(255,255,255,0.06); color: #e2e8f0; border: 1px solid var(--glass-border); padding: 5px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 12px; }
+        .btn-ghost:hover { background: rgba(255,255,255,0.12); }
+
+        .badge { padding: 3px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block; }
+        .badge-ok { background: rgba(34,197,94,0.15); color: #4ade80; }
+        .badge-warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+        .badge-danger { background: rgba(239,68,68,0.15); color: #f87171; }
+        .badge-info { background: rgba(56,189,248,0.15); color: #38bdf8; }
+
+        /* 司機行程記錄：時間軸卡片 */
+        .itin-card { background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+        .itin-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+        .itin-head .d { font-weight: 800; font-size: 14px; color: #fff; }
+        .itin-head .drv { font-weight: 800; color: var(--accent); }
+        .itin-head .plate { color: var(--text-dim); font-size: 12px; }
+        .itin-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-dim); }
+        .itin-meta b { color: #e2e8f0; font-size: 12px; }
+        .itin-line { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2px 4px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.08); }
+        .itin-stop { display: inline-flex; flex-direction: column; align-items: center; min-width: 58px; padding: 3px 6px; border-radius: 6px; }
+        .itin-stop .t { font-size: 11px; color: var(--text-dim); font-weight: 700; font-family: monospace; }
+        .itin-stop .r { font-size: 12px; color: #fecaca; font-weight: 800; white-space: nowrap; }
+        .itin-stop.depot .r { color: var(--success); }
+        .itin-arrow { color: #475569; align-self: center; font-size: 12px; }
+        .branch-card { border-top: 3px solid; }
+        .branch-card .stat-label { font-size: 14px; font-weight: 800; color: #fff; }
+        .branch-card .bc-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 6px; }
+        .branch-card .bc-k { font-size: 11px; color: var(--text-dim); }
+        .branch-card .bc-v { font-size: 22px; font-weight: 800; color: #fff; }
+        .branch-card .bc-v small { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-left: 2px; }
+        @media (max-width: 900px) { #branchCards { grid-template-columns: repeat(2, 1fr) !important; } }
+        /* 明細面板 (右側滑出) */
+        .bc-v.clickable, .bc-click { cursor: pointer; transition: 0.15s; border-bottom: 1px dashed transparent; }
+        .bc-v.clickable:hover, .bc-click:hover { color: var(--accent) !important; border-bottom-color: var(--accent); }
+        #drillMask { position: fixed; inset: 0; background: rgba(2,6,23,0.55); z-index: 600; display: none; }
+        #drillMask.open { display: block; }
+        #drillPanel { position: fixed; top: 0; right: 0; height: 100vh; width: 860px; max-width: 96vw; background: #0b1222; border-left: 1px solid var(--glass-border); z-index: 601; transform: translateX(100%); transition: transform 0.25s ease; display: flex; flex-direction: column; box-shadow: -20px 0 60px rgba(0,0,0,0.6); }
+        #drillPanel.open { transform: translateX(0); }
+        .drill-head { padding: 14px 18px; border-bottom: 1px solid var(--glass-border); display: flex; align-items: center; gap: 12px; }
+        .drill-head h3 { margin: 0; font-size: 16px; color: #fff; }
+        .drill-head .sub { color: var(--text-dim); font-size: 12px; }
+        .drill-summary { padding: 10px 18px; display: flex; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--glass-border); background: rgba(255,255,255,0.02); }
+        .drill-summary .s { font-size: 12px; color: var(--text-dim); }
+        .drill-summary .s b { color: #fff; font-size: 14px; margin-left: 4px; }
+        .drill-body { flex: 1; overflow: auto; }
+        .drill-body table th { cursor: pointer; user-select: none; }
+        .drill-body table th:hover { color: var(--accent); }
+        .drill-body tr.row-click { cursor: pointer; }
+        .drill-close { margin-left: auto; background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.4); border-radius: 8px; padding: 5px 12px; cursor: pointer; font-weight: 700; }
+        .mini-btn { background: rgba(255,255,255,0.06); color: #e2e8f0; border: 1px solid var(--glass-border); padding: 2px 8px; border-radius: 6px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+        .mini-btn:hover { background: rgba(56,189,248,0.25); }
+        #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 700; display: none; align-items: center; justify-content: center; }
+        #lightbox.open { display: flex; }
+        #lightbox img { max-width: 92vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+        .photo-link { display: inline-block; padding: 2px 7px; border-radius: 6px; background: rgba(56,189,248,0.12); color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 700; margin-right: 4px; }
+        .photo-link:hover { background: rgba(56,189,248,0.3); }
+
+        /* 設定視窗 */
+        .modal-mask { position: fixed; inset: 0; background: rgba(2,6,23,0.75); z-index: 500; display: none; align-items: center; justify-content: center; padding: 20px; }
+        .modal-mask.open { display: flex; }
+        .modal { background: #111827; border: 1px solid var(--glass-border); border-radius: 14px; width: 900px; max-width: 100%; max-height: 92vh; overflow: auto; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .modal h3 { margin: 0 0 6px; color: var(--accent); font-size: 17px; }
+        .cfg-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-top: 14px; }
+        .cfg-box { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 10px; padding: 12px; }
+        .cfg-box h4 { margin: 0 0 8px; font-size: 13px; color: #e2e8f0; }
+        .cfg-box small { color: var(--text-dim); display: block; margin-bottom: 8px; line-height: 1.4; }
+        .cfg-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+        .cfg-row input { flex: 1; min-width: 0; background: #020617; border: 1px solid var(--glass-border); color: #fff; padding: 5px 7px; border-radius: 6px; font-size: 12px; }
+        .cfg-row .del { background: rgba(239,68,68,0.15); color: #f87171; border: none; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-weight: 900; }
+        .cfg-add { background: none; border: 1px dashed var(--glass-border); color: var(--text-dim); width: 100%; padding: 5px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .cfg-add:hover { color: var(--accent); border-color: var(--accent); }
+
+        @media (max-width: 900px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .span-1, .span-2, .span-3, .span-4 { grid-column: span 1; }
+            .tabs { flex-wrap: wrap; }
+            .content-container { padding: 12px; }
+        }
     </style>
 </head>
 <body>
 
-    <div id="loadingOverlay"><div class="spinner"></div><div style="font-weight:600">數據分析引擎啟動中...</div></div>
+    <div id="loadingOverlay"><div class="spinner"></div><div style="font-weight:600">分析中心載入中...</div></div>
 
     <header>
-        <div class="logo"><i class="fas fa-chart-pie"></i><span>鈦傳速 | AI 數據調度中心</span></div>
-        <div>
-            <span id="updateTime" style="font-size:11px; color:var(--text-dim); margin-right:15px"></span>
-            <button class="btn-refresh" onclick="fetchData(true)">🔄 同步後端</button>
+        <div class="logo"><i class="fas fa-chart-pie"></i><span>鈦傳速 | 對帳與數據分析中心</span></div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span id="updateTime" style="font-size:11px; color:var(--text-dim);"></span>
+            <button class="btn-refresh" onclick="fetchData(true)">同步後端</button>
         </div>
     </header>
 
     <div class="filters-bar">
         <div class="filter-group">
-            <label>日期區間</label>
-            <input type="date" id="startDate" onchange="updateDashboard()"> ~ 
-            <input type="date" id="endDate" onchange="updateDashboard()">
-            <div style="display:flex; gap:5px; margin-left:10px;">
-                <button class="btn-preset" onclick="setPreset(1)">今天</button>
-                <button class="btn-preset" onclick="setPreset(7)">近7天</button>
-                <button class="btn-preset" onclick="setPreset(30)">近30天</button>
-                <button class="btn-preset" onclick="setPreset(90)">近3個月</button>
-            </div>
+            <label>時間範圍</label>
+            <button class="btn-preset" data-key="7d" onclick="setPreset('7d')">近一週</button>
+            <button class="btn-preset" data-key="thisMonth" onclick="setPreset('thisMonth')">本月</button>
+            <button class="btn-preset" data-key="lastMonth" onclick="setPreset('lastMonth')">上個月</button>
+            <button class="btn-preset" data-key="90d" onclick="setPreset('90d')">近三個月</button>
+            <button class="btn-preset" data-key="180d" onclick="setPreset('180d')">近半年</button>
+        </div>
+        <div class="filter-group">
+            <label>自訂</label>
+            <input type="date" id="startDate" onchange="manualDateChange()"> ~
+            <input type="date" id="endDate" onchange="manualDateChange()">
         </div>
         <div style="width:1px; height:20px; background:var(--glass-border);"></div>
         <div class="filter-group">
             <label>分公司</label>
-            <select id="branchFilter" onchange="updateDashboard()">
+            <select id="branchFilter" onchange="syncBranchButtons(); updateDashboard()">
                 <option value="全部">全部 (合併分析)</option>
                 <option value="高雅瓷">高雅瓷</option>
                 <option value="安帝嘉">安帝嘉</option>
@@ -144,7 +229,10 @@
             </select>
         </div>
         <div class="filter-group">
-            <label>司機過濾</label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="樣品送回公司的單 (送到貨運行/加工廠的樣品照常計費，不受此開關影響)"><input type="checkbox" id="includeSamples" onchange="updateDashboard()" style="accent-color:var(--accent);"> 含免費樣品</label>
+        </div>
+        <div class="filter-group">
+            <label>司機</label>
             <select id="driverFilter" onchange="updateDashboard()">
                 <option value="全部">全部 (車隊合併)</option>
             </select>
@@ -152,257 +240,804 @@
     </div>
 
     <div class="tabs">
-        <button id="tab-overview" class="tab-btn active" onclick="switchTab('overview', this)">📈 營運總覽</button>
-        <button id="tab-efficiency" class="tab-btn" onclick="switchTab('efficiency', this)">⏱️ 配送時效</button>
-        <button id="tab-fuel" class="tab-btn" onclick="switchTab('fuel', this)">⛽ 油資里程</button>
-        <button id="tab-performance" class="tab-btn" onclick="switchTab('performance', this)">👤 司機排行</button>
-        <button id="tab-customer" class="tab-btn" onclick="switchTab('customer', this)">🏢 客戶看板</button>
+        <button id="tab-overview" class="tab-btn active" onclick="switchTab('overview', this)">營運分析</button>
+        <button id="tab-itinerary" class="tab-btn" onclick="switchTab('itinerary', this)">司機行程記錄</button>
+        <button id="tab-freight" class="tab-btn" onclick="switchTab('freight', this)">運費統計</button>
     </div>
 
     <div class="content-container">
-        <!-- Overview -->
+        <!-- ===== 營運分析 (原 營運分析 + 時效 + 里程油資 合併) ===== -->
         <div id="overview" class="tab-pane active">
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">總訂單數</div><div class="stat-value" id="stat-total-orders">0</div><div class="stat-hint">選定區間內的任務總量</div></div>
-                <div class="stat-card"><div class="stat-label">配送完成率</div><div class="stat-value" id="stat-completion-rate" style="color:var(--success)">0%</div><div class="stat-hint">已完成訂單 / 總訂單數</div></div>
-                <div class="stat-card"><div class="stat-label">總配送重 (t)</div><div class="stat-value" id="stat-total-weight">0</div><div class="stat-hint">總公斤數換算為公噸</div></div>
-                <div class="stat-card"><div class="stat-label">單均重量 (kg)</div><div class="stat-value" id="stat-avg-weight">0</div><div class="stat-hint">平均每張訂單的載重</div></div>
-            </div>
+            <div class="section-title"><i class="fas fa-truck"></i> 出貨量</div>
+            <div class="stats-grid" id="branchCards" style="grid-template-columns: repeat(4, 1fr);"></div>
             <div class="charts-grid">
-                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-chart-line"></i> 營運負荷趨勢</div><div class="chart-desc">觀察每日訂單量的波動，分析營運高峰期。</div><canvas id="chart-daily-trend"></canvas></div>
-                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-check-circle"></i> 派送狀態分佈</div><div class="chart-desc">訂單現況比例：完成、中、未指派。</div><canvas id="chart-status-dist"></canvas></div>
-                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-building"></i> 分公司案量佔比</div><div class="chart-desc">各分站對總業績的貢獻比例。</div><canvas id="chart-branch-dist"></canvas></div>
-                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-clock"></i> 配送時段熱力分布</div><div class="chart-desc">分析客戶對上午、下午配送時段的需求密度。</div><canvas id="chart-slot-dist"></canvas></div>
+                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-chart-line"></i> 每日各分公司單量</div><div class="chart-desc">四家分公司每日單量堆疊（此圖不受上方分公司篩選影響）。</div><canvas id="chart-daily-trend"></canvas></div>
+                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-building"></i> 分公司案量佔比</div><div class="chart-desc">區間內四家分公司的單量比重（不受分公司篩選影響）。</div><canvas id="chart-branch-dist"></canvas></div>
             </div>
-        </div>
 
-        <!-- Efficiency -->
-        <div id="efficiency" class="tab-pane">
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">平均抵達時效 (h)</div><div class="stat-value" id="stat-avg-hours">0</div><div class="stat-hint">從 08:00 到完成點擊的平均時數</div></div>
-                <div class="stat-card"><div class="stat-label">最速配送紀錄 (h)</div><div class="stat-value" id="stat-fastest" style="color:var(--accent)">0</div><div class="stat-hint">區間內單筆最快達成的任務</div></div>
-            </div>
+            <div class="section-title"><i class="fas fa-dollar-sign"></i> 運費分析</div>
             <div class="charts-grid">
-                <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-tachometer-alt"></i> 每日時效波動表</div><div class="chart-desc">追蹤平均抵達時間是否隨日期趨於穩定。</div><canvas id="chart-hourly-trend"></canvas></div>
-                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-weight-hanging"></i> 重量與時效相關性</div><div class="chart-desc">分析載重大小是否顯著影響配送所需的總時長。</div><canvas id="chart-weight-time-scatter"></canvas></div>
-                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-users-cog"></i> 司機抵達速度排行</div><div class="chart-desc">司機平均每趟任務達成速度排名 (小時越低越快)。</div><canvas id="chart-driver-efficiency"></canvas></div>
+                <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-chart-bar"></i> 每日各分公司運費</div><div class="chart-desc">以核定運費為準（未核定用系統估算），四家堆疊，不受分公司篩選影響。</div><canvas id="chart-daily-fee"></canvas></div>
+                <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-percentage"></i> 分公司運費佔比</div><div class="chart-desc">區間內四家分公司運費比重。</div><canvas id="chart-fee-dist"></canvas></div>
             </div>
-        </div>
 
-        <!-- Fuel -->
-        <div id="fuel" class="tab-pane">
+            <div class="section-title"><i class="fas fa-gas-pump"></i> 里程與油資</div>
             <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">總油費支出</div><div class="stat-value" id="stat-total-fuel-amt">0</div><div class="stat-hint">區間內車隊報支的總金額</div></div>
-                <div class="stat-card"><div class="stat-label">總行駛里程 (km)</div><div class="stat-value" id="stat-total-km-fuel">0</div><div class="stat-hint">車隊行駛總公里數</div></div>
-                <div class="stat-card"><div class="stat-label">平均油耗 (km/L)</div><div class="stat-value" id="stat-avg-kml" style="color:var(--success)">0</div><div class="stat-hint">整體燃油經濟效率指標</div></div>
-                <div class="stat-card"><div class="stat-label">每公里油耗成本 ($)</div><div class="stat-value" id="stat-cost-per-km" style="color:var(--danger)">0</div><div class="stat-hint">每一公里平均需分攤的油費</div></div>
+                <div class="stat-card"><div class="stat-label">總油費支出</div><div class="stat-value" id="stat-total-fuel-amt">--</div><div class="stat-hint">區間內車隊油費合計</div></div>
+                <div class="stat-card"><div class="stat-label">總行駛里程 (km)</div><div class="stat-value" id="stat-total-km-fuel">--</div><div class="stat-hint">車隊行駛總公里數</div></div>
+                <div class="stat-card"><div class="stat-label">平均油耗 (km/L)</div><div class="stat-value" id="stat-avg-kml" style="color:var(--success)">--</div><div class="stat-hint">整體燃油效率</div></div>
+                <div class="stat-card"><div class="stat-label">每公里油費 ($)</div><div class="stat-value" id="stat-cost-per-km" style="color:var(--danger)">--</div><div class="stat-hint">每一公里平均分攤的油費</div></div>
             </div>
             <div class="charts-grid">
-                <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-gas-pump"></i> 油費支出與行駛里程</div><div class="chart-desc">比對每日油費報支與實際行駛里程的對應關係。</div><canvas id="chart-fuel-km-trend"></canvas></div>
-                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-leaf"></i> 節能車輛排行 (km/L)</div><div class="chart-desc">分析哪些車輛/司機的行駛與加油比例最優。</div><canvas id="chart-driver-fuel-efficiency"></canvas></div>
+                <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-road"></i> 油費支出與行駛里程</div><div class="chart-desc">比對每日油費報支與實際行駛里程。</div><canvas id="chart-fuel-km-trend"></canvas></div>
             </div>
-        </div>
 
-        <!-- Performance -->
-        <div id="performance" class="tab-pane">
+            <div class="section-title"><i class="fas fa-trophy"></i> 司機運能排行</div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">總運輸做功 (t·km)</div><div class="stat-value" id="stat-total-tonkm" style="color:var(--accent)">--</div><div class="stat-hint">總做功 = 總噸數 × 總行駛公里</div></div>
+                <div class="stat-card"><div class="stat-label">趟均運送重量 (kg)</div><div class="stat-value" id="stat-avg-load">--</div><div class="stat-hint">車輛平均單日出勤載重</div></div>
+            </div>
             <div class="charts-grid">
-                <div class="chart-container span-4" style="height:420px"><div class="chart-title"><i class="fas fa-trophy"></i> 司機業務達成量排行</div><div class="chart-desc">量化各司機在區間內完成的訂單總數。</div><canvas id="chart-driver-orders"></canvas></div>
+                <div class="chart-container span-4" style="height:350px"><div class="chart-title"><i class="fas fa-trophy"></i> 司機完成量排行</div><div class="chart-desc">各司機在區間內完成的訂單總數。</div><canvas id="chart-driver-orders"></canvas></div>
             </div>
             <div class="results-table-container">
+                <div class="table-scroll">
                 <table id="performance-table">
-                    <thead><tr><th>司機車牌</th><th>訂單總數</th><th>完成率</th><th>總重量(kg)</th><th>Avg時效(h)</th><th>行駛公里</th><th>油資支出</th><th>油耗 km/L</th></tr></thead>
+                    <thead><tr><th>司機 車牌</th><th>訂單總數</th><th>完成率</th><th>總重量(kg)</th><th>行駛公里</th><th>油資支出</th><th>油耗 km/L</th></tr></thead>
                     <tbody></tbody>
                 </table>
+                </div>
             </div>
         </div>
 
-        <!-- Customer -->
-        <div id="customer" class="tab-pane">
-            <div class="charts-grid">
-                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-shopping-cart"></i> Top 10 熱門客戶訂單量</div><div class="chart-desc">分析訂單次數最多的前十大客戶。</div><canvas id="chart-customer-orders"></canvas></div>
-                <div class="chart-container span-2"><div class="chart-title"><i class="fas fa-truck-loading"></i> Top 10 重量貢獻客戶</div><div class="chart-desc">分析配送總量(kg)最大的前十大客戶。</div><canvas id="chart-customer-weight"></canvas></div>
+        <!-- ===== 司機行程記錄 ===== -->
+        <div id="itinerary" class="tab-pane">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <span style="color:var(--text-dim); font-weight:600;">車輛</span>
+                <div id="itinPlateBtns" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">出勤天數</div><div class="stat-value" id="stat-itin-days">--</div><div class="stat-hint">區間內有行程的天數</div></div>
+                <div class="stat-card"><div class="stat-label">總送達點數</div><div class="stat-value" id="stat-itin-stops" style="color:var(--success)">--</div><div class="stat-hint">已完成的訂單數</div></div>
+                <div class="stat-card"><div class="stat-label">總重量 (kg)</div><div class="stat-value" id="stat-itin-weight" style="color:var(--warning)">--</div></div>
+                <div class="stat-card"><div class="stat-label">總里程 (km)</div><div class="stat-value" id="stat-itin-km" style="color:var(--accent)">--</div></div>
+            </div>
+            <div style="font-size:11px; color:var(--text-dim); margin-bottom:8px;">資料來源：每日行程表的「當日行程足跡」；此頁只看車輛與日期，不受上方分公司 / 司機篩選影響。</div>
+            <div id="itineraryCards"></div>
+        </div>
+
+        <!-- ===== 運費統計 ===== -->
+        <div id="freight" class="tab-pane">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                <span style="color:var(--text-dim); font-weight:600;">分公司</span>
+                <button class="btn-branch active" data-branch="全部" onclick="setBranch('全部')">全部</button>
+                <button class="btn-branch b-高雅瓷" data-branch="高雅瓷" onclick="setBranch('高雅瓷')">高雅瓷</button>
+                <button class="btn-branch b-安帝嘉" data-branch="安帝嘉" onclick="setBranch('安帝嘉')">安帝嘉</button>
+                <button class="btn-branch b-喜悅納" data-branch="喜悅納" onclick="setBranch('喜悅納')">喜悅納</button>
+                <button class="btn-branch b-漢樺" data-branch="漢樺" onclick="setBranch('漢樺')">漢樺</button>
+                <span style="flex:1"></span>
+                <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-label">總運費 (含核定調整)</div><div class="stat-value" id="stat-fee-total">--</div><div class="stat-hint">以核定運費為準，未核定則用系統估算</div></div>
+                <div class="stat-card"><div class="stat-label">單數</div><div class="stat-value" id="stat-fee-count" style="color:var(--accent)">--</div><div class="stat-hint">區間內有運費的訂單</div></div>
+                <div class="stat-card"><div class="stat-label">貨運行集貨單運費</div><div class="stat-value" id="stat-carrier-total" style="color:var(--warning)">--</div><div class="stat-hint">掃描建單時勾了「貨運行集貨(打折)」的單，其折扣後運費合計</div></div>
+                <div class="stat-card"><div class="stat-label">運費 vs 油費</div><div class="stat-value" id="stat-fee-ratio">--</div><div class="stat-hint">總運費 / 總油費</div></div>
+            </div>
+
+            <div class="results-table-container">
+                <div style="background: rgba(0,0,0,0.2); padding: 12px 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="font-weight: 700; font-size: 14px; color: var(--accent);"><i class="fas fa-file-invoice-dollar"></i> 每一筆運費明細</div>
+                    <div style="font-size: 12px; color: var(--text-dim);">「核定運費」欄可直接修改，按 Enter 或點別處即自動儲存。</div>
+                </div>
+                <div class="table-scroll">
+                <table id="freight-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>單號</th>
+                            <th>分公司</th>
+                            <th>客戶名稱</th>
+                            <th>重量(kg)</th>
+                            <th>偏遠</th>
+                            <th>系統估算</th>
+                            <th>運費公式</th>
+                            <th>核定運費</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 明細面板 -->
+    <div id="drillMask" onclick="closeDrill()"></div>
+    <div id="drillPanel">
+        <div class="drill-head">
+            <div><h3 id="drillTitle">明細</h3><div class="sub" id="drillSub"></div></div>
+            <button class="mini-btn" onclick="drillCopy()" title="複製成表格，可直接貼到 Excel / Google 試算表">📋 複製表格</button>
+            <button class="mini-btn" onclick="drillCsv()">⬇ CSV</button>
+            <button class="drill-close" onclick="closeDrill()">✕ 關閉</button>
+        </div>
+        <div class="drill-summary" id="drillSummary"></div>
+        <div class="drill-body"><table id="drillTable"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div id="lightbox" onclick="this.classList.remove('open')"><img id="lightboxImg" src=""></div>
+
+    <!-- 運費設定視窗 -->
+    <div id="cfgMask" class="modal-mask" onclick="if (event.target === this) closeFreightSettings()">
+        <div class="modal">
+            <h3><i class="fas fa-cog"></i> 運費設定</h3>
+            <div style="font-size:12px; color:var(--text-dim);">改動會直接寫入「運費管理表」，之後掃描建單與運費統計都用新設定；舊設定自動備份到「運費管理表_歷史」。</div>
+            <div class="cfg-grid">
+                <div class="cfg-box">
+                    <h4>重量級距 (每公斤級距費用)</h4>
+                    <small>重量 ≤ 上限 就套用該費用；超過最大上限以最後一級計算。</small>
+                    <div id="cfgSlabs"></div>
+                    <button class="cfg-add" onclick="cfgAddRow('slab')">+ 新增級距</button>
+                </div>
+                <div class="cfg-box">
+                    <h4>偏遠地區</h4>
+                    <small>地址含任一關鍵字 (逗號分隔) 就乘上倍率，例如 1.5 = 加五成。</small>
+                    <div id="cfgRemote"></div>
+                    <button class="cfg-add" onclick="cfgAddRow('remote')">+ 新增地區</button>
+                </div>
+                <div class="cfg-box">
+                    <h4>附加費用</h4>
+                    <small>項目名稱請保持：指定時間送貨、指定時間退貨、等候超時費、加倍搬運費(每百公斤)；其他項目可自行新增作備註用。</small>
+                    <div id="cfgAddons"></div>
+                    <button class="cfg-add" onclick="cfgAddRow('addon')">+ 新增項目</button>
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+                <button class="btn-ghost" onclick="closeFreightSettings()">取消</button>
+                <button class="btn-refresh" id="cfgSaveBtn" onclick="saveFreightSettings()">儲存設定</button>
             </div>
         </div>
     </div>
 
     <script>
+        const userInfo = <?!= JSON.stringify(userInfo) ?>;
         let rawData = { orders: [], schedule: [] };
-        let charts = {};
-        const Color = { accent: '#38bdf8', success: '#4ade80', warning: '#facc15', danger: '#f87171', branch: ['#f472b6', '#4ade80', '#60a5fa', '#fbbf24'] };
+        const charts = {};
 
-        window.onload = () => {
-            if (window.self !== window.top) {
-                document.body.classList.add('embedded-iframe');
-            }
-            fetchData(false);
+        const Color = {
+            accent: '#38bdf8',
+            success: '#22c55e',
+            warning: '#f59e0b',
+            danger: '#ef4444',
+            pink: '#f472b6',
+            branch: ['#f472b6', '#34d399', '#60a5fa', '#fbbf24']
+        };
+        const BRANCHES = ['高雅瓷', '安帝嘉', '喜悅納', '漢樺'];
+        const BRANCH_COLOR = { '高雅瓷': '#f472b6', '安帝嘉': '#34d399', '喜悅納': '#60a5fa', '漢樺': '#fbbf24' };
+        function branchTag(b) { const c = BRANCH_COLOR[b] || '#94a3b8'; return `<span style="color:${c}; font-weight:700;">${escapeHTML(b)}</span>`; }
+        // 車牌 → 「司機名 車牌」(司機名在前)；來源：車輛管理表，備援：行程表司機欄
+        function driverOfPlate(p) {
+            if (!p) return '';
+            const vm = (rawData.vehicleMap && rawData.vehicleMap[p]) || '';
+            if (vm) return vm;
+            const s = (rawData.schedule || []).find(x => x.plate === p && x.driver);
+            return s ? s.driver : '';
+        }
+        function plateLabel(p) { const d = driverOfPlate(p); return d ? d + ' ' + p : p; }
+
+        // ===== 管理員登入：token 存 localStorage (10 年)，開頁不再多一趟驗證，直接抓資料；失效才問密碼 =====
+        const ADMIN_TOKEN_KEY = 'ttsAdminTokenV41';
+        let __adminTokenMem = '';
+        function ATOKEN() { if (__adminTokenMem) return __adminTokenMem; try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { } return __adminTokenMem; }
+        function setAdminToken(t) { __adminTokenMem = t || ''; try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { } }
+        function promptAdminLogin(afterOk) {
+            const pwd = window.prompt('請輸入管理員密碼');
+            if (pwd === null) { alert('未登入，無法載入資料'); hideLoading(); return; }
+            google.script.run
+                .withSuccessHandler(res => {
+                    if (res && res.success && res.token) { setAdminToken(res.token); afterOk(); }
+                    else { alert('密碼錯誤'); promptAdminLogin(afterOk); }
+                })
+                .withFailureHandler(err => { alert('登入失敗：' + (err && err.message || err)); promptAdminLogin(afterOk); })
+                .sysVerifyPwd(pwd);
+        }
+        function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1 || m.indexOf('AUTH_FORBIDDEN') !== -1; }
+        function showLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 1; o.style.pointerEvents = 'all'; }
+        function hideLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 0; o.style.pointerEvents = 'none'; }
+
+        window.onload = function() {
+            setPreset('lastMonth', true);   // 預設：上個月完整區間
+            if (!ATOKEN()) promptAdminLogin(() => fetchData(false));
+            else fetchData(false);
         };
 
         function fetchData(force) {
-            document.getElementById('loadingOverlay').style.opacity = 1;
-            document.getElementById('loadingOverlay').style.pointerEvents = 'all';
-            
+            showLoading();
             google.script.run.withSuccessHandler(res => {
-                if (res.success) {
+                if (res && !res.success && isAuthError(res)) { hideLoading(); setAdminToken(''); promptAdminLogin(() => fetchData(force)); return; }
+                if (res && res.success) {
                     rawData = res;
-                    document.getElementById('updateTime').innerText = 'Sync: ' + new Date().toLocaleTimeString();
-                    const d = new Date(); const d30 = new Date(); d30.setDate(d.getDate()-30);
-                    document.getElementById('startDate').value = d30.toISOString().split('T')[0];
-                    document.getElementById('endDate').value = d.toISOString().split('T')[0];
-                    
-                    // Populate Drivers
+                    document.getElementById('updateTime').innerText = '同步時間: ' + new Date().toLocaleTimeString();
                     const plates = [...new Set(rawData.orders.map(o => o.plate))].filter(Boolean).sort();
                     const dSel = document.getElementById('driverFilter');
-                    dSel.innerHTML = '<option value="全部">全部 (車隊合併分析)</option>';
-                    plates.forEach(p => { const op = document.createElement('option'); op.value = p; op.textContent = p; dSel.appendChild(op); });
-                    
+                    const cur = dSel.value;
+                    dSel.innerHTML = '<option value="全部">全部 (車隊合併)</option>';
+                    plates.forEach(p => { const op = document.createElement('option'); op.value = p; op.textContent = plateLabel(p); dSel.appendChild(op); });
+                    if (plates.includes(cur)) dSel.value = cur;
+                    buildItinPlateButtons();
                     updateDashboard();
+                } else {
+                    alert('資料載入失敗：' + ((res && res.error) || '未知錯誤'));
                 }
-                document.getElementById('loadingOverlay').style.opacity = 0;
-                document.getElementById('loadingOverlay').style.pointerEvents = 'none';
-            }).getDashboardData(force);
+                hideLoading();
+            }).withFailureHandler(err => {
+                hideLoading();
+                if (isAuthError(err)) { setAdminToken(''); promptAdminLogin(() => fetchData(force)); return; }
+                alert('同步失敗：' + err.message);
+            }).getDashboardData(force, ATOKEN());
         }
 
-        function setPreset(days) {
-            const end = new Date(); const start = new Date();
-            if (days === 1) start.setHours(0,0,0,0); else start.setDate(end.getDate() - days);
-            document.getElementById('startDate').value = start.toISOString().split('T')[0];
-            document.getElementById('endDate').value = end.toISOString().split('T')[0];
-            updateDashboard();
+        // ===== 日期區間 =====
+        function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+        function markPreset(key) {
+            document.querySelectorAll('.btn-preset').forEach(b => b.classList.toggle('active', b.dataset.key === key));
+        }
+        function setPreset(key, silent) {
+            const now = new Date(); let start = new Date(), end = new Date();
+            if (key === 'today') { start.setHours(0,0,0,0); }
+            else if (key === '7d') { start.setDate(now.getDate() - 6); }
+            else if (key === 'thisMonth') { start = new Date(now.getFullYear(), now.getMonth(), 1); }
+            else if (key === 'lastMonth') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = new Date(now.getFullYear(), now.getMonth(), 0); }
+            else if (key === '90d') { start.setDate(now.getDate() - 89); }
+            else if (key === '180d') { start.setDate(now.getDate() - 179); }
+            document.getElementById('startDate').value = ymd(start);
+            document.getElementById('endDate').value = ymd(end);
+            markPreset(key);
+            if (!silent) updateDashboard();
+        }
+        function manualDateChange() { markPreset(''); updateDashboard(); }
+
+        // ===== 分公司按鈕 (運費統計頁) 與上方下拉同步 =====
+        function setBranch(b) { document.getElementById('branchFilter').value = b; syncBranchButtons(); updateDashboard(); }
+        function syncBranchButtons() {
+            const b = document.getElementById('branchFilter').value;
+            document.querySelectorAll('.btn-branch').forEach(btn => btn.classList.toggle('active', btn.dataset.branch === b));
         }
 
-        // V5.2.4: 確保連動切換
         function switchTab(targetId, btnElement) {
-            console.log("Switching to", targetId);
-            const containers = document.querySelectorAll('.tab-pane');
-            const btns = document.querySelectorAll('.tab-btn');
-            
-            containers.forEach(el => el.classList.remove('active'));
-            btns.forEach(el => el.classList.remove('active'));
-            
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             const target = document.getElementById(targetId);
             if (target) {
                 target.classList.add('active');
                 btnElement.classList.add('active');
-                // Trigger chart redraw to handle hidden dimension issues
                 window.dispatchEvent(new Event('resize'));
-            } else {
-                console.error("Tab not found:", targetId);
             }
         }
 
-        function updateDashboard() {
-            const sd = document.getElementById('startDate').value.replace(/-/g, '/');
-            const ed = document.getElementById('endDate').value.replace(/-/g, '/');
-            const branch = document.getElementById('branchFilter').value;
-            const driver = document.getElementById('driverFilter').value;
-
-            // Filter Orders
-            const fo = rawData.orders.filter(o => 
-                o.date >= sd && o.date <= ed && 
-                (branch === '全部' || o.branch === branch) && 
-                (driver === '全部' || o.plate === driver)
-            );
-
-            // Filter Schedule (Mileage/Fuel)
-            const fs = rawData.schedule.filter(s => 
-                s.date >= sd && s.date <= ed && 
-                (driver === '全部' || s.plate === driver)
-            );
-
-            renderOverview(fo);
-            renderEfficiency(fo);
-            renderFuel(fs);
-            renderPerformance(fo, fs);
-            renderCustomer(fo);
+        function currentFilters() {
+            return {
+                sd: document.getElementById('startDate').value.replace(/-/g, '/'),
+                ed: document.getElementById('endDate').value.replace(/-/g, '/'),
+                branch: document.getElementById('branchFilter').value,
+                driver: document.getElementById('driverFilter').value
+            };
         }
 
-        function renderOverview(orders) {
-            const tot = orders.length; if (tot === 0) { clearStats(); return; }
-            const comp = orders.filter(o => o.status === '已完成').length;
-            const w = orders.reduce((s,o)=>s+(o.weight||0), 0);
-            document.getElementById('stat-total-orders').innerText = tot;
-            document.getElementById('stat-completion-rate').innerText = (comp/tot*100).toFixed(1)+'%';
-            document.getElementById('stat-total-weight').innerText = (w/1000).toFixed(1);
-            document.getElementById('stat-avg-weight').innerText = (w/tot).toFixed(0);
+        function includeSamples() { const el = document.getElementById('includeSamples'); return !!(el && el.checked); }
+        function updateDashboard() {
+            const f = currentFilters();
+            const inc = includeSamples();
+            // V41.28: 樣品單 (銷售報表判定：客戶編號 -S、含樣品關鍵字、金額 0；退貨不算) 預設不列入統計
+            const fo = rawData.orders.filter(o =>
+                o.date >= f.sd && o.date <= f.ed &&
+                (f.branch === '全部' || o.branch === f.branch) &&
+                (f.driver === '全部' || o.plate === f.driver) &&
+                (inc || !o.isSample)
+            );
+            const fs = rawData.schedule.filter(s =>
+                s.date >= f.sd && s.date <= f.ed &&
+                (f.driver === '全部' || s.plate === f.driver)
+            );
 
-            const dates = [...new Set(orders.map(o=>o.date))].sort();
-            createChart('chart-daily-trend', 'line', dates, [{ label: '已完成項數', data: dates.map(d=>orders.filter(o=>o.date===d && o.status==='已完成').length), borderColor: Color.success, tension: 0.3 }]);
-            
-            const stLabels = ['已完成', '配送中', '待指派'];
-            const stData = stLabels.map(s => orders.filter(o=>o.status===s).length);
-            createChart('chart-status-dist', 'doughnut', stLabels, [{ data: stData, backgroundColor: [Color.success, Color.accent, Color.warning] }], { legend: true });
+            // 營運分析的分公司圖表一律看四家：只套日期與司機篩選
+            const foAllBranch = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && (inc || !o.isSample));
+            const sampleAll = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && o.isSample);
+            renderOverview(fo, foAllBranch, sampleAll);
+            renderFuel(fs);
+            renderPerformance(fo, fs);
+            renderItinerary();
+            renderFreight(fo, fs);
+        }
 
-            const brLabels = ['高雅瓷', '安帝嘉', '喜悅納', '漢樺'];
-            createChart('chart-branch-dist', 'pie', brLabels, [{ data: brLabels.map(b=>orders.filter(o=>o.branch===b).length), backgroundColor: Color.branch }], { legend: true });
+        // ===== 營運分析 =====
+        const CARD_BRANCHES = ['安帝嘉', '高雅瓷', '喜悅納', '漢樺'];
+        const feeOfOrder = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
+        function fmtWanPlain(v) { if (!v) return '0萬'; const w = v / 10000; return w < 1 ? '<1萬' : Math.round(w) + '萬'; }
+        function fmtWan(v) { // 以「萬」為單位四捨五入
+            if (!v) return '0<small>萬</small>';
+            const w = v / 10000;
+            if (w < 1) return '<1<small>萬</small>';
+            return Math.round(w) + '<small>萬</small>';
+        }
+        function renderOverview(orders, ordersAll, sampleAll) {
+            const all = ordersAll || orders;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const samples = sampleAll || [];
 
-            const slotMap = { '上午 (AM)': 0, '午後 (PM)': 0, '其它/全天': 0 };
-            orders.forEach(o => { const s = String(o.slot); if (s.includes("上")||s.includes("AM")) slotMap['上午 (AM)']++; else if (s.includes("下")||s.includes("PM")) slotMap['午後 (PM)']++; else slotMap['其它/全天']++; });
-            createChart('chart-slot-dist', 'bar', Object.keys(slotMap), [{ label: '需求件數', data: Object.values(slotMap), backgroundColor: Color.accent }]);
+            // 四家分公司卡片：單量 / 運費 / 貢獻度 (以運費佔比計)，不受分公司篩選影響
+            const totalFee = all.reduce((s, o) => s + feeOfOrder(o), 0);
+            document.getElementById('branchCards').innerHTML = CARD_BRANCHES.map(b => {
+                const bo = all.filter(o => brOf(o) === b);
+                const fee = bo.reduce((s, o) => s + feeOfOrder(o), 0);
+                const pct = totalFee ? (fee / totalFee * 100) : 0;
+                const c = BRANCH_COLOR[b] || '#94a3b8';
+                // 樣品另外統計 (只算鈦傳速派送清單裡有的單)：收費 = 送到外面照常計費；免費 = 送回公司
+                const sampleFree = samples.filter(o => brOf(o) === b).length;
+                const samplePaid = bo.filter(o => o.docType === '樣品' && o.sampleTo === 'out');
+                const samplePaidFee = samplePaid.reduce((s, o) => s + feeOfOrder(o), 0);
+                const retCnt = bo.filter(o => o.docType === '退貨').length;
+                return `<div class="stat-card branch-card" style="border-top-color:${c};">
+                    <div class="stat-label" style="color:${c};">${b}</div>
+                    <div class="bc-row"><span class="bc-k">單量</span><span class="bc-v clickable" onclick="openDrill('orders','${b}')" title="點擊看明細">${bo.length}<small>單</small></span></div>
+                    <div class="bc-row"><span class="bc-k">運費</span><span class="bc-v clickable" onclick="openDrill('fee','${b}')" title="點擊看運費明細">${fmtWan(fee)}</span></div>
+                    <div class="bc-row"><span class="bc-k">貢獻度</span><span class="bc-v clickable" onclick="openDrill('compare','${b}')" title="點擊看四家比較">${pct.toFixed(0)}<small>%</small></span></div>
+                    <div style="border-top:1px dashed var(--glass-border); margin-top:6px; padding-top:6px;">
+                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#38bdf8;">樣品收費</span><span class="bc-click" style="color:#38bdf8; font-weight:800;" onclick="openDrill('samplePaid','${b}')">${samplePaid.length}<small style="color:#7dd3fc;">單 · $${Math.round(samplePaidFee).toLocaleString()}</small></span></div>
+                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#fbbf24;">樣品免費</span><span class="bc-click" style="color:#fbbf24; font-weight:800;" onclick="openDrill('sampleFree','${b}')">${sampleFree}<small style="color:#fde68a;">單${includeSamples() ? ' · 已計入' : ' · 未計入'}</small></span></div>
+                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#f87171;">退貨</span><span class="bc-click" style="color:#f87171; font-weight:800;" onclick="openDrill('returns','${b}')">${retCnt}<small style="color:#fca5a5;">單</small></span></div>
+                    </div>
+                </div>`;
+            }).join('');
+
+            // 每日各分公司運費 (堆疊) + 運費佔比
+            const feeDates = [...new Set(all.map(o=>o.date))].sort();
+            createChart('chart-daily-fee', 'bar', feeDates, BRANCHES.map((b, i) => ({
+                label: b, data: feeDates.map(d => Math.round(all.filter(o => o.date === d && brOf(o) === b).reduce((s, o) => s + feeOfOrder(o), 0))), backgroundColor: Color.branch[i], stack: 's'
+            })), { legend: true, scales: { x: { stacked: true }, y: { stacked: true } } });
+            const feeCounts = BRANCHES.map(b => Math.round(all.filter(o => brOf(o) === b).reduce((s, o) => s + feeOfOrder(o), 0)));
+            createChart('chart-fee-dist', 'doughnut', BRANCHES, [{ data: feeCounts, backgroundColor: Color.branch }], { legend: true, noScales: true, arcLabel: v => fmtWanPlain(v), centerText: fmtWanPlain(feeCounts.reduce((a, b) => a + b, 0)) });
+
+            const dates = [...new Set(all.map(o=>o.date))].sort();
+            createChart('chart-daily-trend', 'bar', dates, BRANCHES.map((b, i) => ({
+                label: b, data: dates.map(d => all.filter(o => o.date === d && brOf(o) === b).length), backgroundColor: Color.branch[i], stack: 's'
+            })), { legend: true, scales: { x: { stacked: true }, y: { stacked: true } } });
+            const brCounts = BRANCHES.map(b => all.filter(o => brOf(o) === b).length);
+            const other = all.length - brCounts.reduce((a, b) => a + b, 0);
+            createChart('chart-branch-dist', 'doughnut', other > 0 ? [...BRANCHES, '其他'] : BRANCHES, [{ data: other > 0 ? [...brCounts, other] : brCounts, backgroundColor: other > 0 ? [...Color.branch, '#64748b'] : Color.branch }], { legend: true, noScales: true, arcLabel: v => v + '單', centerText: all.length + '單' });
         }
 
         function clearStats() {
-            ['stat-total-orders','stat-completion-rate','stat-total-weight','stat-avg-weight','stat-avg-hours','stat-fastest','stat-total-fuel-amt','stat-total-km-fuel','stat-avg-kml','stat-cost-per-km'].forEach(id=>{
-                const el = document.getElementById(id); if (el) el.innerText='--';
-            });
+            document.querySelectorAll('.stat-value').forEach(el => { el.innerText = '--'; });
         }
-
-        function renderEfficiency(orders) {
-            const comp = orders.filter(o=>o.status==='已完成'); if (comp.length === 0) return;
-            const hours = comp.map(o => {
-                if (!o.finishTime || o.finishTime.length < 10) return null;
-                const e = new Date(o.finishTime); const s = new Date(o.date.replace(/\//g,'-')+'T08:00:00');
-                const h = (e-s)/3600000; return (h>0 && h<20) ? h : null;
-            }).filter(h=>h!==null);
-            document.getElementById('stat-avg-hours').innerText = hours.length ? (hours.reduce((a,b)=>a+b)/hours.length).toFixed(1) : '--';
-            document.getElementById('stat-fastest').innerText = hours.length ? Math.min(...hours).toFixed(1) : '--';
-
-            const dates = [...new Set(comp.map(o=>o.date))].sort();
-            createChart('chart-hourly-trend', 'line', dates, [{ label: 'Avg小時/趟', data: dates.map(d=> { const hArr = comp.filter(o=>o.date===d).map(o=>{ const e=new Date(o.finishTime); const s=new Date(d.replace(/\//g,'-')+'T08:00:00'); return (e-s)/3600000; }).filter(h=>h>0&&h<20); return hArr.length ? (hArr.reduce((a,b)=>a+b)/hArr.length).toFixed(1) : 0; }), borderColor: Color.warning }]);
-            createChart('chart-weight-time-scatter', 'scatter', null, [{ label: '配送任務', data: comp.filter(o=>o.weight>0).map(o=> { const h = (new Date(o.finishTime)-new Date(o.date.replace(/\//g,'-')+'T08:00:00'))/3600000; return {x:o.weight, y: (h>0&&h<20)?h:null}; }).filter(p=>p.y!==null), backgroundColor: 'rgba(56,189,248,0.5)' }]);
-            
-            const plates = [...new Set(comp.map(o=>o.plate))].filter(Boolean);
-            const drank = plates.map(p => { const hArr = comp.filter(o=>o.plate===p).map(o=>{ const e=new Date(o.finishTime); const s=new Date(o.date.replace(/\//g,'-')+'T08:00:00'); return (e-s)/3600000; }).filter(h=>h>0&&h<20); return {p, h: hArr.length?(hArr.reduce((a,b)=>a+b)/hArr.length):99}; }).sort((a,b)=>a.h-b.h).slice(0, 8);
-            createChart('chart-driver-efficiency', 'bar', drank.map(r=>r.p), [{ label: '平均耗時(h)', data: drank.map(r=>r.h.toFixed(1)), backgroundColor: '#818cf8' }]);
-        }
+        function setText(id, v) { const el = document.getElementById(id); if (el) el.innerText = v; }
 
         function renderFuel(schedule) {
             const amt = schedule.reduce((s,x)=>s+(x.fuelAmt||0),0);
             const km = schedule.reduce((s,x)=>s+(x.totalKm||0),0);
             const lit = schedule.reduce((s,x)=>s+(x.fuelLit||0),0);
-            document.getElementById('stat-total-fuel-amt').innerText = '$'+Math.round(amt).toLocaleString();
-            document.getElementById('stat-total-km-fuel').innerText = Math.round(km).toLocaleString()+' km';
-            document.getElementById('stat-avg-kml').innerText = lit ? (km/lit).toFixed(1) : '--';
-            document.getElementById('stat-cost-per-km').innerText = km ? '$'+(amt/km).toFixed(1) : '--';
+            setText('stat-total-fuel-amt', '$'+Math.round(amt).toLocaleString());
+            setText('stat-total-km-fuel', Math.round(km).toLocaleString()+' km');
+            setText('stat-avg-kml', lit ? (km/lit).toFixed(1) : '--');
+            setText('stat-cost-per-km', km ? '$'+(amt/km).toFixed(1) : '--');
 
             const dates = [...new Set(schedule.map(x=>x.date))].sort();
             createChart('chart-fuel-km-trend', 'bar', dates, [
                 { label: '油費', data: dates.map(d=>schedule.filter(x=>x.date===d).reduce((s,x)=>s+(x.fuelAmt||0),0)), backgroundColor: 'rgba(248,113,113,0.4)' },
                 { label: '行駛km', data: dates.map(d=>schedule.filter(x=>x.date===d).reduce((s,x)=>s+(x.totalKm||0),0)), type:'line', borderColor: Color.accent, yAxisID:'y1', pointRadius: 2 }
             ], { scales: { y1: { position: 'right', grid: { display : false } } } });
-
-            const plates = [...new Set(schedule.map(x=>x.plate))].filter(Boolean);
-            const frank = plates.map(p => { const k=schedule.filter(x=>x.plate===p).reduce((s,x)=>s+(x.totalKm||0),0); const l=schedule.filter(x=>x.plate===p).reduce((s,x)=>s+(x.fuelLit||0),0); return {p, e: l?(k/l):0}; }).sort((a,b)=>b.e-a.e).slice(0, 8);
-            createChart('chart-driver-fuel-efficiency', 'bar', frank.map(r=>r.p), [{ label: 'km/L', data: frank.map(r=>r.e.toFixed(1)), backgroundColor: Color.success }]);
         }
 
+        // ===== 司機運能排行 =====
         function renderPerformance(orders, schedule) {
             const plates = [...new Set(orders.map(o=>o.plate))].filter(Boolean);
+            let totalTonKm = 0;
             const stats = plates.map(p => {
                 const po=orders.filter(o=>o.plate===p); const pc=po.filter(o=>o.status==='已完成');
                 const ps=schedule.filter(s=>s.plate===p); const km=ps.reduce((s,x)=>s+(x.totalKm||0),0); const amt=ps.reduce((s,x)=>s+(x.fuelAmt||0),0); const lit=ps.reduce((s,x)=>s+(x.fuelLit||0),0);
-                return {p, total:po.length, comp:pc.length, weight:po.reduce((s,o)=>s+(o.weight||0),0), km, amt, eff:lit?(km/lit).toFixed(1):'--'};
+                const hArr = pc.map(o=>{ if(!o.finishTime) return null; const e=new Date(o.finishTime.replace(/\//g, '-').replace(' ', 'T')); const s=new Date(o.date.replace(/\//g,'-')+'T08:00:00'); const h=(e-s)/3600000; return (h>0&&h<20)?h:null; }).filter(h=>h!==null);
+                const wKg = po.reduce((s,o)=>s+(o.weight||0),0);
+                const tonKm = (wKg/1000) * km;
+                totalTonKm += tonKm;
+                return {p, total:po.length, comp:pc.length, weight: wKg, avgH:hArr.length?(hArr.reduce((a,b)=>a+b)/hArr.length).toFixed(1):'--', km, amt, eff:lit?(km/lit).toFixed(1):'--', tonKm};
             }).sort((a,b)=>b.comp-a.comp);
-            document.querySelector('#performance-table tbody').innerHTML = stats.map(s => `<tr><td style="font-weight:700;color:var(--accent)">${s.p}</td><td>${s.total}</td><td>${(s.comp/s.total*100).toFixed(0)}%</td><td style="color:var(--warning)">${Math.round(s.weight).toLocaleString()}</td><td>--</td><td>${Math.round(s.km)}</td><td>$${Math.round(s.amt).toLocaleString()}</td><td style="color:var(--success)">${s.eff}</td></tr>`).join('');
-            createChart('chart-driver-orders', 'bar', stats.map(s=>s.p), [{ label: '累計完成項數', data: stats.map(s=>s.comp), backgroundColor: Color.success }], { indexAxis: 'y' });
+
+            setText('stat-total-tonkm', Math.round(totalTonKm).toLocaleString() + ' t·km');
+            const totalTrips = schedule.length;
+            const totalLoad = orders.reduce((s,o)=>s+(o.weight||0),0);
+            setText('stat-avg-load', totalTrips ? Math.round(totalLoad/totalTrips).toLocaleString() + ' kg' : '-- kg');
+
+            document.querySelector('#performance-table tbody').innerHTML = stats.map(s => `<tr><td style="font-weight:700;color:var(--accent)">${escapeHTML(plateLabel(s.p))}</td><td>${s.total}</td><td>${s.total ? (s.comp/s.total*100).toFixed(0) : 0}%</td><td style="color:var(--warning)">${Math.round(s.weight).toLocaleString()}</td><td>${Math.round(s.km)}</td><td>$${Math.round(s.amt).toLocaleString()}</td><td style="color:var(--success)">${s.eff}</td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b;">區間內無資料</td></tr>';
+            createChart('chart-driver-orders', 'bar', stats.map(s=>plateLabel(s.p)), [{ label: '累計完成單數', data: stats.map(s=>s.comp), backgroundColor: Color.success }], { indexAxis: 'y' });
         }
 
-        function renderCustomer(orders) {
-            const custs = [...new Set(orders.map(o=>o.customer))].slice(0, 100);
-            const stats = custs.map(c => { const co=orders.filter(o=>o.customer===c); return {n:c, c:co.length, w:co.reduce((s,x)=>s+(x.weight||0),0)}; }).sort((a,b)=>b.c-a.c).slice(0, 10);
-            createChart('chart-customer-orders', 'bar', stats.map(x=>x.n), [{ label: '單量(次)', data: stats.map(x=>x.c), backgroundColor: Color.accent }], { indexAxis: 'y' });
-            const wstats = [...stats].sort((a,b)=>b.w-a.w).slice(0, 10);
-            createChart('chart-customer-weight', 'bar', wstats.map(x=>x.n), [{ label: '總重(kg)', data: wstats.map(x=>x.w), backgroundColor: Color.branch[0] }], { indexAxis: 'y' });
+        // ===== 司機行程記錄 =====
+        let itinPlate = '全部';
+        function buildItinPlateButtons() {
+            const plates = [...new Set([...rawData.orders.map(o => o.plate), ...rawData.schedule.map(s => s.plate)])].filter(Boolean).sort();
+            const wrap = document.getElementById('itinPlateBtns');
+            wrap.innerHTML = ['全部', ...plates].map(p => `<button class="btn-branch ${itinPlate === p ? 'active' : ''}" data-plate="${escapeHTML(p)}" onclick="setItinPlate('${escapeHTML(p)}')">${escapeHTML(p === '全部' ? p : plateLabel(p))}</button>`).join('');
         }
+        function setItinPlate(p) {
+            itinPlate = p;
+            document.querySelectorAll('#itinPlateBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.plate === p));
+            updateDashboard();
+        }
+        function districtOf(addr) {
+            const s = String(addr || '').replace(/^(台灣|臺灣)/, '');
+            const m = s.match(/([一-鿿]{1,3}(市|縣))?([一-鿿]{1,3}(區|鄉|鎮|市))/);
+            return m ? m[3] : (s.substring(0, 3) || '');
+        }
+        // 解析「08:50 公司出發 → 10:36 三民路 → ...」成 [{t, r, depot}]
+        function parseTrace(trace) {
+            return String(trace || '').split(/\s*→\s*/).map(seg => {
+                const m = seg.trim().match(/^(\d{1,2}:\d{2})\s*(.*)$/);
+                const t = m ? m[1] : '';
+                const r = (m ? m[2] : seg).trim();
+                if (!r && !t) return null;
+                return { t, r, depot: /公司出發|返抵公司|公司/.test(r) };
+            }).filter(Boolean);
+        }
+        function renderItinerary() {
+            const f = currentFilters();
+            const vm = rawData.vehicleMap || {};
+            const allS = rawData.schedule.filter(s => s.date >= f.sd && s.date <= f.ed && s.plate && (itinPlate === '全部' || s.plate === itinPlate));
+            // 派送清單的「車牌」欄有時填司機名，兩種都認
+            const ordersFor = (date, plate) => rawData.orders.filter(o => o.date === date && (o.plate === plate || (vm[plate] && o.plate === vm[plate])));
+
+            const rows = allS.map(s => {
+                const stops = parseTrace(s.trace);
+                const real = stops.filter(x => !x.depot);
+                const os = ordersFor(s.date, s.plate);
+                return { s, stops, stopCount: real.length || os.length, done: os.filter(o => o.status === '已完成').length,
+                         weight: os.reduce((a, o) => a + (o.weight || 0), 0) };
+            }).sort((a, b) => b.s.date.localeCompare(a.s.date) || a.s.plate.localeCompare(b.s.plate));
+
+            setText('stat-itin-days', new Set(rows.map(r => r.s.date)).size);
+            setText('stat-itin-stops', rows.reduce((a, r) => a + r.stopCount, 0));
+            setText('stat-itin-weight', Math.round(rows.reduce((a, r) => a + r.weight, 0)).toLocaleString());
+            setText('stat-itin-km', Math.round(rows.reduce((a, r) => a + (r.s.totalKm || 0), 0)).toLocaleString());
+
+            const photoLinks = (s) => [
+                s.photoExt ? `<a class="photo-link" href="${escapeHTML(s.photoExt)}" target="_blank">外觀</a>` : '',
+                s.photoInt ? `<a class="photo-link" href="${escapeHTML(s.photoInt)}" target="_blank">內裝</a>` : '',
+                s.photoFuel ? `<a class="photo-link" href="${escapeHTML(s.photoFuel)}" target="_blank">加油單</a>` : ''
+            ].join('');
+
+            document.getElementById('itineraryCards').innerHTML = rows.map(r => {
+                const s = r.s;
+                const drv = s.driver || vm[s.plate] || '';
+                const line = r.stops.length
+                    ? r.stops.map((x, i) => `${i ? '<span class="itin-arrow">→</span>' : ''}<span class="itin-stop${x.depot ? ' depot' : ''}"><span class="t">${escapeHTML(x.t || '--:--')}</span><span class="r">${escapeHTML(x.r)}</span></span>`).join('')
+                    : '<span style="color:#475569; font-size:12px;">（當日無行程足跡）</span>';
+                return `<div class="itin-card">
+                    <div class="itin-head">
+                        <span class="d">${s.date}</span>
+                        <span><span class="drv">${escapeHTML(drv)}</span> <span class="plate">${escapeHTML(s.plate)}</span></span>
+                        <div class="itin-meta">
+                            <span>上班 <b>${s.timeIn || '—'}</b></span>
+                            <span>下班 <b>${s.timeOut || '—'}</b></span>
+                            <span>站數 <b>${r.stopCount}</b></span>
+                            <span>重量 <b>${Math.round(r.weight).toLocaleString()}</b> kg</span>
+                            <span>里程 <b>${s.totalKm ? Math.round(s.totalKm) : '—'}</b> km</span>
+                            <span>油費 <b>${s.fuelAmt ? '$' + Math.round(s.fuelAmt).toLocaleString() : '—'}</b></span>
+                        </div>
+                        <span style="margin-left:auto;">${photoLinks(s)}</span>
+                    </div>
+                    <div class="itin-line">${line}</div>
+                </div>`;
+            }).join('') || '<div style="color:#64748b; padding:20px; text-align:center;">區間內無行程記錄</div>';
+        }
+
+        // ===== 運費統計 =====
+        function compactFreightFormula(detail) {
+            if (!detail) return '--';
+            return String(detail)
+                .replace(/\[重量基費\([^)]*\)\$(\d+(?:\.\d+)?)\]/g, '基本$1')
+                .replace(/\[偏遠地區\([^)]*\)x([\d.]+)\]/g, '偏遠x$1')
+                .replace(/\[指定送貨\$(\d+(?:\.\d+)?)\]/g, '指定送貨$1')
+                .replace(/\[指定退貨\$(\d+(?:\.\d+)?)\]/g, '指定退貨$1')
+                .replace(/\[等候超時\$(\d+(?:\.\d+)?)\]/g, '等候超時$1')
+                .replace(/\[搬運費\$(\d+(?:\.\d+)?)\]/g, '搬運$1')
+                .replace(/\[貨運行折扣\(([^)]*)\)\s*(\d+)%\]/g, '貨運行($1)$2%')
+                .replace(/\s*\+\s*/g, '+')
+                .replace(/\s*=\s*總計\$/g, '=$')
+                .replace(/\s*\*\s*/g, ' × ')
+                .replace(/折扣後總計\$/g, '折扣後=$');
+        }
+
+        function handleAdjustFreight(el) {
+            const taskId = el.dataset.id;
+            const branch = el.dataset.branch;
+            const newFee = parseFloat(el.value);
+            if (isNaN(newFee) || newFee < 0) { alert('請輸入有效的運費金額'); return; }
+            el.disabled = true;
+            const originalBg = el.style.background;
+            el.style.background = 'rgba(148,163,184,0.15)';
+            google.script.run
+                .withSuccessHandler(res => {
+                    el.disabled = false;
+                    if (res.success) {
+                        el.style.background = 'rgba(34,197,94,0.15)';
+                        setTimeout(() => { el.style.background = originalBg; }, 800);
+                        const o = rawData.orders.find(x => String(x.id) === String(taskId) && x.branch === branch);
+                        if (o) { o.adjustedFee = newFee; renderFreightStats(); }
+                    } else {
+                        el.style.background = 'rgba(239,68,68,0.15)';
+                        if (isAuthError(res)) { setAdminToken(''); promptAdminLogin(() => handleAdjustFreight(el)); return; }
+                        alert('調整失敗：' + res.error);
+                    }
+                })
+                .withFailureHandler(err => {
+                    el.disabled = false;
+                    el.style.background = 'rgba(239,68,68,0.15)';
+                    alert('連線失敗：' + err.message);
+                })
+                .manualAdjustFreight_V11(taskId, branch, newFee, ATOKEN());
+        }
+
+        let __lastFreightSets = { orders: [], schedule: [] };
+        function renderFreightStats() {
+            const orders = __lastFreightSets.orders, schedule = __lastFreightSets.schedule;
+            const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
+            const finalFreightTotal = orders.reduce((sum, o) => sum + feeOf(o), 0);
+            const fuelAmt = schedule.reduce((sum, x) => sum + (x.fuelAmt||0), 0);
+            const carrierFreightTotal = orders.filter(o => o.carrierFlag && o.carrierFlag !== "").reduce((sum, o) => sum + feeOf(o), 0);
+            setText('stat-fee-total', '$' + Math.round(finalFreightTotal).toLocaleString());
+            setText('stat-fee-count', orders.filter(o => feeOf(o) > 0).length);
+            setText('stat-carrier-total', '$' + Math.round(carrierFreightTotal).toLocaleString());
+            setText('stat-fee-ratio', fuelAmt ? (finalFreightTotal/fuelAmt).toFixed(1)+'x' : '--');
+        }
+
+        function renderFreight(orders, schedule) {
+            __lastFreightSets = { orders, schedule };
+            renderFreightStats();
+            const tableBody = document.querySelector('#freight-table tbody');
+            tableBody.innerHTML = orders.slice().sort((a, b) => b.date.localeCompare(a.date)).map(o => {
+                const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
+                const isRemoteStr = o.isRemote || "否";
+                const isRemoteBadge = isRemoteStr !== "否" ? `<span class="badge badge-warn">${escapeHTML(isRemoteStr)}</span>` : `<span style="color:var(--text-dim)">否</span>`;
+                const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
+                    ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">🚛 ${escapeHTML(o.carrierFlag)}</span>`
+                    : '';
+                const typeBadge = o.docType === '樣品'
+                    ? (o.sampleTo === 'home' ? ' <span class="badge badge-warn" style="font-size:10px;" title="樣品送回公司：不計費">樣品免費</span>'
+                                             : ' <span class="badge badge-info" style="font-size:10px;" title="樣品送到外面 (貨運行/加工廠/客戶)：照常計費">樣品收費</span>')
+                    : (o.docType === '退貨' ? ' <span class="badge badge-danger" style="font-size:10px;">退貨</span>' : '');
+                const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}</span>`;
+                const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}"
+                    style="width:76px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;"
+                    onchange="handleAdjustFreight(this)">`;
+                return `
+                    <tr>
+                        <td style="white-space:nowrap;">${o.date}</td>
+                        <td style="font-weight:700;">${escapeHTML(o.id)}</td>
+                        <td>${branchTag(o.branch)}</td>
+                        <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}</td>
+                        <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg</span></td>
+                        <td>${isRemoteBadge}</td>
+                        <td>$${o.estFee}</td>
+                        <td>${formulaCell}</td>
+                        <td>${feeInput}</td>
+                    </tr>`;
+            }).join('') || '<tr><td colspan="9" style="text-align:center; color:#64748b;">區間內無運費單據</td></tr>';
+        }
+
+        // ===== 明細面板 (點卡片數字) =====
+        let drillState = { rows: [], cols: [], sortKey: '', sortDir: -1, kind: '', branch: '' };
+        const brOfOrder = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+        function baseOrdersForDrill() {
+            const f = currentFilters();
+            return rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver));
+        }
+        function parseFeeParts(detail) {
+            const d = String(detail || '');
+            const num = re => { const m = d.match(re); return m ? parseFloat(m[1]) : 0; };
+            return { base: num(/重量基費\([^)]*\)\$(\d+(?:\.\d+)?)/), timed: num(/指定送貨\$(\d+(?:\.\d+)?)/) + num(/指定退貨\$(\d+(?:\.\d+)?)/), wait: num(/等候超時\$(\d+(?:\.\d+)?)/), carry: num(/搬運費\$(\d+(?:\.\d+)?)/), remote: /偏遠地區/.test(d) };
+        }
+        function openDrill(kind, branch) {
+            const all = baseOrdersForDrill();
+            const bo = all.filter(o => brOfOrder(o) === branch);
+            let rows = [], cols = [], title = '', sub = '', summary = [];
+            const shortDate = d => String(d || '').replace(/^20(\d\d)\/0?(\d+)\/0?(\d+)$/, '$1/$2/$3');
+            const feeCell = (v, o) => {
+                if (o.isSample) return '<span style="color:#fbbf24;">免費</span>';
+                const p = parseFeeParts(o.detail);
+                let color = '#e2e8f0', why = [];
+                if (o.adjustedFee > 0) { color = '#22c55e'; why.push('人工核定'); }
+                if (o.carrierFlag) { color = '#f97316'; why.push('貨運行折扣'); }
+                if (p.remote) { color = '#fbbf24'; why.push('偏遠加乘'); }
+                if (p.timed) { color = '#38bdf8'; why.push('指定時間'); }
+                if (p.wait || p.carry) { color = '#c084fc'; why.push(p.wait ? '等候超時' : '搬運費'); }
+                return `<span style="color:${color}; font-weight:700;" title="${why.join('、') || '一般'}">$${Math.round(v).toLocaleString()}</span>${why.length ? `<div style="font-size:9px; color:${color}; opacity:0.85;">${why.join('·')}</div>` : ''}`;
+            };
+            const thumbCell = (v, o) => o.thumbnail ? `<button class="mini-btn" onclick="event.stopPropagation(); showThumb('${escapeHTML(o.thumbnail)}')">📄 縮圖</button>` : '<span style="color:#475569">—</span>';
+            const colBase = [
+                { k: 'date', n: '日期', fmt: shortDate }, { k: 'id', n: '單號' }, { k: 'customer', n: '客戶' }, { k: 'address', n: '地址', w: 220 },
+                { k: 'weight', n: '重量(kg)', num: true }, { k: 'fee', n: '運費', num: true, fmtRow: feeCell, html: true },
+                { k: 'plate', n: '司機', fmt: v => plateLabel(v) }, { k: '_thumb', n: '銷貨單', fmtRow: thumbCell, html: true }
+            ];
+            // 免費樣品 (送回公司) 運費一律 0
+            const withFee = list => list.map(o => Object.assign({}, o, { fee: o.isSample ? 0 : feeOfOrder(o) }));
+            if (kind === 'orders') {
+                rows = withFee(bo.filter(o => !o.isSample || includeSamples())); cols = colBase.concat([{ k: 'docType', n: '類型', fmt: v => v || '銷貨' }, { k: '_act', n: '' }]);
+                title = branch + '｜區間內訂單'; drillState.sortKey = 'date';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg'], ['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]];
+            } else if (kind === 'fee') {
+                rows = withFee(bo.filter(o => !o.isSample || includeSamples())); cols = colBase.concat([{ k: 'detail', n: '公式', fmt: v => compactFreightFormula(v), w: 200 }]);
+                title = branch + '｜運費明細（高→低）'; drillState.sortKey = 'fee';
+                const parts = rows.reduce((a, o) => { const p = parseFeeParts(o.detail); a.base += p.base; a.timed += p.timed; a.wait += p.wait; a.carry += p.carry; if (p.remote) a.remoteN++; return a; }, { base: 0, timed: 0, wait: 0, carry: 0, remoteN: 0 });
+                const byCust = {}; rows.forEach(o => { byCust[o.customer] = (byCust[o.customer] || 0) + o.fee; });
+                const top = Object.entries(byCust).sort((a, b) => b[1] - a[1]).slice(0, 10);
+                summary = [['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()], ['基本運費', '$' + Math.round(parts.base).toLocaleString()], ['指定時間', '$' + Math.round(parts.timed).toLocaleString()], ['等候超時', '$' + Math.round(parts.wait).toLocaleString()], ['搬運費', '$' + Math.round(parts.carry).toLocaleString()], ['偏遠單數', parts.remoteN],
+                    ['運費顏色', '<span style="color:#22c55e">核定</span> <span style="color:#f97316">貨運行折扣</span> <span style="color:#fbbf24">偏遠</span> <span style="color:#38bdf8">指定時間</span> <span style="color:#c084fc">等候/搬運</span>']];
+                sub = '前 10 大客戶：' + top.map(t => t[0] + ' $' + Math.round(t[1]).toLocaleString()).join('｜');
+            } else if (kind === 'compare') {
+                const list = all.filter(o => !o.isSample || includeSamples());
+                const total = list.reduce((s, o) => s + feeOfOrder(o), 0);
+                rows = BRANCHES.map(b => { const x = list.filter(o => brOfOrder(o) === b); const fee = x.reduce((s, o) => s + feeOfOrder(o), 0); return { branch: b, n: x.length, fee, avg: x.length ? fee / x.length : 0, pct: total ? fee / total * 100 : 0, carrier: x.filter(o => o.carrierFlag).length, weight: x.reduce((s, o) => s + (o.weight || 0), 0), samplePaid: x.filter(o => o.docType === '樣品' && o.sampleTo === 'out').length, ret: x.filter(o => o.docType === '退貨').length }; });
+                cols = [{ k: 'branch', n: '分公司', fmt: v => branchTag(v), html: true }, { k: 'n', n: '單量', num: true }, { k: 'weight', n: '總重量(kg)', num: true, fmt: v => Math.round(v).toLocaleString() }, { k: 'fee', n: '運費', num: true, fmt: v => '$' + Math.round(v).toLocaleString() }, { k: 'avg', n: '平均每單運費', num: true, fmt: v => '$' + Math.round(v).toLocaleString() }, { k: 'pct', n: '貢獻度', num: true, fmt: v => v.toFixed(1) + '%' }, { k: 'carrier', n: '貨運行折扣單', num: true }, { k: 'samplePaid', n: '樣品收費', num: true }, { k: 'ret', n: '退貨', num: true }];
+                title = '四家分公司比較'; drillState.sortKey = 'fee';
+                summary = [['總單量', list.length], ['總運費', '$' + Math.round(total).toLocaleString()]];
+            } else if (kind === 'samplePaid' || kind === 'sampleFree') {
+                const isPaid = kind === 'samplePaid';
+                rows = withFee(bo.filter(o => o.docType === '樣品' && o.sampleTo === (isPaid ? 'out' : 'home')));
+                cols = colBase.concat([{ k: '_act', n: '' }]);
+                title = branch + (isPaid ? '｜樣品收費（送到外面，照常計費）' : '｜樣品免費（送回公司，不計費）'); drillState.sortKey = 'date';
+                sub = '判定來源：銷售報表（客戶編號 -S、樣品關鍵字、金額 0）＋地址。判錯的請按右側按鈕改判，之後永久生效。';
+                summary = isPaid ? [['單數', rows.length], ['運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]] : [['單數', rows.length], ['運費', '免費']];
+            } else if (kind === 'returns') {
+                rows = withFee(bo.filter(o => o.docType === '退貨')); cols = colBase.concat([{ k: 'returnReason', n: '退回原因', w: 180 }]);
+                title = branch + '｜退貨'; drillState.sortKey = 'date';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            }
+            drillState = Object.assign(drillState, { rows, cols, kind, branch, sortDir: -1 });
+            document.getElementById('drillTitle').innerText = title;
+            document.getElementById('drillSub').innerText = sub;
+            document.getElementById('drillSummary').innerHTML = summary.map(s => `<span class="s">${s[0]}<b>${s[1]}</b></span>`).join('');
+            renderDrillTable();
+            document.getElementById('drillMask').classList.add('open');
+            document.getElementById('drillPanel').classList.add('open');
+        }
+        function closeDrill() { document.getElementById('drillMask').classList.remove('open'); document.getElementById('drillPanel').classList.remove('open'); }
+        function drillSort(k) { if (drillState.sortKey === k) drillState.sortDir *= -1; else { drillState.sortKey = k; drillState.sortDir = -1; } renderDrillTable(); }
+        function renderDrillTable() {
+            const { rows, cols, sortKey, sortDir, kind } = drillState;
+            const sorted = rows.slice().sort((a, b) => { const x = a[sortKey], y = b[sortKey]; if (typeof x === 'number' || typeof y === 'number') return ((x || 0) - (y || 0)) * sortDir; return String(x || '').localeCompare(String(y || '')) * sortDir; });
+            document.querySelector('#drillTable thead').innerHTML = '<tr>' + cols.map(c => `<th onclick="${c.k === '_act' ? '' : `drillSort('${c.k}')`}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${c.n}${sortKey === c.k ? (sortDir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('') + '</tr>';
+            const btn = (o, t, label) => `<button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','${t}')">${label}</button>`;
+            const resetBtn = o => o.docTypeManual ? ` <button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','')" title="清除人工判定，回到規則">↺</button>` : '';
+            const actBtns = o => {
+                if (kind === 'orders') return (o.docType === '樣品' ? '' : btn(o, '樣品收費', '改為收費樣品') + ' ' + btn(o, '樣品免費', '改為免費樣品')) + resetBtn(o);
+                if (kind === 'sampleFree') return btn(o, '樣品收費', '改為收費樣品') + ' ' + btn(o, '銷貨', '改為正常單') + resetBtn(o);
+                if (kind === 'samplePaid') return btn(o, '樣品免費', '改為免費樣品') + ' ' + btn(o, '銷貨', '改為正常單') + resetBtn(o);
+                return '';
+            };
+            document.querySelector('#drillTable tbody').innerHTML = sorted.map(o => `<tr class="row-click" onclick="drillRowClick(${JSON.stringify(String(o.id || '')).replace(/"/g, '&quot;')})">` + cols.map(c => {
+                if (c.k === '_act') return `<td>${actBtns(o)}</td>`;
+                const v = o[c.k]; const txt = c.fmtRow ? c.fmtRow(v, o) : (c.fmt ? c.fmt(v) : (v === undefined || v === null ? '' : v));
+                return `<td ${c.num ? 'style="text-align:right;white-space:nowrap;"' : ''}>${c.html ? txt : escapeHTML(txt)}${(c.k === 'id' && o.docTypeManual) ? ' <span class="badge badge-info" style="font-size:9px;" title="人工判定">人工</span>' : ''}</td>`;
+            }).join('') + '</tr>').join('') || '<tr><td colspan="12" style="text-align:center;color:#64748b;">無資料</td></tr>';
+        }
+        function showThumb(url) { document.getElementById('lightboxImg').src = url; document.getElementById('lightbox').classList.add('open'); }
+        function drillRowClick(id) {
+            const o = rawData.orders.find(x => String(x.id) === String(id));
+            if (o && o.thumbnail) showThumb(o.thumbnail);
+        }
+        function overrideDocType(id, branch, docType) {
+            if (!confirm(`確定將 ${id} 改判為「${docType || '依規則判定'}」？`)) return;
+            google.script.run.withSuccessHandler(res => {
+                if (res && res.success) {
+                    const o = rawData.orders.find(x => String(x.id) === String(id) && x.branch === branch);
+                    if (o) {
+                        o.docTypeManual = docType;
+                        if (docType === '樣品收費') { o.docType = '樣品'; o.sampleTo = 'out'; }
+                        else if (docType === '樣品免費') { o.docType = '樣品'; o.sampleTo = 'home'; }
+                        else if (docType) { o.docType = docType; o.sampleTo = ''; }
+                        else { o.docType = '銷貨'; o.sampleTo = ''; }
+                        o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
+                    }
+                    alert(res.message); updateDashboard(); openDrill(drillState.kind, drillState.branch);
+                    fetchData(true);
+                } else alert('改判失敗：' + ((res && res.error) || ''));
+            }).withFailureHandler(err => alert('改判失敗：' + err.message)).setDocTypeOverride_V41(id, branch, docType, ATOKEN());
+        }
+        function drillTsv() {
+            const { rows, cols } = drillState;
+            const cs = cols.filter(c => c.k !== '_act');
+            const line = r => cs.map(c => { const v = r[c.k]; let t = c.k === '_thumb' ? (r.thumbnail || '') : (c.k === 'fee' ? (r.isSample ? '免費' : Math.round(v || 0)) : (c.fmt && !c.html ? c.fmt(v) : (v === undefined || v === null ? '' : v))); return String(t).replace(/[\t\n]/g, ' '); });
+            return [cs.map(c => c.n)].concat(rows.map(line)).map(a => a.join('\t')).join('\n');
+        }
+        function drillCopy() { navigator.clipboard.writeText(drillTsv()).then(() => alert('已複製，可直接貼到 Excel / 試算表')).catch(() => alert('複製失敗，請改用 CSV')); }
+        function drillCsv() {
+            const csv = '\ufeff' + drillTsv().split('\n').map(l => l.split('\t').map(c => '"' + c.replace(/"/g, '""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = (drillState.branch || '全部') + '_' + drillState.kind + '.csv'; a.target = '_blank';
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+        }
+
+        // ===== 運費設定視窗 =====
+        let cfgState = { weightSlabs: [], remoteAreas: [], addonFees: [] };
+        function openFreightSettings() {
+            document.getElementById('cfgMask').classList.add('open');
+            document.getElementById('cfgSlabs').innerHTML = '<div style="color:var(--text-dim)">載入中…</div>';
+            google.script.run.withSuccessHandler(res => {
+                if (!res || !res.success) { alert('讀取設定失敗：' + ((res && res.error) || '')); closeFreightSettings(); return; }
+                cfgState = { weightSlabs: res.weightSlabs || [], remoteAreas: res.remoteAreas || [], addonFees: res.addonFees || [] };
+                renderCfg();
+            }).withFailureHandler(err => { alert('讀取設定失敗：' + err.message); closeFreightSettings(); })
+              .getFreightSettings_V41(ATOKEN());
+        }
+        function closeFreightSettings() { document.getElementById('cfgMask').classList.remove('open'); }
+        function renderCfg() {
+            document.getElementById('cfgSlabs').innerHTML = cfgState.weightSlabs.map((s, i) => `
+                <div class="cfg-row"><span style="color:var(--text-dim);font-size:11px;">≤</span><input type="number" placeholder="重量上限 kg" value="${s.maxKg}" oninput="cfgState.weightSlabs[${i}].maxKg=this.value"><span style="color:var(--text-dim);font-size:11px;">kg $</span><input type="number" placeholder="費用" value="${s.fee}" oninput="cfgState.weightSlabs[${i}].fee=this.value"><button class="del" onclick="cfgDel('slab',${i})">×</button></div>`).join('');
+            document.getElementById('cfgRemote').innerHTML = cfgState.remoteAreas.map((a, i) => `
+                <div class="cfg-row"><input type="text" placeholder="關鍵字，逗號分隔" value="${escapeHTML(a.keywords)}" oninput="cfgState.remoteAreas[${i}].keywords=this.value"><span style="color:var(--text-dim);font-size:11px;">×</span><input type="number" step="0.1" style="max-width:70px" value="${a.multiplier}" oninput="cfgState.remoteAreas[${i}].multiplier=this.value"><button class="del" onclick="cfgDel('remote',${i})">×</button></div>`).join('');
+            document.getElementById('cfgAddons').innerHTML = cfgState.addonFees.map((a, i) => `
+                <div class="cfg-row"><input type="text" placeholder="項目" value="${escapeHTML(a.item)}" oninput="cfgState.addonFees[${i}].item=this.value"><span style="color:var(--text-dim);font-size:11px;">$</span><input type="number" style="max-width:90px" value="${a.rate}" oninput="cfgState.addonFees[${i}].rate=this.value"><button class="del" onclick="cfgDel('addon',${i})">×</button></div>`).join('');
+        }
+        function cfgAddRow(kind) {
+            if (kind === 'slab') cfgState.weightSlabs.push({ maxKg: '', fee: '' });
+            if (kind === 'remote') cfgState.remoteAreas.push({ keywords: '', multiplier: 1.5 });
+            if (kind === 'addon') cfgState.addonFees.push({ item: '', rate: '' });
+            renderCfg();
+        }
+        function cfgDel(kind, i) {
+            if (kind === 'slab') cfgState.weightSlabs.splice(i, 1);
+            if (kind === 'remote') cfgState.remoteAreas.splice(i, 1);
+            if (kind === 'addon') cfgState.addonFees.splice(i, 1);
+            renderCfg();
+        }
+        function saveFreightSettings() {
+            const btn = document.getElementById('cfgSaveBtn');
+            btn.disabled = true; btn.innerText = '儲存中…';
+            google.script.run.withSuccessHandler(res => {
+                btn.disabled = false; btn.innerText = '儲存設定';
+                if (res && res.success) { alert(res.message); closeFreightSettings(); fetchData(true); }
+                else alert('儲存失敗：' + ((res && res.error) || ''));
+            }).withFailureHandler(err => { btn.disabled = false; btn.innerText = '儲存設定'; alert('儲存失敗：' + err.message); })
+              .saveFreightSettings_V41(cfgState, ATOKEN());
+        }
+
+        // 環圈圖：扇形內寫數值與百分比、中央寫總計 (Chart.js 沒有內建，自行繪製)
+        const arcLabelPlugin = {
+            id: 'arcLabels',
+            afterDatasetsDraw(chart, args, pluginOpts) {
+                const fmt = pluginOpts && pluginOpts.format;
+                if (!fmt) return;
+                const { ctx } = chart;
+                const meta = chart.getDatasetMeta(0);
+                const data = chart.data.datasets[0].data;
+                const total = data.reduce((a, b) => a + (Number(b) || 0), 0);
+                ctx.save();
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                meta.data.forEach((arc, i) => {
+                    const v = Number(data[i]) || 0;
+                    if (!v || !total) return;
+                    const pct = v / total * 100;
+                    if (pct < 4) return; // 太小的扇形不寫，避免重疊
+                    const angle = (arc.startAngle + arc.endAngle) / 2;
+                    const r = (arc.innerRadius + arc.outerRadius) / 2;
+                    const x = arc.x + Math.cos(angle) * r, y = arc.y + Math.sin(angle) * r;
+                    ctx.fillStyle = '#0f172a';
+                    ctx.font = '800 12px Inter, sans-serif';
+                    ctx.fillText(fmt(v), x, y - 7);
+                    ctx.font = '700 11px Inter, sans-serif';
+                    ctx.fillText(pct.toFixed(0) + '%', x, y + 8);
+                });
+                if (pluginOpts.centerText && meta.data[0]) {
+                    ctx.fillStyle = '#f8fafc';
+                    ctx.font = '800 18px Inter, sans-serif';
+                    ctx.fillText(pluginOpts.centerText, meta.data[0].x, meta.data[0].y - 6);
+                    ctx.fillStyle = '#94a3b8';
+                    ctx.font = '600 11px Inter, sans-serif';
+                    ctx.fillText('合計', meta.data[0].x, meta.data[0].y + 12);
+                }
+                ctx.restore();
+            }
+        };
 
         function createChart(id, type, labels, datasets, opts = {}) {
             if (charts[id]) charts[id].destroy();
@@ -410,18 +1045,25 @@
             if (!ctx) return;
             charts[id] = new Chart(ctx.getContext('2d'), {
                 type, data: { labels, datasets },
+                plugins: opts.arcLabel ? [arcLabelPlugin] : [],
                 options: {
                     responsive: true, maintainAspectRatio: false, indexAxis: opts.indexAxis || 'x',
-                    plugins: { 
+                    plugins: {
+                        arcLabels: opts.arcLabel ? { format: opts.arcLabel, centerText: opts.centerText || '' } : false,
                         legend: { display: opts.legend || false, position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 }, usePointStyle: true, padding: 15 } },
                         tooltip: { backgroundColor: 'rgba(15,23,42,0.9)', titleColor: '#38bdf8', bodyColor: '#fff', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
                     },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...opts.scales?.x },
-                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...opts.scales?.y }
+                    scales: opts.noScales ? {} : {
+                        x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...(opts.scales?.x || {}) },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } }, ...(opts.scales?.y || {}) },
+                        ...(opts.scales?.y1 ? { y1: { ticks: { color: '#94a3b8', font: { size: 10 } }, ...opts.scales.y1 } } : {})
                     }
                 }
             });
+        }
+
+        function escapeHTML(s) {
+            return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
         }
     </script>
 </body>

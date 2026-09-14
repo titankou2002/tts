@@ -4,13 +4,15 @@
  * ==========================================
  */
 
+// V41: 設定統一走 Code.js 的 V11_PROD_CONFIG (不再各自複製一份 SS_ID)。
+// 用 getter 延遲取值，避免檔案載入順序造成 TDZ。
 const CONFIG = {
-  SS_ID: "1M-Ewy58fQs-QmqzO5nERoXDCm7lm6S_mrrAIR1mUOtA",
-  SHEET_TASKS: "派送清單",
-  SHEET_VEHICLE: "車輛管理"
+  get SS_ID() { return V11_PROD_CONFIG.SS_ID; },
+  get SHEET_TASKS() { return V11_PROD_CONFIG.SHEET_TASKS; },
+  get SHEET_VEHICLE() { return V11_PROD_CONFIG.SHEET_VEHICLE; }
 };
 
-function getSS() { return SpreadsheetApp.openById(CONFIG.SS_ID); }
+function getSS() { return getSS_V11(); }
 
 /** 標頭尋找器 (忽略空格、精準對位) */
 function _findHeader(arr, keys) {
@@ -22,8 +24,9 @@ function _findHeader(arr, keys) {
 }
 
 /** 1. 取得任務 (V15.1) */
-function getUnDispatchedTasks_V3() {
+function getUnDispatchedTasks_V3(token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -45,7 +48,7 @@ function getUnDispatchedTasks_V3() {
       thumbnail: findH(headers, ['圖檔', '縮圖']),
       isBack: findH(headers, ['回鶯歌']),
       order: findH(headers, ['順序', '趟次']),
-      isReturn: findH(headers, ['退貨']),
+      isReturn: (function () { var p = headers.indexOf('退貨'); return p !== -1 ? p : headers.indexOf('是否退貨'); })(), // V41: 精確比對，避免模糊對到「指定退貨」
       dispatchDriver: findH(headers, ['派遣司機']),
       plate: findH(headers, ['車牌', '車號']),
       whStatus: findH(headers, ['驗貨狀態']),
@@ -56,7 +59,8 @@ function getUnDispatchedTasks_V3() {
       wrapSeal: findH(headers, ['封膠膜', '膠膜', '封膜']),
       note: findH(headers, ['備註', '備註欄', '備註事項']),
       returnReason: findH(headers, ['退回原因', '退回備註']),
-      driverConfirm: findH(headers, ['司機確認狀態'])
+      driverConfirm: findH(headers, ['司機確認狀態']),
+      specifiedArrive: findH(headers, ['指定到貨時間']) // V39.30: 強制指定時間，供派車介面閃爍提示用
     };
 
     for (let n = 1; n <= 10; n++) {
@@ -147,6 +151,7 @@ function getUnDispatchedTasks_V3() {
                 return String(idx.note !== -1 ? String(row[idx.note] || '').trim() : '').indexOf('膠膜') !== -1 ? '封' : '';
             })(),
             returnReason: idx.returnReason !== -1 ? String(row[idx.returnReason] || '').trim() : '',
+            specifiedArrive: idx.specifiedArrive !== -1 ? String(row[idx.specifiedArrive] || '').trim() : '', // V39.30
             items: (() => {
                 const arr = [];
                 const sizeArr = String(row[idx.size] || '').split(/[,，、；;\/]+/).map(s => String(s).trim()).filter(Boolean);
@@ -183,8 +188,9 @@ function getUnDispatchedTasks_V3() {
 }
 
 /** 2. 取得司機 */
-function getDrivers_V3() {
+function getDrivers_V3(token) {
   try {
+    _requireAuth_(token, ['driver', 'admin']);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_VEHICLE);
     const data = sheet.getDataRange().getValues();
@@ -200,9 +206,10 @@ function getDrivers_V3() {
 }
 
 /** 3. 核心指派 (寫入 V, W, G, H, AD 欄位) */
-function recordDispatch_V3(tasks, config) {
+function recordDispatch_V3(tasks, config, token) {
   var lock = LockService.getScriptLock();
   try {
+    _requireAdmin_(token);
     if (!lock.tryLock(15000)) throw new Error("同步鎖定中");
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
@@ -235,17 +242,20 @@ function recordDispatch_V3(tasks, config) {
     if(vMatch && vIdxL !== -1) vMax = Number(vMatch[vIdxL]) || vMax;
     const utilization = (tripTotalWeight / vMax * 100).toFixed(1) + "%";
 
+    // V41.22: 只寫回「改到的列 × 改到的欄」(相鄰欄合併成一次呼叫)，不整表覆蓋，避免蓋掉司機同時間寫入的結案狀態
     tasks.forEach(t => {
-      let rIdx = 0;
-      for(let k=1; k<data.length; k++) { if(String(data[k][cId]) === String(t.id)) { rIdx = k+1; break; } }
-      if (rIdx) {
-        if(cDrv !== -1) sheet.getRange(rIdx, cDrv+1).setValue(config.name);
-        if(cShi !== -1) sheet.getRange(rIdx, cShi+1).setValue(config.shift);
-        if(cPla !== -1) sheet.getRange(rIdx, cPla+1).setValue(config.plate);
-        if(cSta !== -1) sheet.getRange(rIdx, cSta+1).setValue('配送中');
-        if(cOrd !== -1) { curMax++; sheet.getRange(rIdx, cOrd+1).setValue(curMax); }
+      let k0 = 0;
+      for(let k=1; k<data.length; k++) { if(String(data[k][cId]) === String(t.id)) { k0 = k; break; } }
+      if (k0) {
+        if(cDrv !== -1) data[k0][cDrv] = config.name;
+        if(cShi !== -1) data[k0][cShi] = config.shift;
+        if(cPla !== -1) data[k0][cPla] = config.plate;
+        if(cSta !== -1) data[k0][cSta] = '配送中';
+        if(cOrd !== -1) { curMax++; data[k0][cOrd] = curMax; }
+        _writeRowCells_(sheet, k0 + 1, data[k0], [cDrv, cShi, cPla, cSta, cOrd]);
       }
     });
+    if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_();
     
     // 一趟一列記錄，供地址群組型排車分析使用
     logDispatchHabit_V8(ss, {
@@ -258,10 +268,12 @@ function recordDispatch_V3(tasks, config) {
     });
     return { success: true };
   } catch (e) { return { success: false, error: e.message }; }
+  finally { try { lock.releaseLock(); } catch (e2) { } }
 }
 
-function updateWhDriver_V3(id, driver) {
+function updateWhDriver_V3(id, driver, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
@@ -279,8 +291,9 @@ function updateWhDriver_V3(id, driver) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function updateBackYinggeStatus_V3(id, dummy, isB) {
+function updateBackYinggeStatus_V3(id, dummy, isB, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -302,8 +315,9 @@ function updateBackYinggeStatus_V3(id, dummy, isB) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function batchDispatchSave_V3(jsonStr) {
+function batchDispatchSave_V3(jsonStr, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -341,25 +355,32 @@ function batchDispatchSave_V3(jsonStr) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function recordDispatchOrder(updates) {
+function recordDispatchOrder(updates, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
     const cId = h.indexOf('單號');
     const cO = h.findIndex(n => n === '順序' || n === '趟次');
+    if (cId === -1 || cO === -1) throw new Error("找不到單號或順序欄位");
     const data = sheet.getDataRange().getValues();
-    updates.forEach(up => {
+    const col = data.slice(1).map(r => [r[cO]]);
+    let touched = 0;
+    (updates || []).forEach(up => {
       for (let i = 1; i < data.length; i++) {
-        if (String(data[i][cId]) === String(up.id)) { sheet.getRange(i+1, cO+1).setValue(up.order); break; }
+        if (String(data[i][cId]) === String(up.id)) { col[i - 1][0] = up.order; touched++; break; }
       }
     });
+    if (touched) sheet.getRange(2, cO + 1, col.length, 1).setValues(col); // V41: 一次寫回
+    if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_();
     return { success: true };
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function cancelDispatch_V3(id) {
+function cancelDispatch_V3(id, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
@@ -372,6 +393,7 @@ function cancelDispatch_V3(id) {
           let ci = h.indexOf(colName);
           if (ci !== -1) sheet.getRange(i+1, ci+1).setValue(colName === '狀態' ? '待指派' : '');
         });
+        if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_();
         break;
       }
     }
@@ -417,6 +439,7 @@ function ensureDispatchHabitSheet_V2(ss) {
 /** 5. 智慧派遣大數據記錄器 V9.0 - 一趟一列 / 地址群組導向 */
 function logDispatchHabit_V8(ss, data) {
   try {
+    _requireCtx_();
     const target = ensureDispatchHabitSheet_V2(ss);
     const sheet = target.sheet;
     const headers = target.headers;
@@ -524,8 +547,9 @@ function extractDistrict(addr) {
 }
 
 /** 6.5 倉庫批次儲存 (V0708.8) */
-function batchWarehouseSave_V3(jsonStr) {
+function batchWarehouseSave_V3(jsonStr, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -563,8 +587,9 @@ function batchWarehouseSave_V3(jsonStr) {
 }
 
 /** 7. 倉庫驗貨 (V1.0) */
-function verifyTask_V3(id, actualDriver) {
+function verifyTask_V3(id, actualDriver, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
@@ -590,8 +615,9 @@ function verifyTask_V3(id, actualDriver) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function undoVerifyTask_V3(id) {
+function undoVerifyTask_V3(id, token) {
   try {
+    _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());

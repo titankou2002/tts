@@ -22,30 +22,21 @@ const DEALER_WHITELIST_CONFIG = {
 };
 
 /**
- * 🚀 超貼心一鍵設定工具：寫入高雅瓷與鈦傳速機器人 Token
- * 功用：您只需要在 GAS 編輯器中點擊「執行」此函數，系統便會自動將兩組 Token 寫入您專案的指令碼屬性中！
+ * ⚠️ LINE Token 設定方式（V41 起不再寫在原始碼）
+ * 請至 Apps Script「專案設定 → 指令碼屬性」新增：
+ *   LINE_CHANNEL_ACCESS_TOKEN   鈦傳速主 bot
+ *   LINE_GAOYACI_ACCESS_TOKEN   高雅瓷 bot
+ *   LINE_LIFF_ID                LIFF ID
+ *   LINE_LOGIN_CHANNEL_ID       LIFF 所屬 LINE Login channel 的 Channel ID（用來驗證前端送來的 access token）
+ *   LINE_WEBHOOK_KEY            Webhook URL 尾端 &key= 的秘密字串
+ * 舊版 initProjectScriptProperties_V11() 內寫死的兩組 token 已隨公開 repo 外洩，務必在 LINE Developers Console 重新發行。
  */
-function initProjectScriptProperties_V11() {
-  var props = PropertiesService.getScriptProperties();
-  
-  // 寫入鈦傳速主要 Access Token
-  props.setProperty("LINE_CHANNEL_ACCESS_TOKEN", "2RmW+NYfyNMyqFiQpyeLBfyZ8vaE7vf9pAFs5dPQ3hBFS6DeB+MRaI6Ze4nYcBs8wm1ZxZip9KmB5v/VUrmXvW7F4/VWdipBsZ22//JY9UV5+pibgLG3lFaSnpm1R4asfPIrO2daD00TGf9k299QHAdB04t89/1O/w1cDnyilFU=");
-  
-  // 寫入高雅瓷專屬 Access Token
-  props.setProperty("LINE_GAOYACI_ACCESS_TOKEN", "hzlR1hr0qkVqcoIo60dqdxomaloGS8dyL3lpENhMLZYLvcNNi1KbM+lhsABoOIO2leCOFrpxFhP1Gq2qxPY2NtmHm+KNlsSAYoES4jqKIpZUSHbbwgFvcrv0kF4LJb7TJ4lMiRHOz+0JNta0zXfwdgdB04t89/1O/w1cDnyilFU=");
-  
-  // 設定預設 LIFF ID Fallback
-  props.setProperty("LINE_LIFF_ID", "2007666611-285rZBFA");
-  
-  return "✅ 鈦傳速（預設）與高雅瓷 LINE Access Token 已成功寫入專案的指令碼屬性！";
-}
 
 /**
  * 處理經銷商前端發送的 API 請求
  * 進入點：當 doGet 偵測到 action === 'getDealerProgress'
  */
 function handleDealerApiRequest_V11(e) {
-  var userId = (e && e.parameter && e.parameter.userId) ? String(e.parameter.userId).trim() : "";
   var dateParam = (e && e.parameter && e.parameter.date) ? String(e.parameter.date).trim() : "";
   
   // 正規化日期格式為 yyyy/MM/dd
@@ -53,13 +44,26 @@ function handleDealerApiRequest_V11(e) {
   if (dateParam) {
     targetDateStr = dateParam.replace(/-/g, '/');
   }
-  
-  if (!userId) {
+
+  // V41: 身分改由 LIFF access token 向 LINE 驗證後取得 userId，不再信任 URL 上的 userId 參數
+  var accessToken = (e && e.parameter && e.parameter.accessToken) ? String(e.parameter.accessToken).trim() : "";
+  var userId = "";
+  if (accessToken) {
+    userId = _verifyLiffAccessToken_(accessToken);
+    if (!userId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: "LINE 登入憑證無效或已過期，請重新開啟頁面"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+  } else {
+    // V41.22: bigt.cc 已同步新版 tracking.html，移除以 URL userId 當身分的相容路徑 (任何人拿到 LINE ID 就能冒用)
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
-      error: "缺少使用者驗證憑證 (userId)"
+      error: "缺少 LINE 登入憑證，請關閉頁面後重新從 LINE 開啟"
     })).setMimeType(ContentService.MimeType.JSON);
   }
+  _asSystem_('DEALER_API'); // 經銷商已驗證，後續內部呼叫 (getWarRoomData_V11) 以系統身分執行並在本函式過濾
 
   var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID);
   var whitelistSheet = ss.getSheetByName(DEALER_WHITELIST_CONFIG.SHEET_NAME);
@@ -157,8 +161,9 @@ function handleDealerApiRequest_V11(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
-  // 4. 撈取指定日期所有派送資料 (傳遞 targetDateStr 參數)
-  var warRoom = getWarRoomData_V11(true, targetDateStr);
+  // 4. 撈取指定日期所有派送資料
+  // V41.19 加速：改用戰情室快取 (5 分鐘；派車 / 結案會即時清除)，不再每次強制重讀三張表 (原本每次 4~6 秒)
+  var warRoom = getWarRoomData_V11(false, targetDateStr);
   if (!warRoom.success) {
     return ContentService.createTextOutput(JSON.stringify({
       success: false,
@@ -252,6 +257,44 @@ function handleDealerApiRequest_V11(e) {
     }),
     vehiclePositions: dealerVehiclePositions
   })).setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * V41: 向 LINE 驗證 LIFF access token，成功回傳 userId，失敗回傳 ""。
+ * 1. GET oauth2/v2.1/verify?access_token= → 檢查未過期，且 (若有設定 LINE_LOGIN_CHANNEL_ID) client_id 相符
+ * 2. GET v2/profile (Bearer) → 取得 userId
+ */
+function _verifyLiffAccessToken_(accessToken) {
+  // V41.23：同一個 access token 的驗證結果快取 6 小時 (CacheService 上限)。查詢權限本來就由經銷商白名單即時控管，不靠這裡
+  var vKey = 'liff_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, accessToken)).substring(0, 40);
+  try { var vHit = CacheService.getScriptCache().get(vKey); if (vHit) return vHit; } catch (ce) { }
+  var uid = _verifyLiffAccessTokenLive_(accessToken);
+  if (uid) { try { CacheService.getScriptCache().put(vKey, uid, 21600); } catch (ce2) { } }
+  return uid;
+}
+
+function _verifyLiffAccessTokenLive_(accessToken) {
+  try {
+    var expectedClientId = String(PropertiesService.getScriptProperties().getProperty('LINE_LOGIN_CHANNEL_ID') || "").trim();
+    var vRes = UrlFetchApp.fetch("https://api.line.me/oauth2/v2.1/verify?access_token=" + encodeURIComponent(accessToken), { muteHttpExceptions: true });
+    if (vRes.getResponseCode() !== 200) return "";
+    var vJson = JSON.parse(vRes.getContentText() || "{}");
+    if (!vJson.client_id || Number(vJson.expires_in || 0) <= 0) return "";
+    if (expectedClientId && String(vJson.client_id) !== expectedClientId) {
+      console.error("LIFF token client_id 不符: " + vJson.client_id);
+      return "";
+    }
+    var pRes = UrlFetchApp.fetch("https://api.line.me/v2/profile", {
+      headers: { Authorization: "Bearer " + accessToken },
+      muteHttpExceptions: true
+    });
+    if (pRes.getResponseCode() !== 200) return "";
+    var profile = JSON.parse(pRes.getContentText() || "{}");
+    return profile && profile.userId ? String(profile.userId).trim() : "";
+  } catch (err) {
+    console.error("_verifyLiffAccessToken_ 失敗: " + err.message);
+    return "";
+  }
 }
 
 /**

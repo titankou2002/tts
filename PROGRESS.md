@@ -1,6 +1,28 @@
 # 鈦傳速智慧物流系統 - 開發進度
 
-**最後更新：2026-07-17 (OCR 品項代號提取修復完成)**
+**最後更新：2026-09-14（QC 驗貨頁還原）**
+
+---
+
+## 2026-09-14 — QC.html 變成庫位表：原因與還原
+
+`https://bigt.cc/tts/QC.html` 本身沒壞，iframe 仍是物流 Web App `?p=warehouse`。
+
+Code.js：`p=warehouse` 或 `wh` → HTML 檔 **`Warehouse`**，標題「倉庫驗貨系統」。
+
+**真正被蓋掉的是** 智慧物流系統裡的 `Warehouse.html`（驗貨：分配驗貨／對點／確認裝車）。2026-09-11 commit `2ed8439` 把它換成庫位表 PWA 包殼（iframe 倉庫全集 GAS）。
+
+**已做：**
+- 從 git `af3a6f1`（2026-07-29）還原驗貨頁（約 59KB，含「分配驗貨」）
+- `clasp push` + deploy `AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw` **@597**
+- 誤蓋上去的包殼備份：`Warehouse.pwa-wrapper.backup.html.bak`
+
+**庫位表沒有改名叫 Warehouse Tool。**
+- 庫位表本體：倉庫全集 `warehouse_grid_ui.html`
+- 線上：`/tts/Warehouse.html` 以及別名 `/tts/Warehousetools.html`（本機 `Warehousetools.html`，PWA 名「鈦傳速倉儲工具」，iframe 同一個庫位表 GAS）
+- 驗貨：`/tts/QC.html` → 本檔 `Warehouse.html`
+
+不要再把庫位表包殼寫進這個專案的 `Warehouse.html`。
 
 ---
 
@@ -284,3 +306,11 @@ RE612114 代號無法被主要邏輯識別 → OCR 輸出混亂
 1. **硬編碼版本已撤銷** - getManagementData() 恢復讀表，如司機列表無法顯示，檢查車輛管理表數據
 2. **備案邏輯是被動觸發** - 只在主要邏輯失敗時才執行，不會替代現有邏輯
 3. **OCR 質量優先** - 長期解決方案仍是確保掃描圖片清晰度
+
+## 2026-09-14 晚 @598（使用者要 596 功能，只修網址驗貨）
+
+- clasp @596 的 `Warehouse.html` 已是庫位表 iframe（1528B），所以 QC 壞了。
+- 作法：整包以後端 **@596** 為準（含 Bypass admin password），**只**把 `Warehouse.html` 換成 @592 的驗貨頁（分配驗貨／對點／確認裝車）。
+- 沒推 Warehousetools.html、沒動 Code.js / Auth.js（@592 多的 Auth.js 不帶回）。
+- 部署同一支：`AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw` **@598**。
+- 請測：https://bigt.cc/tts/QC.html → 應為驗貨，不是庫位表。

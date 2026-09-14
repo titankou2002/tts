@@ -23,7 +23,11 @@
 const GY_CONFIG = {
   SS_ID: "1M-Ewy58fQs-QmqzO5nERoXDCm7lm6S_mrrAIR1mUOtA", // 鈦傳速主要資料庫 ID
   WHITELIST_SHEET: "經銷商白名單",
-  CHANNEL_ACCESS_TOKEN: "hzlR1hr0qkVqcoIo60dqdxomaloGS8dyL3lpENhMLZYLvcNNi1KbM+lhsABoOIO2leCOFrpxFhP1Gq2qxPY2NtmHm+KNlsSAYoES4jqKIpZUSHbbwgFvcrv0kF4LJb7TJ4lMiRHOz+0JNta0zXfwdgdB04t89/1O/w1cDnyilFU=",
+  // V41: token 改由指令碼屬性讀取 (LINE_GAOYACI_ACCESS_TOKEN，備援 LINE_TOKEN_GAOYACI)；舊版寫死的 token 已外洩，請重新發行
+  get CHANNEL_ACCESS_TOKEN() {
+    var props = PropertiesService.getScriptProperties();
+    return props.getProperty('LINE_GAOYACI_ACCESS_TOKEN') || props.getProperty('LINE_TOKEN_GAOYACI') || "";
+  },
   LIFF_ID: "2007666611-285rZBFA" // 鈦傳速 LIFF ID
 };
 
@@ -35,6 +39,7 @@ const GY_CONFIG = {
 function handleLineBotWebhook_GaoYaCi(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) return false;
+    if (typeof _verifyLineWebhook_ === 'function' && !_verifyLineWebhook_(e)) return true; // 來源驗證失敗：吞掉不處理
     var data = JSON.parse(e.postData.contents);
     if (!data || !data.events || data.events.length === 0) return false;
     
@@ -60,7 +65,7 @@ function handleLineBotWebhook_GaoYaCi(e) {
       if (!isQuery) return false;
 
       // 1. 讀取經銷商白名單資料庫
-      var ss = SpreadsheetApp.openById(GY_CONFIG.SS_ID);
+      var ss = SpreadsheetApp.openById((typeof V11_PROD_CONFIG !== 'undefined' && V11_PROD_CONFIG.SS_ID) || GY_CONFIG.SS_ID);
       var sheet = ss.getSheetByName(GY_CONFIG.WHITELIST_SHEET);
       if (!sheet) {
         replyGaoYaCiLine_Core(replyToken, [{
@@ -150,6 +155,8 @@ function handleLineBotWebhook_GaoYaCi(e) {
  * 核心回覆函數
  */
 function replyGaoYaCiLine_Core(replyToken, messages) {
+  if (typeof _requireCtx_ === 'function') _requireCtx_();
+  if (!GY_CONFIG.CHANNEL_ACCESS_TOKEN) { Logger.log("GaoYaCi: 未設定 LINE_GAOYACI_ACCESS_TOKEN"); return; }
   var url = "https://api.line.me/v2/bot/message/reply";
   var payload = {
     "replyToken": replyToken,

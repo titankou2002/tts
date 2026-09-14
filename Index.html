@@ -69,12 +69,49 @@
         :root[data-theme="light"] .tc-note { background: rgba(58, 52, 43, 0.04); }
         :root[data-theme="light"] .btn-card-close { background: rgba(255, 255, 255, 0.85); color: var(--text-primary); border-color: var(--border-soft); }
         :root[data-theme="light"] .overlay { background: rgba(243, 239, 230, 0.97); }
-        :root[data-theme="light"] button[onclick="jumpToWarehouse()"],
-        :root[data-theme="light"] button[onclick="App.refreshTasks(true)"],
-        :root[data-theme="light"] #reorderBtn { color: var(--text-primary) !important; }
         :root[data-theme="light"] #fullRouteBar { background: rgba(122, 107, 74, 0.08) !important; border-bottom-color: rgba(122, 107, 74, 0.15) !important; }
         :root[data-theme="light"] #fullRouteBtn { background: linear-gradient(135deg, #DCD2BE, #EDE7DA) !important; color: #6B5B3A !important; border-color: rgba(122, 107, 74, 0.3) !important; }
         :root[data-theme="light"] #themeToggleBtn { color: var(--text-secondary); }
+
+        /* V39.7: 頁首工具按鈕(驗貨/請假/重整/排序) - 拿掉 emoji，統一用主題對比色框住，日夜配色不同 */
+        .hdr-util-btn {
+            background: var(--secondary);
+            color: var(--cyan);
+            border: 1.5px solid var(--cyan);
+            padding: 5px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 800;
+            margin-right: 5px;
+            cursor: pointer;
+            position: relative;
+        }
+        .hdr-util-btn:last-child { margin-right: 0; }
+
+        /* V39.8: 備註提示/到貨時間徽章原本用亮琥珀色 #fbbf24，在日間米白底下對比不足，改用深琥珀棕 */
+        :root[data-theme="light"] .tc-highlight-note,
+        :root[data-theme="light"] .tc-amber-chip {
+            color: #8A5A0A !important;
+            background: rgba(138, 90, 10, 0.1) !important;
+            border-color: rgba(138, 90, 10, 0.35) !important;
+        }
+
+        /* V39.9: 身分驗證(選人)畫面原本用寫死的藍色調，沒有跟著日夜模式切換，改用主題對比色 */
+        .driver-select-tile {
+            border-color: var(--cyan) !important;
+            color: var(--text-primary) !important;
+        }
+        .switch-person-btn {
+            color: var(--text-secondary) !important;
+        }
+        :root[data-theme="light"] .layer2-car-backdrop {
+            background: rgba(243, 239, 230, 0.95) !important;
+        }
+
+        /* V39.13: 里程/加油歷史卡片中的數字(上班里程/下班里程/加油金額/公升數)原本寫死白字，日間模式改深色 */
+        :root[data-theme="light"] .hist-val {
+            color: var(--text-primary) !important;
+        }
 
         * {
             box-sizing: border-box;
@@ -360,6 +397,15 @@
 
         .pulse-ring:nth-child(3) {
             animation-delay: 5.4s
+        }
+
+        @keyframes blink-deadline {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.45;
+            }
         }
 
         @keyframes pulse {
@@ -1565,7 +1611,7 @@
             style="color:var(--danger); font-size:13px; margin-top:20px; font-weight:700; display:none"></div>
     </div>
 
-    <div id="layer2-car"
+    <div id="layer2-car" class="layer2-car-backdrop"
         style="position:fixed;inset:0;background:rgba(8,16,30,0.95);backdrop-filter:blur(10px);z-index:9995;display:none;padding:20px;flex-direction:column;justify-content:center">
         <div class="success-card" style="margin:0 auto;width:100%;max-width:400px;background:var(--surface)">
             <div class="suc-head" style="text-align:center">選擇出勤車輛</div>
@@ -1579,9 +1625,9 @@
                 <div style="margin-top:20px; display:flex; flex-direction:column; gap:10px;">
                     <button class="nav-btn" onclick="confirmLogin()"
                         style="background:var(--accent); font-size:18px;">確認發車</button>
-                    <button class="nav-btn"
+                    <button class="nav-btn switch-person-btn"
                         onclick="App.logoutAndSwitch()"
-                        style="background:#475569; font-size:14px; padding:10px;">[USER] 切換人員</button>
+                        style="font-size:14px; padding:10px;">切換人員</button>
                 </div>
             </div>
         </div>
@@ -1678,17 +1724,11 @@
                     style="padding: 4px 12px; font-size: 13px;">未來</div>
             </div>
             <div style="display:flex; align-items:center;">
-                <button onclick="jumpToWarehouse()"
-                    style="background:var(--secondary);color:var(--cyan);border:1px solid rgba(56,189,248,0.4);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;cursor:pointer;">🏪 驗貨</button>
-                <button onclick="openLeaveRequest()"
-                    style="background:var(--secondary);color:#facc15;border:1px solid rgba(250,204,21,0.4);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;cursor:pointer;">📝 請假</button>
-                <button onclick="App.refreshTasks(true)"
-                    style="background:var(--secondary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800;margin-right:5px;position:relative">↻
-                    重整 <span id="newTaskBadge"
+                <button class="hdr-util-btn" onclick="jumpToWarehouse()">驗貨</button>
+                <button class="hdr-util-btn" onclick="openLeaveRequest()">請假</button>
+                <button class="hdr-util-btn" onclick="App.refreshTasks(true)">重整 <span id="newTaskBadge"
                         style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center">!</span></button>
-                <button id="reorderBtn" onclick="toggleReorderMode()"
-                    style="background:var(--secondary);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:800">排序
-                    ↕️</button>
+                <button class="hdr-util-btn" id="reorderBtn" onclick="toggleReorderMode()">排序</button>
             </div>
         </div>
         <div id="taskList" class="task-list">載入中...</div>
@@ -1742,32 +1782,34 @@
         </div>
 
         <!-- V37.19: Mileage History Overlay -->
-        <div id="mileage-history-overlay" class="overlay" style="display:none; overflow-y:auto; max-height:85vh; padding:20px; box-sizing:border-box; border: 1px solid rgba(56,189,248,0.2);">
+        <div id="mileage-history-overlay" class="overlay" style="display:none; overflow-y:auto; max-height:85vh; padding:20px; box-sizing:border-box; border: 1px solid rgba(56,189,248,0.2); z-index:1010;">
             <div class="ov-head">歷史里程紀錄與修正</div>
             <div style="font-size:13px; color:var(--text-secondary); margin-bottom:15px; text-align:center;">
                 出勤車牌：<span id="histCarNo" style="color:var(--cyan); font-weight:bold;">--</span>
             </div>
-            
+            <select id="mileageMonthSel" class="fi" style="margin-bottom:15px;" onchange="openMileageHistory(this.value)"></select>
+
             <!-- List of recent records -->
             <div id="mileageHistoryList" style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px; max-height:50vh; overflow-y:auto; padding-right:5px;">
                 <div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入中...</div>
             </div>
-            
+
             <button class="btn-cancel" onclick="closeOv('mileage-history-overlay')">返回登記畫面</button>
         </div>
 
         <!-- V37.19: Fuel History Overlay -->
-        <div id="fuel-history-overlay" class="overlay" style="display:none; overflow-y:auto; max-height:85vh; padding:20px; box-sizing:border-box; border: 1px solid rgba(56,189,248,0.2);">
+        <div id="fuel-history-overlay" class="overlay" style="display:none; overflow-y:auto; max-height:85vh; padding:20px; box-sizing:border-box; border: 1px solid rgba(56,189,248,0.2); z-index:1010;">
             <div class="ov-head">歷史加油紀錄與修正</div>
             <div style="font-size:13px; color:var(--text-secondary); margin-bottom:15px; text-align:center;">
                 出勤車牌：<span id="fuelHistCarNo" style="color:var(--cyan); font-weight:bold;">--</span>
             </div>
-            
+            <select id="fuelMonthSel" class="fi" style="margin-bottom:15px;" onchange="openFuelHistory(this.value)"></select>
+
             <!-- List of recent records -->
             <div id="fuelHistoryList" style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px; max-height:50vh; overflow-y:auto; padding-right:5px;">
                 <div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入中...</div>
             </div>
-            
+
             <button class="btn-cancel" onclick="closeOv('fuel-history-overlay')">返回加油登記</button>
         </div>
 
@@ -1912,6 +1954,15 @@
                 <input type="file" id="inp-dmg-cam" accept="image/*" capture="camera" hidden
                     onchange="handleFile(this,'damage')">
                 <input type="file" id="inp-dmg-lib" accept="image/*" hidden onchange="handleFile(this,'damage')">
+            </div>
+            <div class="fg"><label>狀況回報（選填，可複選）</label>
+                <div id="issueChips" style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">根本不需指定時間</span>
+                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">電話都沒人接</span>
+                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">貨夠了多的要退回</span>
+                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">要搬超過5步的距離</span>
+                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">退貨數量與單子差距很大</span>
+                </div>
             </div>
             <div class="fg"><label>備註</label><textarea id="finalNote" class="fi" rows="2"
                     placeholder="特殊情況請註記"></textarea>
@@ -2073,7 +2124,7 @@
                 .withFailureHandler(function (err) {
                     webAlert('無法取得請假連結：' + (err && err.message || err));
                 })
-                .getLeaveLinkForDriver(currentDriverName);
+                .getLeaveLinkForDriver(currentDriverName, DTOKEN());
         }
         function jumpToWarehouse() {
             if (!SCRIPT_URL) {
@@ -2362,6 +2413,19 @@
             updateBadge() { const n = this.get().length; const b = document.getElementById('offlineBadge'); if (b) { b.style.display = 'none'; document.getElementById('offlineCount').innerText = n; } }
         };
 
+        // ===== V41 司機端 Session =====
+        function DTOKEN() { try { return localStorage.getItem('titan_driver_token') || ''; } catch (e) { return ''; } }
+        /** 後端回傳 🔒 AUTH_REQUIRED（token 失效）時：清除本機登入資訊並回到選人畫面。回傳 true 代表已處理 */
+        function handleDriverAuthError(msgOrErr) {
+            const msg = String((msgOrErr && msgOrErr.message) || msgOrErr || '');
+            if (msg.indexOf('AUTH_REQUIRED') === -1) return false;
+            try { setLoading(false); } catch (e) { }
+            try { showConfirm('🔒 登入資訊已失效，請重新選擇姓名登入', () => { }, true); } catch (e) { }
+            try { App.logoutAndSwitch(); } catch (e) { }
+            try { document.getElementById('layer3-main').style.display = 'none'; } catch (e) { }
+            return true;
+        }
+
         function retryOfflineQueue() {
             const q = OQ.get(); if (!q.length) return;
             let i = 0;
@@ -2381,6 +2445,8 @@
                 if (item._fn === 'quick') {
                     google.script.run
                         .withSuccessHandler(r => { 
+                            if (typeof r === 'string' && r.includes('AUTH_REQUIRED')) { handleDriverAuthError(r); return; }
+                            if (typeof r === 'string' && r.includes('AUTH_FORBIDDEN')) { OQ.removeByTimestamp(item._ts); webAlert('🔒 一筆離線回報因車輛權限不符已被移除：' + r); i++; next(); return; } // V41.22: 不再無限重送
                             if (typeof r === 'string' && r.includes('✅')) { 
                                 OQ.removeByTimestamp(item._ts); // 採用精準的時間戳防呆刪除，徹底修復異步索引偏移 Bug
                                 successCount++;
@@ -2396,6 +2462,8 @@
                 } else {
                     google.script.run
                         .withSuccessHandler(r => { 
+                            if (r && r.error && String(r.error).includes('AUTH_REQUIRED')) { handleDriverAuthError(r.error); return; }
+                            if (r && r.error && String(r.error).includes('AUTH_FORBIDDEN')) { OQ.removeByTimestamp(item._ts); webAlert('🔒 一筆離線結案因車輛權限不符已被移除：' + r.error); i++; next(); return; } // V41.22
                             if (r && r.success) { 
                                 OQ.removeByTimestamp(item._ts); 
                                 successCount++;
@@ -2557,6 +2625,22 @@
                     .getManagementData();
                 OQ.updateBadge();
             },
+            /** V41: 向伺服器確認 token；離線或伺服器無法連線時視為有效 (離線優先)，明確回覆無效才清除 */
+            verifySessionThenEnter(name, car, token) {
+                const enter = () => this.enterMain(name, car);
+                if (!token || !navigator.onLine) { enter(); return; }
+                google.script.run
+                    .withSuccessHandler(r => {
+                        if (r && r.valid === false) {
+                            console.warn("❌ 司機 token 已失效，需重新登入");
+                            this.logoutAndSwitch();
+                            return;
+                        }
+                        enter();
+                    })
+                    .withFailureHandler(() => enter())
+                    .checkDriverSession(token);
+            },
             async showLoginOrMain() {
                 // V6.5 第 1 優先級：URL 帶參數 (最優先)
                 const urlP = getURLParams();
@@ -2571,7 +2655,7 @@
                     IDBVault.set('name', urlP.name);
                     IDBVault.set('car', urlP.car || '');
                     IDBVault.set('token', urlP.token);
-                    this.enterMain(urlP.name, urlP.car || '');
+                    this.verifySessionThenEnter(urlP.name, urlP.car || '', urlP.token);
                     return;
                 }
 
@@ -2601,7 +2685,7 @@
                     IDBVault.set('name', sn);
                     IDBVault.set('token', st);
                     IDBVault.set('car', sc);
-                    this.enterMain(sn, currentCar);
+                    this.verifySessionThenEnter(sn, currentCar, st);
                     return;
                 }
 
@@ -2617,7 +2701,7 @@
                     IDBVault.set('name', cd.name);
                     IDBVault.set('token', cd.token);
                     IDBVault.set('car', cd.car || '');
-                    this.enterMain(cd.name, cd.car);
+                    this.verifySessionThenEnter(cd.name, cd.car, cd.token);
                     return;
                 }
 
@@ -2642,8 +2726,8 @@
                         return r.indexOf('司機') !== -1 || r.indexOf('管理') !== -1;
                     })
                     .map(item => `
-                        <button class="nav-btn" onclick="App.confirmNameLogin('${item.name}')" 
-                             style="height:60px; font-size:18px; background:rgba(68,136,255,0.1); border:1px solid rgba(68,136,255,0.3)">
+                        <button class="nav-btn driver-select-tile" onclick="App.confirmNameLogin('${item.name}')"
+                             style="height:60px; font-size:18px;">
                             ${item.name}
                         </button>
                     `).join('');
@@ -2757,7 +2841,7 @@
                     }).withFailureHandler(function(err) {
                         setLoading(false);
                         webAlert('網路異常，無法核對打卡狀態。');
-                    }).checkTodayAttendance(currentCar);
+                    }).checkTodayAttendance(currentCar, DTOKEN());
             },
             redoTask(e, id, branch) {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -2771,7 +2855,7 @@
                             App.refreshTasks();
                         })
                         .withFailureHandler(err => { setLoading(false); webAlert('重設失敗: ' + err); })
-                        .driverRedoTask(id, branch);
+                        .driverRedoTask(id, branch, DTOKEN());
                 });
             },
             refreshTasks(silent = false, background = false) {
@@ -2801,10 +2885,11 @@
                     App.enrichTaskItems();
                 }).withFailureHandler(err => {
                     if (!background && !silent) setLoading(false);
+                    if (handleDriverAuthError(err)) return;
                     if (!background) {
                         webAlert("⚠️ 系統讀取失敗: " + err);
                     }
-                }).getTodayTasks(currentCar, currentDateFilter);
+                }).getTodayTasks(currentCar, currentDateFilter, DTOKEN());
             },
             enrichTaskItems() {
                 const ids = allTasks
@@ -2821,7 +2906,7 @@
                         const panel = document.getElementById('driver-item-content-' + t.id);
                         if (panel) panel.innerHTML = buildDriverItemsDropdownHTML(t);
                     });
-                }).getDriverTaskItemDetails_V11(ids);
+                }).getDriverTaskItemDetails_V11(ids, DTOKEN());
             },
             renderTasks() {
                 function formatTimeSlot(slot, idx) {
@@ -2855,6 +2940,12 @@
                     // 轉義單引號以免破壞 onclick
                     const safeCust = (t.customer || '').replace(/'/g, "\\'");
                     const safeAddr = (t.address || '').replace(/'/g, "\\'");
+
+                    // V39.34: 地址結尾若是「(XX貨運)」標記，先抽出來另外處理，避免被下面的門牌縮寫規則整段吃掉；
+                    // 顯示時貨運二字拿掉、括號內文字改黃字，跟排車/驗貨/司機三端保持一致
+                    const _addrTagMatch0 = (t.address || '').trim().match(/(\([^)]*\))\s*$/);
+                    const addrCoreForShort = _addrTagMatch0 ? (t.address || '').trim().slice(0, _addrTagMatch0.index).trim() : (t.address || '').trim();
+                    const addrTagHtml = _addrTagMatch0 ? _addrTagMatch0[1].replace(/\(([^)]*)\)/g, (full, inner) => '<span style="color:#fbbf24;">(' + inner.replace(/貨運/g, '') + ')</span>') : '';
 
                     const clickAttr = needsClockIn ? '' : 'onclick="openReport(\'' + t.id + '\', \'' + safeCust + '\', \'' + safeAddr + '\', ' + idx + ', \'' + (t.branch || '') + '\')"';
 
@@ -2897,8 +2988,8 @@
                     }
 
                     const isReturn = (shipType === '退貨');
-                    const shortAddr = isLink ? '指定導航點' : (isReturn ? rawAddr : rawAddr.replace(/(\d+巷|\d+弄|\d+號).*/, ''));
-                    const mainAddr = t.location ? shortAddr + '(' + t.location + ')' : shortAddr;
+                    const shortAddr = isLink ? '指定導航點' : (isReturn ? addrCoreForShort : addrCoreForShort.replace(/(\d+巷|\d+弄|\d+號).*/, ''));
+                    const mainAddr = (t.location ? shortAddr + '(' + t.location + ')' : shortAddr) + addrTagHtml;
                     const arrivalText = isDebug ? '診斷中' : (timeTxt || '未定');
 
                     html += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">';
@@ -2907,10 +2998,11 @@
                     html += '      <span style="display:inline-flex;align-items:center;gap:6px;background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:3px 10px; border-radius:999px; font-size:18px; font-weight:900; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + shortCust + '</span>';
                     if (showShipType) html += '<span style="color:#ef4444; font-weight:900; font-size:12px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">' + shipType + '</span>';
                     html += '    </div>';
-                    html += '    <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">';
+html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">';
                     if (hasSeal) html += '<span style="background:rgba(34,197,94,0.14); color:#22c55e; border:1px solid rgba(34,197,94,0.32); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">膠膜</span>';
+                    html += t.specifiedArrive ? '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰</span><span>' + escapeHTML_V11(t.specifiedArrive) + '!</span><span style="color:#fca5a5;">務必準時!</span></span>' : '';
                     html += dateChip ? '<span style="background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + dateChip + '</span>' : '';
-                    html += '<span style="background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.25); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + arrivalText + '</span>';
+                    html += '<span class="tc-amber-chip" style="background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.25); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + arrivalText + '</span>';
                     html += '    </div>';
                     html += '  </div>';
 
@@ -2927,7 +3019,7 @@
                     html += '        ' + itemsLabel + ' <span class="arrow-icon" id="driver-item-arrow-' + t.id + '" style="font-size:10px;transition:transform 0.2s;">▾</span>';
                     html += '      </div>';
                     html += '    </div>';
-                    html += highlightNote && !isDebug ? '<div style="flex:1; min-width:0; font-size:12px; color:#fbbf24; font-weight:900; background:rgba(251,191,36,0.06); padding:6px 8px; border-radius:8px; border:1px dashed rgba(251,191,36,0.4); line-height:1.35; text-align:left;">' + highlightNote + '</div>' : '';
+                    html += highlightNote && !isDebug ? '<div class="tc-highlight-note" style="flex:1; min-width:0; font-size:12px; color:#fbbf24; font-weight:900; background:rgba(251,191,36,0.06); padding:6px 8px; border-radius:8px; border:1px dashed rgba(251,191,36,0.4); line-height:1.35; text-align:left;">' + highlightNote + '</div>' : '';
                     html += '  </div>';
                     html += '</div>';
 
@@ -2976,7 +3068,7 @@
                     google.script.run
                         .withSuccessHandler(function(res) { setLoading(false); webAlert(res); App.refreshTasks(); })
                         .withFailureHandler(function(err) { setLoading(false); webAlert('取消失敗: ' + err); })
-                        .adminCancelTaskV2(id, branch);
+                        .adminCancelTaskV2(id, branch, DTOKEN());
                 });
             },
             getLastActiveTaskContact() {
@@ -3048,7 +3140,7 @@
                 };
             } else {
                 mileEl.value = ''; mileEl.placeholder = '輸入里程數字'; noteEl.value = ''; mileEl.oninput = null;
-                google.script.run.withSuccessHandler(m => { if (m) mileEl.value = m; }).getYesterdayMileage_V11p9(currentCar);
+                google.script.run.withSuccessHandler(m => { if (m) mileEl.value = m; }).getYesterdayMileage_V11p9(currentCar, DTOKEN());
             }
             document.getElementById('clock-overlay').style.display = 'block';
         }
@@ -3215,7 +3307,7 @@
                     const lastText = lastDates[p] ? `<span style="color:#4ade80; font-weight:bold;">上次: ${lastDates[p]}</span>` : '無紀錄';
                     return `<label class="maint-item"><div class="maint-row"><input type="checkbox" name="mItem" value="${p}" ${checked} style="transform:scale(1.3)"><span style="font-size:14px">${p}</span></div><div class="maint-last">${lastText}</div></label>`;
                 }).join('');
-            }).getVehicleMaintContext_V11(currentCar);
+            }).getVehicleMaintContext_V11(currentCar, DTOKEN());
             maintFiles = { m1: null, m2: null, m3: null };[1, 2, 3].forEach(n => { document.getElementById('img-m' + n).style.display = 'none'; document.getElementById('txt-m' + n).style.display = 'block'; });
             document.getElementById('vehicle-overlay').style.display = 'block';
         }
@@ -3272,6 +3364,7 @@
             document.getElementById('img-dmg').style.display = 'none'; document.getElementById('txt-dmg').style.display = 'block';
             document.getElementById('isDamaged').value = '否'; document.getElementById('damageGrp').style.display = 'none';
             document.getElementById('signType').value = '本人親簽'; document.getElementById('finalNote').value = '';
+            resetIssueChips();
             document.getElementById('report-overlay').style.display = 'block';
         }
 
@@ -3317,6 +3410,30 @@
         }
 
         function toggleDamage(v) { document.getElementById('damageGrp').style.display = v === '是' ? 'block' : 'none'; }
+
+        // V40: 狀況回報 chips
+        function toggleIssueChip(el) {
+            const on = el.getAttribute('data-selected') === '1';
+            el.setAttribute('data-selected', on ? '0' : '1');
+            el.style.borderColor = on ? 'rgba(255,255,255,0.15)' : '#ef4444';
+            el.style.background = on ? 'rgba(255,255,255,0.05)' : 'rgba(239,68,68,0.18)';
+            el.style.color = on ? 'var(--text-secondary)' : '#fca5a5';
+        }
+        function resetIssueChips() {
+            document.querySelectorAll('#issueChips span').forEach(function(el) {
+                el.setAttribute('data-selected', '0');
+                el.style.borderColor = 'rgba(255,255,255,0.15)';
+                el.style.background = 'rgba(255,255,255,0.05)';
+                el.style.color = 'var(--text-secondary)';
+            });
+        }
+        function getSelectedIssues() {
+            var out = [];
+            document.querySelectorAll('#issueChips span').forEach(function(el) {
+                if (el.getAttribute('data-selected') === '1') out.push(el.textContent.trim());
+            });
+            return out.join('、');
+        }
         
         function submitFinal() {
             // [DISABLED] if (!hasClockedIn) return webAlert('⚠️ 請先完成上方「發車登記」，才能進行結案回報！');
@@ -3350,6 +3467,7 @@
                     branch: _branch, customer: _customer, address: _address,
                     car: currentCar, signType: _signType, isDamaged: _isDamaged,
                     note: document.getElementById('finalNote').value, lat: 0, lng: 0,
+                    driverIssue: getSelectedIssues(), // V40: 司機狀況回報
                     photo_sign: beautifiedPhoto || files.sign, photo_damage: files.damage, hasBack: '否',
                     nextDest: nextTask ? nextTask.address : '本日行程已結束',
                     driverName: currentDriverName, type: '配送成功',
@@ -3637,7 +3755,7 @@
         }
         function startNavigation() {
             const addr = document.getElementById('btnNav').dataset.target; if (!addr) return;
-            google.script.run.logDeparture_V24(currentCar, addr);
+            google.script.run.logDeparture_V24(currentCar, addr, DTOKEN());
             window.open('https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(addr) + '&travelmode=driving', '_blank');
             closeSuccess();
         }
@@ -3676,7 +3794,7 @@
                 App.refreshTasks();
                 setLoading(false);
                 closeSuccess();
-            }).adjustTaskSequence_V6(currentCar, task.id);
+            }).adjustTaskSequence_V6(currentCar, task.id, DTOKEN());
         }
 
         function openFullDayRoute() {
@@ -3808,7 +3926,7 @@
         }
         function saveNewOrder() {
             const ids = Array.from(document.querySelectorAll('#taskList .task-card')).map(el => el.dataset.id);
-            setLoading(true, '更新排序中...'); google.script.run.withSuccessHandler(() => { setLoading(false); toggleReorderMode(); }).updateTaskOrder(ids);
+            setLoading(true, '更新排序中...'); google.script.run.withSuccessHandler(() => { setLoading(false); toggleReorderMode(); }).updateTaskOrder(ids, DTOKEN());
         }
 
         // ===== UTILS =====
@@ -3937,7 +4055,7 @@
             // V36.8: 自動將舊版 uc?id= 轉為更穩定的 lh3 格式
             var finalUrl = url;
             if (url.indexOf("drive.google.com/uc?") !== -1) {
-                var match = url.match(/[?&]id=([^&]+)/);
+                var match = url.match(new RegExp('[?&]id=([^&]+)'));
                 if (match && match[1]) {
                     finalUrl = "https://lh3.googleusercontent.com/d/" + match[1];
                 }
@@ -3958,14 +4076,14 @@
         function handleNavigation(taskId, address, toLat, toLng) {
             console.log("Navigating to:", address, "Target GPS:", toLat, toLng);
             if (typeof currentCar !== 'undefined' && currentCar) {
-                google.script.run.logDeparture_V24(currentCar, address);
+                google.script.run.logDeparture_V24(currentCar, address, DTOKEN());
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(function (p) {
                         const fromLat = p.coords.latitude;
                         const fromLng = p.coords.longitude;
-                        google.script.run.updateVehicleLocation(currentCar, fromLat, fromLng);
+                        google.script.run.updateVehicleLocation(currentCar, fromLat, fromLng, DTOKEN());
                         if (toLat && toLng) {
-                            google.script.run.calculateAndLogETA_V6(currentCar, taskId, fromLat, fromLng, parseFloat(toLat), parseFloat(toLng));
+                            google.script.run.calculateAndLogETA_V6(currentCar, taskId, fromLat, fromLng, parseFloat(toLat), parseFloat(toLng), DTOKEN());
                         }
                     }, handleGeoError, { enableHighAccuracy: true });
                 }
@@ -4009,7 +4127,7 @@
                 webAlert('[GO] 已為您排定下一站：' + addr.substring(0, 10) + '...');
                 App.refreshTasks();
                 // 如果需要，可以在這裡自動幫司機點擊該站的導航 (optional)
-            }).adjustTaskSequence_V6(currentCar, taskId);
+            }).adjustTaskSequence_V6(currentCar, taskId, DTOKEN());
         }
 
         function toggleImgZoom(el) {
@@ -4051,6 +4169,13 @@
             document.getElementById('customConfirm').style.display = 'block';
         }
         function webAlert(msg) {
+            // V41: 後端回傳含 AUTH_REQUIRED → 自動登出回到選人畫面 (handleDriverAuthError 內會再呼叫一次 webAlert 顯示提示，用旗標避免遞迴)
+            if (!window.__authHandling && String(msg || '').indexOf('AUTH_REQUIRED') !== -1 && typeof handleDriverAuthError === 'function') {
+                window.__authHandling = true;
+                setTimeout(() => { window.__authHandling = false; }, 1500);
+                handleDriverAuthError(msg);
+                return;
+            }
             showConfirm(msg, () => { }, true);
         }
         function closeConfirm(res) {
@@ -4104,7 +4229,7 @@
                 if (typeof currentCar !== 'undefined' && currentCar && navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(function (p) {
                         hideGpsWarning();
-                        google.script.run.updateVehicleLocation(currentCar, p.coords.latitude, p.coords.longitude);
+                        google.script.run.updateVehicleLocation(currentCar, p.coords.latitude, p.coords.longitude, DTOKEN());
                     }, handleGeoError, { enableHighAccuracy: true });
                 }
             }, 3000);
@@ -4115,7 +4240,7 @@
                     if (navigator.geolocation) {
                         navigator.geolocation.getCurrentPosition(function (p) {
                             hideGpsWarning();
-                            google.script.run.updateVehicleLocation(currentCar, p.coords.latitude, p.coords.longitude);
+                            google.script.run.updateVehicleLocation(currentCar, p.coords.latitude, p.coords.longitude, DTOKEN());
                         }, handleGeoError, { enableHighAccuracy: true });
                     }
                 }
@@ -4123,17 +4248,38 @@
         };
 
         // ===== V37.19: Mileage History Query & Correction =====
-        function openMileageHistory() {
+        // V39.12: 月份字串(yyyy-MM) <-> 顯示用文字(yyyy年MM月)
+        function formatYmLabel(ym) {
+            const p = String(ym).split('-');
+            return p.length === 2 ? `${p[0]}年${p[1]}月` : ym;
+        }
+        // V39.13: 日期字串(yyyy/MM/dd) 加上星期幾，例如 2026/05/11(一)
+        function formatDateWithWeekday(dateStr) {
+            if (!dateStr) return dateStr;
+            const d = new Date(String(dateStr).replace(/\//g, '-'));
+            if (isNaN(d.getTime())) return dateStr;
+            const wd = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+            return `${dateStr}(${wd})`;
+        }
+        function populateMonthSelect(selId, months, currentMonth) {
+            const sel = document.getElementById(selId);
+            if (!sel) return;
+            const list = (months && months.length) ? months : [currentMonth];
+            sel.innerHTML = list.map(m => `<option value="${m}" ${m === currentMonth ? 'selected' : ''}>${formatYmLabel(m)}</option>`).join('');
+        }
+
+        function openMileageHistory(yearMonth) {
             if (!currentCar) return webAlert('請先選擇車牌');
             document.getElementById('histCarNo').innerText = currentCar;
             const listEl = document.getElementById('mileageHistoryList');
             listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入歷史里程紀錄中...</div>';
             document.getElementById('mileage-history-overlay').style.display = 'block';
-            
+
             google.script.run.withSuccessHandler(res => {
                 if (res && res.success) {
+                    populateMonthSelect('mileageMonthSel', res.months, res.currentMonth);
                     if (!res.list || res.list.length === 0) {
-                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">尚無出勤里程紀錄</div>';
+                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無出勤里程紀錄</div>';
                         return;
                     }
                     listEl.innerHTML = res.list.map(r => {
@@ -4143,21 +4289,21 @@
                         return `
                             <div class="history-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px;">
-                                    <span style="font-weight:bold; color:var(--cyan);">${r.date}</span>
+                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}</span>
                                     <span style="font-size:12px; color:var(--text-tertiary);">行駛里程: ${totalVal}</span>
                                 </div>
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
                                     <div>
                                         <div style="color:var(--text-secondary); font-size:11px;">上班里程</div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="startMileVal_${r.rowNum}" style="font-weight:bold; font-size:15px; color:#fff;">${startVal}</span>
+                                            <span id="startMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${startVal}</span>
                                             <span onclick="editMileageRecord(${r.rowNum}, 'start', '${r.start}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
                                         </div>
                                     </div>
                                     <div>
                                         <div style="color:var(--text-secondary); font-size:11px;">下班里程</div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="endMileVal_${r.rowNum}" style="font-weight:bold; font-size:15px; color:#fff;">${endVal}</span>
+                                            <span id="endMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${endVal}</span>
                                             <span onclick="editMileageRecord(${r.rowNum}, 'end', '${r.end}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
                                         </div>
                                     </div>
@@ -4170,7 +4316,7 @@
                 }
             }).withFailureHandler(err => {
                 listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '</div>';
-            }).getMileageHistory_V11(currentCar);
+            }).getMileageHistory_V11(currentCar, yearMonth || null, DTOKEN());
         }
 
         function editMileageRecord(rowNum, type, currentVal) {
@@ -4189,15 +4335,16 @@
                 setLoading(false);
                 webAlert(res.msg);
                 if (res.success) {
-                    openMileageHistory(); // 重新整理清單
+                    const selMonth = document.getElementById('mileageMonthSel').value;
+                    openMileageHistory(selMonth); // 重新整理清單，停留在原本選的月份
                 }
             }).withFailureHandler(err => {
                 setLoading(false);
                 webAlert('修正失敗: ' + err.message);
-            }).updateMileageRecord_V11(rowNum, type, num);
+            }).updateMileageRecord_V11(rowNum, type, num, DTOKEN());
         }
 
-        function openFuelHistory() {
+        function openFuelHistory(yearMonth) {
             if (!currentCar) return webAlert('請先選擇車牌');
             document.getElementById('fuelHistCarNo').innerText = currentCar;
             const listEl = document.getElementById('fuelHistoryList');
@@ -4206,37 +4353,38 @@
             
             google.script.run.withSuccessHandler(res => {
                 if (res && res.success) {
+                    populateMonthSelect('fuelMonthSel', res.months, res.currentMonth);
                     const filteredList = res.list.filter(r => {
                         const amt = r.amount ? String(r.amount).trim() : '';
                         const lit = r.litres ? String(r.litres).trim() : '';
                         return amt !== '' || lit !== '';
                     });
-                    
+
                     if (filteredList.length === 0) {
-                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">尚無加油紀錄</div>';
+                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無加油紀錄</div>';
                         return;
                     }
-                    
+
                     listEl.innerHTML = filteredList.map(r => {
                         const amtVal = r.amount || '未登錄';
                         const litVal = r.litres || '未登錄';
                         return `
                             <div class="history-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px;">
-                                    <span style="font-weight:bold; color:var(--cyan);">${r.date}</span>
+                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}</span>
                                 </div>
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
                                     <div>
                                         <div style="color:var(--text-secondary); font-size:11px;">加油金額</div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="fuelAmtVal_${r.rowNum}" style="font-weight:bold; font-size:15px; color:#fff;">${amtVal}</span>
+                                            <span id="fuelAmtVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${amtVal}</span>
                                             <span onclick="editFuelRecord(${r.rowNum}, 'amt', '${r.amount}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
                                         </div>
                                     </div>
                                     <div>
                                         <div style="color:var(--text-secondary); font-size:11px;">公升數</div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="fuelLitVal_${r.rowNum}" style="font-weight:bold; font-size:15px; color:#fff;">${litVal}</span>
+                                            <span id="fuelLitVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${litVal}</span>
                                             <span onclick="editFuelRecord(${r.rowNum}, 'lit', '${r.litres}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
                                         </div>
                                     </div>
@@ -4249,7 +4397,7 @@
                 }
             }).withFailureHandler(err => {
                 listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '</div>';
-            }).getMileageHistory_V11(currentCar);
+            }).getMileageHistory_V11(currentCar, yearMonth || null, DTOKEN());
         }
 
         function editFuelRecord(rowNum, type, currentVal) {
@@ -4268,12 +4416,13 @@
                 setLoading(false);
                 webAlert(res.msg);
                 if (res.success) {
-                    openFuelHistory(); // 重新整理清單
+                    const selMonth = document.getElementById('fuelMonthSel').value;
+                    openFuelHistory(selMonth); // 重新整理清單，停留在原本選的月份
                 }
             }).withFailureHandler(err => {
                 setLoading(false);
                 webAlert('修正失敗: ' + err.message);
-            }).updateFuelRecord_V11(rowNum, type, num);
+            }).updateFuelRecord_V11(rowNum, type, num, DTOKEN());
         }
     </script>
 </body>

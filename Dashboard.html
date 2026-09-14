@@ -48,10 +48,13 @@
 
         .header-right {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
             white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 0;
         }
+        #targetCar { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 
         .main-view {
             flex: 1;
@@ -78,6 +81,11 @@
             border-top: none;
             padding: 0;
             margin: 0;
+        }
+
+        /* V41.4: 夜間模式 —— OSM 圖磚反相成深色 (只作用於圖磚層，標記與線條不受影響) */
+        #map.dark-tiles .leaflet-tile-pane {
+            filter: invert(1) hue-rotate(180deg) brightness(0.72) contrast(0.95) saturate(0.35);
         }
 
         /* 隱藏地圖版權標籤，消除底部的雜訊條 */
@@ -185,17 +193,81 @@
                 font-size: 11px !important;
             }
 
-            .fleet-col-info {
-                flex: 0 0 70px !important;
+            /* V41.13 手機版：四位司機並排成直欄，左右滑動看其他司機；每欄內站點由上往下排 */
+            #vehicleSpace {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                overflow-y: visible;
+                scroll-snap-type: x mandatory;
+                -webkit-overflow-scrolling: touch;
+                align-items: flex-start;
             }
+
+            .fleet-row {
+                flex: 0 0 25% !important;
+                min-width: 150px;
+                max-width: 50%;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                scroll-snap-align: start;
+                border-right: 1px solid rgba(255, 255, 255, 0.08);
+                border-bottom: none !important;
+                padding: 8px 6px !important;
+            }
+
+            .fleet-col-info {
+                flex: none !important;
+                width: 100% !important;
+                text-align: center;
+                margin-bottom: 6px;
+                padding-bottom: 6px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            }
+
+            .fleet-col-info > div:first-child { font-size: 15px !important; }
 
             .fleet-col-itinerary {
-                padding-left: 0 !important;
+                display: flex !important;
+                flex-direction: column;
+                white-space: normal !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                gap: 4px !important;
+                align-items: stretch !important;
             }
 
+            .fleet-col-itinerary > .itin-arrow { display: none; }
+
             .itinerary-point {
-                margin-right: 2px !important;
+                width: 100%;
+                min-width: 0 !important;
+                margin: 0 !important;
+                padding: 6px 7px !important;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                cursor: default !important;
+                box-sizing: border-box;
             }
+
+            .itinerary-point > div:first-child { font-size: 12px !important; white-space: normal; }
+            .itinerary-point > div:nth-child(2) { font-size: 11px !important; white-space: normal; }
+            .itinerary-point:hover { transform: none; }
+
+            .fleet-panel { height: auto !important; max-height: none !important; overflow-y: auto; }
+
+            /* V41.21: 提示訊息在手機上改顯示於畫面下方，避免被表頭蓋住 */
+            #toast {
+                top: auto !important;
+                bottom: 28px !important;
+                max-width: 92vw;
+                white-space: normal !important;
+                text-align: center;
+                font-size: 14px !important;
+                padding: 12px 18px !important;
+            }
+            .itinerary-point.next-target { margin-top: 10px !important; }
         }
 
         .branch-btn.active {
@@ -254,12 +326,21 @@
             }
         }
 
+        /* V41.22: 前往中 / 預估時間 交替呼吸燈 (不再硬切閃爍) */
         .eta-blink-a {
-            animation: blink-eta 1.5s step-end infinite;
+            animation: breathe-eta 3s ease-in-out infinite;
         }
 
         .eta-blink-b {
-            animation: blink-eta 1.5s step-end infinite reverse;
+            animation: breathe-eta 3s ease-in-out infinite;
+            animation-delay: 1.5s;
+        }
+        @keyframes breathe-eta {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            45% { opacity: 1; }
+            65% { opacity: 0; }
+            100% { opacity: 0; }
         }
 
         /* V11.19: 完成標章 */
@@ -487,8 +568,8 @@
             top: 60px;
             left: 50%;
             transform: translateX(-50%);
-            width: 90%;
-            max-width: 520px;
+            width: 92%;
+            max-width: 900px; /* V41.20: 銷貨單是橫式，520px 會被切 */
             max-height: 88vh;
             background: rgba(15, 23, 42, 0.97);
             backdrop-filter: blur(15px);
@@ -986,12 +1067,13 @@
 
         /* V2631.2 新增統一樣式 */
         .btn-rounded-outline {
-            padding: 8px 16px;
+            padding: 6px 13px;
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             background: rgba(255, 255, 255, 0.05);
             color: #fff;
             font-size: 13px;
+            flex-shrink: 0;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2093,6 +2175,54 @@
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
         }
 
+        /* V41.20: 下一站螢光框 + 推進箭頭 */
+        .itinerary-point.next-target {
+            position: relative;
+            border: 1.5px solid #38bdf8 !important;
+            border-radius: 8px;
+            background: rgba(56, 189, 248, 0.08);
+            animation: neonPulse 1.4s ease-in-out infinite;
+            margin-top: 8px;
+        }
+        .itinerary-point.next-target::before {
+            content: '下一站';
+            position: absolute; top: -9px; left: 8px;
+            background: #38bdf8; color: #020617;
+            font-size: 9px; font-weight: 900; letter-spacing: 1px;
+            padding: 1px 6px; border-radius: 6px; line-height: 1.3;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.8);
+        }
+        @keyframes neonPulse {
+            0%, 100% { box-shadow: 0 0 5px rgba(56, 189, 248, 0.45), inset 0 0 4px rgba(56, 189, 248, 0.1); }
+            50% { box-shadow: 0 0 16px rgba(56, 189, 248, 1), 0 0 30px rgba(56, 189, 248, 0.55), inset 0 0 10px rgba(56, 189, 248, 0.25); }
+        }
+        .itin-arrow.active {
+            display: inline-flex; gap: 0; margin: 0 6px; opacity: 1 !important; color: #38bdf8;
+            font-size: 18px; font-weight: 900; line-height: 1; text-shadow: 0 0 6px #38bdf8;
+        }
+        .itin-arrow.active i { font-style: normal; animation: arrowMarch 0.9s linear infinite; opacity: 0.2; }
+        .itin-arrow.active i:nth-child(2) { animation-delay: 0.3s; }
+        .itin-arrow.active i:nth-child(3) { animation-delay: 0.6s; }
+        @keyframes arrowMarch { 0% { opacity: 0.15; transform: translateX(-2px); } 40% { opacity: 1; transform: translateX(0); } 100% { opacity: 0.15; transform: translateX(2px); } }
+
+        .stop-num { width: 20px; height: 20px; border-radius: 50%; color: #000; font-size: 11px; font-weight: 900; display: flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: 0 0 6px rgba(0,0,0,0.6); }
+        /* V41.13: 司機標記卡 (常駐顯示名字 / 進度 / 下一站 / 分鐘) */
+        .car-icon { overflow: visible !important; }
+        .car-card {
+            position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+            background: rgba(2, 10, 18, 0.9); border: 1.5px solid; border-radius: 8px;
+            padding: 4px 8px; white-space: nowrap; text-align: left; line-height: 1.25;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.6); pointer-events: none; min-width: 96px;
+        }
+        .car-card::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: inherit; border-right: 1.5px solid; border-bottom: 1.5px solid; border-color: inherit; transform: translateX(-50%) rotate(45deg); }
+        .car-card-name { font-size: 12px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 5px; }
+        .car-card-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .car-card-prog { font-size: 10px; color: #94a3b8; font-weight: 700; margin-left: auto; padding-left: 6px; }
+        .car-card-next { font-size: 11px; font-weight: 700; color: #e2e8f0; margin-top: 1px; }
+        .car-card-age { font-size: 10px; color: #f87171; margin-top: 1px; }
+        .car-card.stale { opacity: 0.6; filter: grayscale(0.6); }
+        .glowing-dot.stale { animation: none; opacity: 0.5; filter: grayscale(0.8); }
+
         .glowing-dot {
             width: 14px;
             height: 14px;
@@ -2388,13 +2518,13 @@
         <div class="header-right">
             <span id="targetCar" style="color:#fbbf24; font-weight:bold; margin-right:15px; font-size:14px;">請選車</span>
             <button class="btn-rounded-outline"
-                onclick="document.getElementById('aiOcrModal').style.display='flex'">掃描上傳</button>
-            <button class="btn-rounded-outline" onclick="openModal()">新增行程</button>
-            <button class="btn-rounded-outline" onclick="openAnalytics()">報表分析</button>
-            <button class="btn-rounded-outline" onclick="toggleDispatchModal()">阿榮排車</button>
-            <button class="btn-rounded-outline" onclick="refreshData(true)">後台同步</button>
-            <button class="btn-rounded-outline" onclick="openSettingsModal()"
-                style="padding:4px 10px !important;">⚙️</button>
+                onclick="document.getElementById('aiOcrModal').style.display='flex'" title="掃描上傳銷貨單">掃描</button>
+            <button class="btn-rounded-outline" onclick="openModal()" title="新增行程">新增</button>
+            <button class="btn-rounded-outline" onclick="openAnalytics()" title="報表分析">報表</button>
+            <button class="btn-rounded-outline" onclick="toggleDispatchModal()" title="阿榮排車">排車</button>
+            <button class="btn-rounded-outline" onclick="refreshData(true)" title="從試算表重新同步">同步</button>
+            <button class="btn-rounded-outline" onclick="openSettingsModal()" title="系統設定"
+                style="padding:6px 10px !important;">⚙️</button>
         </div>
         <input type="file" id="aiOcrFile" accept="image/*" multiple style="display:none"
             onchange="handleAiOcrUpload(event)">
@@ -2452,7 +2582,7 @@
             <!-- 第二行：送貨地址 -->
             <div class="input-group" style="margin-bottom:8px;">
                 <label>送貨地址 *</label>
-                <input id="tAddr" type="text" placeholder="完整地址 (將自動轉換座標)">
+                <input id="tAddr" type="text" placeholder="完整地址 (將自動轉換座標)" onblur="updateTempFreightEstimate()">
             </div>
 
             <!-- 第三行：聯絡人 & 聯絡電話 -->
@@ -2475,8 +2605,34 @@
                 </div>
                 <div class="input-group" style="flex:1;">
                     <label>預估重量 (KG)</label>
-                    <input id="tWeight" type="number" value="0">
+                    <input id="tWeight" type="number" value="0" onchange="updateTempFreightEstimate()">
                 </div>
+            </div>
+
+            <!-- V40：指定到貨時間-強制 (紅色系) -->
+            <div style="margin-bottom:8px; padding:10px 12px; border:1px solid rgba(239,68,68,0.4); border-radius:8px; background:rgba(239,68,68,0.06);">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#f87171; font-weight:900;">
+                    <input id="tForceArrive" type="checkbox" style="width:18px; height:18px; accent-color:#ef4444; cursor:pointer;" onchange="toggleForceArrive('tForceArrive','tForceArriveWrap')">
+                    ⏰ 指定到貨時間-強制
+                </label>
+                <div id="tForceArriveWrap" style="display:none; margin-top:8px; flex-direction:column; gap:6px;">
+                    <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:180px;">
+                            <label style="font-size:11px; color:#fca5a5;">預設時間</label>
+                            <select id="tForceArrivePick" style="width:100%; padding:6px; background:#0f172a; border:1px solid #ef4444; border-radius:8px; color:#f87171; font-size:14px; font-weight:900;" onchange="syncForceArrivePreset('tForceArrivePick','tForceArriveCustom')"></select>
+                        </div>
+                        <div style="flex:1; min-width:180px;">
+                            <label style="font-size:11px; color:#fca5a5;">或手動輸入時段 (例 10:30~11:00)</label>
+                            <input id="tForceArriveCustom" type="text" placeholder="例：10:30~11:00" style="width:100%; padding:6px; background:#0f172a; border:1px solid #ef4444; border-radius:8px; color:#f87171; font-size:14px;" oninput="clearForceArrivePreset('tForceArrivePick','tForceArriveCustom')">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- V39.24: 即時預估運費 (地址/重量/指定時間 任一變動就重算) -->
+            <div id="tFreightEstBox" style="margin-bottom:8px; padding:8px 12px; border:1px solid rgba(56,189,248,0.3); border-radius:8px; background:rgba(56,189,248,0.06); font-size:13px; color:#94a3b8;">
+                💰 預估運費：<span id="tFreightEstVal" style="color:#38bdf8; font-weight:900;">--</span>
+                <span id="tFreightEstDetail" style="font-size:11px; color:#64748b; margin-left:6px;"></span>
             </div>
 
             <!-- 第五行：尺寸 & 箱數 -->
@@ -3040,6 +3196,9 @@
 
         // V11.24 A 等級：身分資訊注入
         const USER_INFO = (<?!= JSON.stringify(userInfo || {}) ?>);
+        // V39.32: 伺服器端注入目前 doGet 路由用的 p 參數值 (admin/dispatch/...)，
+        // 讓「?p=dispatch 自動開啟派車」這類判斷不用依賴不可靠的 window.location.search
+        const SERVER_INITIAL_PAGE = (<?!= JSON.stringify(initialPage || '') ?>);
         var map, clusterGroup;
         var markers = {}, carMarkers = [];
         var allTasks = [], vehicles = [], carPositions = [], branchSalesMap = {};
@@ -3110,7 +3269,9 @@
 
         // V4.4: 地圖圖層切換函式
         const tileLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        const tileDark = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        // V41.4: Carto dark_all 圖磚自 2025 起需 API key (畫面出現 "API KEY REQUIRED" 浮水印)，
+        // 改用同一份 OSM 圖磚，夜間模式以 CSS 反相濾鏡呈現 (見 #map.dark-tiles)
+        const tileDark = tileLight;
 
         function toggleSymbols() {
             showBranchIcons = !showBranchIcons;
@@ -3120,8 +3281,10 @@
 
         function toggleNightMode(isDark) {
             if (currentTileLayer) map.removeLayer(currentTileLayer);
-            currentTileLayer = L.tileLayer(isDark ? tileDark : tileLight).addTo(map);
+            currentTileLayer = L.tileLayer(isDark ? tileDark : tileLight, { maxZoom: 19 }).addTo(map);
             document.body.classList.toggle('light-mode', !isDark);
+            const mapEl = document.getElementById('map');
+            if (mapEl) mapEl.classList.toggle('dark-tiles', !!isDark);
             // 更新 cmdNight 按鈕狀態
             const cmdNight = document.getElementById('cmdNight');
             if (cmdNight) cmdNight.classList.toggle('active', !isDark);
@@ -3537,35 +3700,92 @@
             if (pwdInput) pwdInput.focus();
         }
 
+        // ===== V41 管理員 Session (token 由伺服器 sysVerifyPwd 以 ADMIN_PASSWORD 換發；密碼不再出現在前端) =====
+        const ADMIN_TOKEN_KEY = 'ttsAdminTokenV41';
+        // V41.11: token 以記憶體變數為主、localStorage 為持久化 (30 天)。
+        // GAS 頁面在 bigt.cc 的 iframe 內屬第三方，瀏覽器可能擋 storage，存不進去時至少本次頁面能用。
+        let __adminTokenMem = '';
+        function ATOKEN() {
+            if (__adminTokenMem) return __adminTokenMem;
+            try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { }
+            return __adminTokenMem;
+        }
+        function setAdminToken(t) {
+            __adminTokenMem = t || '';
+            try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { }
+            try { if (t) sessionStorage.setItem(ADMIN_TOKEN_KEY, t); else sessionStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { }
+        }
+        /** 後端回傳 🔒 AUTH_REQUIRED 時：清 token、回到登入畫面。回傳 true 代表已處理 */
+        function handleAuthError(msgOrErr) {
+            const msg = String((msgOrErr && msgOrErr.message) || msgOrErr || '');
+            if (msg.indexOf('AUTH_REQUIRED') === -1 && msg.indexOf('AUTH_FORBIDDEN') === -1) return false;
+            setAdminToken('');
+            const t = document.getElementById('toast');
+            if (t) { t.innerText = '🔒 登入已逾時，請重新驗證'; t.style.display = 'block'; setTimeout(() => { t.style.display = 'none'; }, 3000); }
+            showLoginOverlay();
+            return true;
+        }
+        function showLoginOverlay() {
+            const overlay = document.getElementById('loginOverlay');
+            if (!overlay) return;
+            overlay.style.display = '';
+            overlay.style.opacity = '1';
+            overlay.style.transform = 'none';
+            overlay.style.pointerEvents = 'auto';
+            try { if (!rainInterval) initDigitalRain(); } catch (e) { }
+            try { startLoginAnimations(); } catch (e) { }
+        }
+        function hideLoginOverlayAndStart(instant) {
+            const overlay = document.getElementById('loginOverlay');
+            if (overlay && instant) {
+                overlay.style.display = 'none';
+                clearInterval(rainInterval); rainInterval = null;
+                if (!window.__mainStarted) { window.__mainStarted = true; initMainSystem(); }
+                return;
+            }
+            if (overlay) {
+                overlay.style.transition = 'opacity 1s ease, transform 1s ease';
+                overlay.style.opacity = '0';
+                overlay.style.transform = 'scale(1.1)';
+                overlay.style.pointerEvents = 'none';
+                clearInterval(rainInterval); rainInterval = null;
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    if (!window.__mainStarted) { window.__mainStarted = true; initMainSystem(); }
+                }, 1000);
+            } else if (!window.__mainStarted) { window.__mainStarted = true; initMainSystem(); }
+        }
         window.verifyAdminLogin = function () {
             const pwdInput = document.getElementById('adminPwdInput');
             if (!pwdInput) return;
             const pwd = pwdInput.value;
-            if (pwd === '54088') {
-                // V35.6: 儲存會期登入態
-                sessionStorage.setItem('warRoomAuthV35', 'passed');
-
-                const overlay = document.getElementById('loginOverlay');
-                if (overlay) {
-                    overlay.style.transition = 'opacity 1s ease, transform 1s ease';
-                    overlay.style.opacity = '0';
-                    overlay.style.transform = 'scale(1.1)';
-                    overlay.style.pointerEvents = 'none';
-                    clearInterval(rainInterval);
-                    setTimeout(() => {
-                        overlay.style.display = 'none';
-                        initMainSystem();
-                    }, 1000);
-                }
-            } else {
+            if (!pwd) { pwdInput.focus(); return; }
+            const fail = (msg) => {
                 pwdInput.style.borderColor = '#ef4444';
                 pwdInput.value = '';
-                pwdInput.placeholder = 'INVALID ACCESS CODE';
+                pwdInput.placeholder = msg || 'INVALID ACCESS CODE';
                 setTimeout(() => {
                     pwdInput.style.borderColor = 'rgba(0, 170, 255, 0.2)';
                     pwdInput.placeholder = 'ACCESS CODE';
-                }, 1000);
-            }
+                }, 1800);
+            };
+            pwdInput.disabled = true;
+            google.script.run
+                .withSuccessHandler(res => {
+                    pwdInput.disabled = false;
+                    if (res && res.success && res.token) {
+                        setAdminToken(res.token);
+                        hideLoginOverlayAndStart();
+                    } else {
+                        fail();
+                    }
+                })
+                .withFailureHandler(err => {
+                    pwdInput.disabled = false;
+                    const m = String((err && err.message) || err || '');
+                    fail(m.indexOf('ADMIN_PASSWORD') !== -1 ? '尚未設定 ADMIN_PASSWORD' : 'INVALID ACCESS CODE');
+                })
+                .sysVerifyPwd(pwd);
         }
 
         function initMainSystem() {
@@ -3590,10 +3810,9 @@
                 }
             });
             // Sortable for sidebar removed.
-
-            // V3.1: 自動進入派遣模式監測
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('p') === 'dispatch') {
+            // V39.33: 「自動進入派遣模式」只給獨立的 Dispatch.html(?p=dispatch) 用，
+            // OS.html 一律走 ?p=admin，不會觸發，永遠停留在主控台
+            if (SERVER_INITIAL_PAGE === 'dispatch') {
                 setTimeout(() => {
                     if (typeof openDispatchModal_V3 === 'function') openDispatchModal_V3();
                 }, 500);
@@ -3744,14 +3963,21 @@
         }
 
         window.onload = () => {
-            // V35.6: 直接進入系統 (移除舊版數位雨)
             if (window.self !== window.top) {
                 document.body.classList.add('embedded-iframe');
             }
-            const overlay = document.getElementById('loginOverlay');
-            if (overlay) overlay.style.display = 'none';
-            initMainSystem();
             startHeaderClock(); // 啟動時鐘
+            // V41: 舊版 (V35.6) 在這裡直接隱藏登入畫面進入系統，等於後台完全沒有登入；
+            // 改為先向伺服器確認 session token，無效才顯示登入畫面
+            const tok = ATOKEN();
+            if (tok) {
+                google.script.run
+                    .withSuccessHandler(r => { if (r && r.valid) hideLoginOverlayAndStart(true); else { setAdminToken(''); showLoginOverlay(); } })
+                    .withFailureHandler(() => showLoginOverlay())
+                    .checkAdminSession(tok);
+            } else {
+                showLoginOverlay();
+            }
         };
 
         function initMap() {
@@ -3779,9 +4005,12 @@
             }
 
             if (force) showToast("🔄 正在從試算表強制同步最新資料...");
+            if (!ATOKEN()) { showLoginOverlay(); return; }
 
-            google.script.run.withSuccessHandler(res => {
-                if (!res || !res.success) return;
+            google.script.run.withFailureHandler(err => {
+                if (!handleAuthError(err)) console.error('getWarRoomData_V11 failed:', err);
+            }).withSuccessHandler(res => {
+                if (!res || !res.success) { if (res && res.error) handleAuthError(res.error); return; }
                 allTasks = Array.isArray(res.tasks) ? res.tasks : [];
                 vehicles = Array.isArray(res.vehicles) ? res.vehicles : [];
                 carPositions = Array.isArray(res.vehiclePositions) ? res.vehiclePositions : [];
@@ -3816,7 +4045,7 @@
                 }
                 renderItinerary();
                 if (aiMode) applyAISuggestion();
-            }).getWarRoomData_V11(force);
+            }).getWarRoomData_V11(force, null, ATOKEN());
         }
 
         // V36.7: 切換行程檢視模式
@@ -3995,7 +4224,13 @@
                     }
                 });
 
-                groupedTasks.forEach((group) => {
+                // V41.24: 「下一站」優先跟隨司機 App 回報的導航目標 (carPos.targetAddr)，沒有回報才用排車順序第一個未完成
+                let navGroupIdx = -1;
+                if (carPos && carPos.targetAddr) {
+                    navGroupIdx = groupedTasks.findIndex(g => !g.isDone && g.tasks.some(t => addrLooseMatch(t.address, carPos.targetAddr)));
+                }
+
+                groupedTasks.forEach((group, gIdx) => {
                     const firstTask = group.tasks[0];
                     const road = group.road;
                     const curDate = group.date;
@@ -4008,18 +4243,23 @@
                         } else {
                             itineraryHTML += `<span style="margin:0 8px; padding:2px 6px; background:#1e293b; border-radius:4px; font-size:10px; color:var(--cyan); border:1px solid var(--cyan)">${curDate.substring(5)}</span>`;
                         }
-                    } else if (visibleIdx > 0) {
-                        itineraryHTML += `<span style="margin:0 4px; opacity:0.3">→</span>`;
                     }
-                    lastDate = curDate;
-                    visibleIdx++;
-
-                    // 記錄顯示標記，用於判斷誰才是「第一筆待辦」
+                    // 記錄顯示標記，用於判斷誰才是「下一站」(提前算，箭頭才知道要不要動)
                     let isNextTarget = false;
-                    if (!isDone && !nextStationShown) {
+                    if (navGroupIdx !== -1) {
+                        isNextTarget = (gIdx === navGroupIdx);
+                    } else if (!isDone && !nextStationShown) {
                         isNextTarget = true;
                         nextStationShown = true;
                     }
+                    if (curDate === lastDate && visibleIdx > 0) {
+                        // V41.20: 通往下一站的箭頭改成三段推進閃爍
+                        itineraryHTML += isNextTarget
+                            ? `<span class="itin-arrow active"><i>›</i><i>›</i><i>›</i></span>`
+                            : `<span class="itin-arrow" style="margin:0 4px; opacity:0.3">→</span>`;
+                    }
+                    lastDate = curDate;
+                    visibleIdx++;
 
                     let branchesHTML = "";
                     let customersHTML = "";
@@ -4050,7 +4290,8 @@
 
                         const tRet = String(t.isReturn || '').includes('true') || t.isReturn === true || String(t.shippingType || t.type || '').includes('退');
                         const shippingLabel = (t.shippingType && !String(t.shippingType).includes('退')) ? `<span style="color:var(--cyan); font-size:9px; border:1px solid var(--cyan); padding:0 2px; border-radius:3px; margin-left:2px;">${escapeHTML(t.shippingType)}</span>` : '';
-                        const cStr = escapeHTML(custShort2) + (tRet ? `<span style="color:#ef4444; font-size:10px;">(退)</span>` : '') + shippingLabel;
+                        const sampleLabel = t.docType === '樣品' ? `<span style="color:${t.sampleTo === 'home' ? '#fbbf24' : '#38bdf8'}; font-size:9px; border:1px solid currentColor; padding:0 2px; border-radius:3px; margin-left:2px;" title="${t.sampleTo === 'home' ? '樣品送回公司 (不計費)' : '樣品外送 (照常計費)'}">${t.sampleTo === 'home' ? '樣品免費' : '樣品收費'}</span>` : '';
+                        const cStr = escapeHTML(custShort2) + (tRet ? `<span style="color:#ef4444; font-size:10px;">(退)</span>` : '') + shippingLabel + sampleLabel;
 
                         if (!seenCustStrs.has(cStr)) {
                             seenCustStrs.add(cStr);
@@ -4059,7 +4300,16 @@
 
                         if (t.isBackYingge) isBack = true;
                     });
-                    customersHTML = custStrs.join('/');
+                    // V41.4: 同一地點多家客戶 (如「載回鶯歌」8 家) 不再全列：分公司字母去重、只顯示前 2 家 + 剩餘家數，完整名單放 title
+                    const uniqBranchHTML = Array.from(new Set(branchesHTML.match(/<span[^>]*>[^<]*<\/span>/g) || [])).join('');
+                    if (group.tasks.length > 1) branchesHTML = uniqBranchHTML;
+                    let custTitle = '';
+                    if (custStrs.length > 3) {
+                        custTitle = custStrs.map(s => s.replace(/<[^>]+>/g, '')).join(' / ');
+                        customersHTML = custStrs.slice(0, 2).join('/') + `<span style="color:#38bdf8; font-weight:900; margin-left:3px;">+${custStrs.length - 2}家</span>`;
+                    } else {
+                        customersHTML = custStrs.join('/');
+                    }
 
                     // 第三行時間 (以群組中第一筆為準)
                     let timeRow = '';
@@ -4074,10 +4324,10 @@
                             return tkA && tdA && (tkA === tdA || tkA.indexOf(tdA) !== -1 || tdA.indexOf(tkA) !== -1);
                         })
                     )) {
-                        var etaText = vehicleETAs[firstTask.id] ? '約 ' + vehicleETAs[firstTask.id] : (carPos.lat ? '計算中' : '');
+                        var etaText = vehicleETAs[firstTask.id] ? '約 ' + vehicleETAs[firstTask.id] : '';
                         timeRow = `
                             <div style="font-size:10px; font-weight:900; line-height:1.2; position:relative; height:16px;">
-                                <span class="eta-blink-a" style="position:absolute; left:0; color:#38bdf8;">🚛 前往中</span>
+                                <span class="eta-blink-a" style="position:absolute; left:0; color:#38bdf8;">前往中</span>
                                 ${etaText ? `<span class="eta-blink-b" style="position:absolute; left:0; color:#f59e0b;">${etaText}</span>` : ''}
                             </div>`;
                     } else if (isNextTarget && vehicleETAs[firstTask.id]) {
@@ -4087,9 +4337,9 @@
                     }
 
                     itineraryHTML += [
-                        `<div class="itinerary-point" data-id="${escapeHTML(firstTask.id)}" style="flex-direction:column; align-items:flex-start; padding:4px 8px; min-width:64px; cursor:grab;"`,
+                        `<div class="itinerary-point${isNextTarget ? ' next-target' : ''}" data-id="${escapeHTML(firstTask.id)}" style="flex-direction:column; align-items:flex-start; padding:4px 8px; min-width:64px; cursor:grab;"`,
                         ` onmouseover="hoverTask('${escapeHTML(firstTask.id)}')" onmouseout="unhoverTask('${escapeHTML(firstTask.id)}')"`,
-                        ` onclick="event.stopPropagation(); handleItineraryClick('${escapeHTML(firstTask.id)}');">`,
+                        ` onclick="event.stopPropagation(); itinPointClick('${escapeHTML(firstTask.id)}');" ondblclick="event.stopPropagation();"${custTitle ? ` title="${escapeHTML(custTitle)}"` : ''}>`,
                         `<div style="font-size:11px; font-weight:900; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${branchesHTML}<span style="color:#e2e8f0; margin-left:4px;">${customersHTML}</span>${isBack ? ' <span style="font-size:10px; color:#f97316;" title="回鶯歌">🔙</span>' : ''}</div>`,
                         `<div style="font-size:11px; color:#94a3b8; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${escapeHTML(road)}</div>`,
                         timeRow,
@@ -4098,7 +4348,7 @@
                 });
 
                 return [
-                    `<div class="fleet-row ${isSelected ? 'active' : ''}" data-type="${group.type}" data-id="${escapeHTML(group.id)}" onclick="${group.type === 'driver' ? `selectCar('${escapeHTML(group.id)}')` : ''}">`,
+                    `<div class="fleet-row ${isSelected ? 'active' : ''}" data-type="${group.type}" data-id="${escapeHTML(group.id)}" onclick="${group.type === 'driver' ? `driverRowClick('${escapeHTML(group.id)}')` : ''}">`,
                     `<div class="fleet-col-info" style="flex:0 0 100px;">`,
                     `<div style="font-weight:900; color:${group.color}; font-size:14px;">${escapeHTML(group.displayName)}</div>`,
                     `<div style="font-size:10px; opacity:0.6; margin-top:2px;">${escapeHTML(group.subName)}</div>`,
@@ -4132,7 +4382,7 @@
                     }
                 })
                 .withFailureHandler(err => alert("❌ 系統錯誤: " + err))
-                .generateParamUrlForDriver(name);
+                .generateParamUrlForDriver(name, ATOKEN());
         }
 
         // V16.0: 初始化行程拖拽排序
@@ -4144,6 +4394,10 @@
                     animation: 150,
                     ghostClass: 'itinerary-ghost',
                     draggable: '.itinerary-point',
+                    // V41.4: 觸控裝置上一律「長按 0.4 秒」才進入拖曳，手指滑動只捲動不會誤改順序
+                    delay: 400,
+                    delayOnTouchOnly: true,
+                    touchStartThreshold: 6,
                     onEnd: function (evt) {
                         const driverName = evt.from.closest('.fleet-row').getAttribute('data-driver');
                         const vehicleName = evt.from.closest('.fleet-row').getAttribute('data-vehicle');
@@ -4173,15 +4427,17 @@
                     });
                 })
                 .withFailureHandler(err => showToast(`❌ 更新失敗: ${err.message}`))
-                .adminUpdateSequence_V11(newSeqData, vehicleName);
+                .adminUpdateSequence_V11(newSeqData, vehicleName, ATOKEN());
         }
 
-        function selectCar(name) {
+        function selectCar(name, opts) {
             if (window.isDirty) {
                 alert("⚠️ 尚有未儲存的排序，請先儲存或重新載入");
                 return;
             }
-            if (!name || (selectedCar === name && event && event.target && event.target.closest('.fleet-row'))) {
+            // V41.22: 「再點同一列 = 取消選取」改由呼叫端明確告知 (setTimeout 內沒有全域 event)
+            const fromRow = (opts && opts.fromRow) || (typeof event !== 'undefined' && event && event.target && event.target.closest && event.target.closest('.fleet-row'));
+            if (!name || (selectedCar === name && fromRow)) {
                 selectedCar = null;
                 document.getElementById('targetCar').innerText = "請選車";
             } else {
@@ -4250,8 +4506,44 @@
             }
 
             if (latlngs.length > 1) {
-                routeLine = L.polyline(latlngs, { color: color, weight: 4, opacity: 0.7, dashArray: '8, 12' }).addTo(map);
+                // 先畫直線 (立即可見)，再向 OSRM 要真實道路幾何覆蓋上去；OSRM 失敗就維持直線
+                routeLine = L.polyline(latlngs, { color: color, weight: 4, opacity: 0.55, dashArray: '8, 12' }).addTo(map);
                 arrowsLayer = L.layerGroup().addTo(map);
+                // 站點編號 ①②③…
+                carTasks.forEach((t, i) => {
+                    const numIcon = L.divIcon({ className: 'stop-num-icon', html: `<div class="stop-num" style="background:${color};">${i + 1}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+                    arrowsLayer.addLayer(L.marker([t.lat, t.lng], { icon: numIcon, interactive: false, zIndexOffset: 500 }));
+                });
+                fetchOsrmRoute(carName, latlngs, color);
+            }
+        }
+
+        // V41.13: 向 OSRM (公開免費路徑伺服器) 取得沿道路的路線幾何
+        let __osrmSeq = 0;
+        async function fetchOsrmRoute(carName, latlngs, color) {
+            const mySeq = ++__osrmSeq;
+            try {
+                const pts = latlngs.slice(0, 60); // OSRM 單次上限 100 點，保守取 60
+                const coordStr = pts.map(ll => ll[1].toFixed(6) + ',' + ll[0].toFixed(6)).join(';');
+                // 注意：GAS HtmlService 會把這種字串裡的 // 當註解截掉，故拆開寫
+                const url = 'https:' + '/' + '/router.project-osrm.org/route/v1/driving/' + coordStr + '?overview=full&geometries=geojson&steps=false';
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), 8000);
+                const res = await fetch(url, { signal: ctrl.signal });
+                clearTimeout(timer);
+                if (!res.ok) throw new Error('OSRM HTTP ' + res.status);
+                const json = await res.json();
+                if (mySeq !== __osrmSeq || selectedCar !== carName) return; // 使用者已切換其他車
+                const geom = json && json.routes && json.routes[0] && json.routes[0].geometry;
+                if (!geom || !geom.coordinates || !geom.coordinates.length) throw new Error('OSRM 無路線');
+                const road = geom.coordinates.map(c => [c[1], c[0]]);
+                if (routeLine) map.removeLayer(routeLine);
+                routeLine = L.polyline(road, { color: color, weight: 5, opacity: 0.85 }).addTo(map);
+                const totalMin = Math.round((json.routes[0].duration || 0) / 60);
+                const totalKm = ((json.routes[0].distance || 0) / 1000).toFixed(1);
+                if (totalMin) showToast(`🛣️ ${carName} 剩餘路線 ${totalKm} km，約 ${totalMin} 分鐘 (不含卸貨)`);
+            } catch (e) {
+                console.warn('OSRM 路線取得失敗，維持直線:', e.message);
             }
         }
 
@@ -4262,7 +4554,7 @@
                     if (traceLine) map.removeLayer(traceLine);
                     traceLine = L.polyline(trace, { color: color, weight: 2, opacity: 0.15, dashArray: '5,5' }).addTo(map);
                 }
-            }).getRouteHistory_V11p9(carName);
+            }).getRouteHistory_V11p9(carName, ATOKEN());
         }
 
         function renderAllTasks() { return; }
@@ -4291,10 +4583,11 @@
 
             // V37.20: 產生下載網址（Drive uc export=download 格式）
             let dlUrl = url;
-            const lh3m = url.match(/lh3\.googleusercontent\.com\/d\/([^?&/]+)/);
-            const ucm  = url.match(/[?&]id=([^&]+)/);
+            const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/]+)')); // GAS 精簡器會被含 [?& 的 regex 字面值弄亂，改用字串建構
+            const ucm  = url.match(new RegExp('[?&]id=([^&]+)'));
             const fileId = lh3m ? lh3m[1] : (ucm ? ucm[1] : null);
-            if (fileId) dlUrl = 'https://drive.google.com/uc?export=download&id=' + fileId;
+            // 注意：GAS HtmlService 的精簡器會把緊接在 regex 後面、含 "//" 的字串當註解截斷 (實測)，此處刻意拆開避免出現連續兩個斜線
+            if (fileId) dlUrl = 'https:' + '/' + '/drive.google.com/uc?export=download&id=' + fileId;
 
             overlay.innerHTML = `
                 <div id="previewDragHandle" style="width:100%; background:rgba(56,189,248,0.15); padding:8px 15px; border-bottom:1px solid rgba(56,189,248,0.2); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; cursor: move;">
@@ -4305,9 +4598,9 @@
                         <button onclick="closePreview()" style="font-size:12px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">✕ 關閉</button>
                     </div>
                 </div>
-                <div style="flex:1; width:100%; overflow-y:auto; background:#0f172a; padding:10px; display:flex; justify-content:center; align-items:flex-start;">
+                <div style="flex:1; width:100%; min-width:0; overflow:auto; background:#0f172a; padding:10px; display:block;">
                     <img src="${url}" onclick="event.stopPropagation()"
-                         style="max-width:100%; height:auto; display:block; border-radius:8px; object-fit:contain;">
+                         style="width:100%; max-width:100%; height:auto; display:block; border-radius:8px; object-fit:contain;">
                 </div>
             `;
             overlay.style.display = 'flex';
@@ -4488,7 +4781,7 @@
                         .withSuccessHandler(res => {
                             showToast(res);
                             refreshData();
-                        }).adminDispatchTasks([{ id: id, branch: task.branch, v: "", s: task.status, r: task.rowIndex }], carName);
+                        }).adminDispatchTasks([{ id: id, branch: task.branch, v: "", s: task.status, r: task.rowIndex }], carName, ATOKEN());
                 }
             );
         }
@@ -4512,7 +4805,7 @@
                         .withSuccessHandler(res => {
                             showToast(res);
                             refreshData();
-                        }).adminDispatchTasks([{ id: id, branch: task.branch, v: orgCarName, s: task.status, r: task.rowIndex }], targetCarName);
+                        }).adminDispatchTasks([{ id: id, branch: task.branch, v: orgCarName, s: task.status, r: task.rowIndex }], targetCarName, ATOKEN());
                 }
             );
         }
@@ -4573,7 +4866,7 @@
 
                 google.script.run.withSuccessHandler(eta => {
                     showETABubble(`<b>🚛 任務詳情</b><br>單號：${id}<br>司機：${drvName}${roadDisplay}<br><span style="color:var(--accent)">🏁 到達時間：${eta}</span>`);
-                }).calculateSimpleETA(pos.lat, pos.lng, task.lat, task.lng);
+                }).calculateSimpleETA(pos.lat, pos.lng, task.lat, task.lng, ATOKEN());
             } else {
                 showETABubble(`<b>🚛 任務詳情</b><br>單號：${id}<br>司機：${drvName}<br>狀態：${task.status}`);
             }
@@ -4592,7 +4885,7 @@
                 .withSuccessHandler(res => {
                     showToast(res);
                     refreshData();
-                }).adminUnassignTask([{ id: id, branch: branch, v: v, s: s, r: t ? t.rowIndex : -1 }]);
+                }).adminUnassignTask([{ id: id, branch: branch, v: v, s: s, r: t ? t.rowIndex : -1 }], ATOKEN());
         }
 
         // V11.18: 刪除訂單 (邏輯為封存)
@@ -4606,7 +4899,7 @@
                 .withSuccessHandler(res => {
                     showToast(res);
                     refreshData();
-                }).adminDeleteTask_V11(id, branch);
+                }).adminDeleteTask_V11(id, branch, ATOKEN());
         }
 
         function closeActionBubble() {
@@ -4651,50 +4944,78 @@
         }
 
         // V11.12.1: 行程清單點擊 - 兩段式圖片優先邏輯
-        function handleItineraryClick(id) {
-            const task = allTasks.find(t => String(t.id) === String(id));
-            if (!task) return;
+        // V41.24: 地址模糊比對 (去掉市/縣/區前綴後互相包含即視為同一地點)
+        function addrLooseMatch(a, b) {
+            if (!a || !b) return false;
+            if (a === b) return true;
+            const na = String(a).replace(/.*?(市|縣|區)/g, "").replace(/\s/g, "");
+            const nb = String(b).replace(/.*?(市|縣|區)/g, "").replace(/\s/g, "");
+            return !!(na && nb && (na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1));
+        }
 
-            // V37.22: 已完成且有簽收單 → 單擊產生美化框後顯示
-            if (task.status === '已完成' && task.signPhoto) {
-                closeETABubble();
-                showBeautifiedReceipt(task);
+        // V41.20: 站點 單擊 = 圖片預覽 (已送達→簽收單 / 未送達→銷貨單)，雙擊 = 地圖定位
+        let __itinClickTimer = null;
+        function itinPointClick(id) {
+            if (__itinClickTimer) {
+                clearTimeout(__itinClickTimer); __itinClickTimer = null;
+                focusTaskOnMap(id);
                 return;
             }
-
-            // 未送達：第一次點擊對焦地圖，第二次點擊顯示銷貨單縮圖
-            if (String(window.lastClickedTaskId) === String(id)) {
-                if (task.thumbnail) {
-                    closeETABubble();
-                    previewImage(task.thumbnail);
-                    return;
-                } else {
-                    showToast("ℹ️ 此訂單暫無圖片資料");
-                }
-            }
-
+            __itinClickTimer = setTimeout(() => { __itinClickTimer = null; showTaskPreview(id); }, 260);
+        }
+        function showTaskPreview(id) {
+            const task = allTasks.find(t => String(t.id) === String(id));
+            if (!task) return;
+            closeETABubble();
+            if (task.status === '已完成' && task.signPhoto) { showBeautifiedReceipt(task); return; }
+            if (task.thumbnail) { previewImage(task.thumbnail); return; }
+            showToast("ℹ️ 此訂單暫無圖片資料（雙擊可在地圖上定位）");
+        }
+        function focusTaskOnMap(id) {
+            const task = allTasks.find(t => String(t.id) === String(id));
+            if (!task) return;
             window.lastClickedTaskId = id;
-
-            // 地圖對焦與高亮
             highlightTask(id, true, true);
             const m = markers[id];
             if (m) {
-                map.setView(m.getLatLng(), 15);
+                map.setView(m.getLatLng(), 16);
                 m.openTooltip();
                 const icon = m.getElement();
                 if (icon) {
                     icon.style.filter = 'brightness(2) drop-shadow(0 0 12px #ffee00)';
                     setTimeout(() => icon.style.filter = '', 1500);
                 }
+            } else {
+                showToast("ℹ️ 此站尚無座標，無法在地圖定位");
             }
+        }
+        function handleItineraryClick(id) { itinPointClick(id); } // 舊呼叫點相容
+
+        // V41.20: 司機名稱 單擊 = 選車畫路線，雙擊 = 地圖飛到司機目前位置
+        let __rowClickTimer = null;
+        function driverRowClick(vehicle) {
+            if (__rowClickTimer) {
+                clearTimeout(__rowClickTimer); __rowClickTimer = null;
+                focusDriverOnMap(vehicle);
+                return;
+            }
+            __rowClickTimer = setTimeout(() => { __rowClickTimer = null; selectCar(vehicle, { fromRow: true }); }, 260);
+        }
+        function focusDriverOnMap(vehicle) {
+            const pos = carPositions.find(p => p.vehicle === vehicle && p.lat && p.lng);
+            if (!pos) { showToast("ℹ️ 目前沒有這台車的定位訊號"); return; }
+            if (selectedCar !== vehicle) selectCar(vehicle);
+            map.flyTo([pos.lat, pos.lng], 15, { duration: 0.8 });
+            const drv = getDriverName(vehicle);
+            showToast(`📍 ${drv !== vehicle ? drv + ' (' + vehicle + ')' : vehicle}${pos.targetAddr ? ' → ' + formatRoad(pos.targetAddr) : ''}`);
         }
 
         // V37.22: 取得 fileId → GAS 轉 base64 → Canvas 畫美化框
         function showBeautifiedReceipt(task) {
             const url = task.signPhoto || '';
             let fileId = null;
-            const lh3m = url.match(/lh3\.googleusercontent\.com\/d\/([^?&/\s]+)/);
-            const ucm  = url.match(/[?&]id=([^&\s]+)/);
+            const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/\\s]+)'));
+            const ucm  = url.match(new RegExp('[?&]id=([^&\\s]+)'));
             if (lh3m) fileId = lh3m[1];
             else if (ucm)  fileId = ucm[1];
 
@@ -4710,7 +5031,7 @@
                     }
                 })
                 .withFailureHandler(function() { previewImage(normalizeDriveUrl(url)); })
-                .getSignPhotoBase64(fileId);
+                .getSignPhotoBase64(fileId, ATOKEN());
         }
 
         // V37.22: Canvas 繪製美化簽收單（到貨時間為主要資訊）
@@ -4820,7 +5141,7 @@
         function normalizeDriveUrl(url) {
             if (!url) return url;
             if (url.indexOf('lh3.googleusercontent.com') !== -1) return url;
-            const m = url.match(/[?&]id=([^&]+)/);
+            const m = url.match(new RegExp('[?&]id=([^&]+)'));
             if (m && m[1]) return 'https://lh3.googleusercontent.com/d/' + m[1];
             return url;
         }
@@ -4879,7 +5200,7 @@
                 .withFailureHandler(function(err) {
                     showToast('❌ 打包失敗: ' + String(err));
                 })
-                .createTodaySignPhotoZip(dateStr, branch || '全部');
+                .createTodaySignPhotoZip(dateStr, branch || '全部', ATOKEN());
         }
 
         function updateStats() { return; }
@@ -5027,6 +5348,7 @@
                         }
                         // 超過 240 分鐘 (4小時) 或時間無效 → 隱藏
                         if (!updTime || isNaN(updTime.getTime()) || (nowTime - updTime) / 60000 > 240) return;
+                        p.__ageMin = Math.round((nowTime - updTime) / 60000);
                     } else {
                         // 完全沒有更新時間 → 一律隱藏
                         return;
@@ -5035,13 +5357,38 @@
                     const carColor = getCarColor(p.vehicle);
                     const v = vehicles.find(vh => vh.name === p.vehicle);
                     const driverName = v ? v.driver : p.vehicle;
+
+                    // V41.13: 標記卡 — 名字 + 進度(已送/總站) + 下一站路名 + 預估分鐘；訊號超過 20 分鐘變灰並標示
+                    const todayList = allTasks.filter(t => t.vehicle === p.vehicle && (t.date === dToday || !t.date) && t.status !== '已取消');
+                    // V41.24: 進度以「站」計算 — 同一地點 (路名相同) 的多張單只算一站
+                    const stopKey = t => formatRoad(t.address) || String(t.address || '').trim();
+                    const stopsAll = new Set(todayList.map(stopKey).filter(Boolean));
+                    const stopsDone = new Set(todayList.filter(t => ['已完成', '結案', '退貨完成'].includes(t.status)).map(stopKey).filter(Boolean));
+                    // 一站內只要還有未完成的單就不算完成
+                    todayList.filter(t => !['已完成', '結案', '退貨完成'].includes(t.status)).forEach(t => stopsDone.delete(stopKey(t)));
+                    const doneCnt = stopsDone.size;
+                    const undone = todayList.filter(t => !['已完成', '結案', '退貨完成'].includes(t.status)).sort((a, b) => (parseInt(a.seq) || 99) - (parseInt(b.seq) || 99));
+                    // V41.25: 司機回報的導航目標若已送完 (沒再按下一站的出發)，就忽略它，改用排車順序
+                    const navT = p.targetAddr ? undone.find(t => addrLooseMatch(t.address, p.targetAddr)) : null;
+                    const nextT = navT || undone[0];
+                    let etaMin = null;
+                    if (navT && p.targetPreciseMin !== null && p.targetPreciseMin !== undefined) etaMin = p.targetPreciseMin;
+                    else if (nextT && nextT.lat && nextT.lng) etaMin = Math.round((getDistance_V24(p.lat, p.lng, nextT.lat, nextT.lng) / 35) * 60);
+                    const nextRoad = navT ? formatRoad(p.targetAddr) : (nextT ? formatRoad(nextT.address) : '');
+                    const ageMin = p.__ageMin || 0;
+                    const stale = ageMin > 20;
+                    const nextLine = nextRoad
+                        ? `<span style="color:#38bdf8;">→ ${escapeHTML(nextRoad)}</span>${etaMin !== null ? ` <b style="color:#fbbf24;">${etaMin}分</b>` : ''}`
+                        : (stopsAll.size && doneCnt >= stopsAll.size ? '<span style="color:#22c55e;">✓ 今日完成</span>' : '<span style="color:#64748b;">待出發</span>');
                     const icon = L.divIcon({
                         className: 'car-icon',
-                        html: `<div class="glowing-dot" style="background:${carColor}; box-shadow:0 0 20px ${carColor}">
-                               <div style="font-size:9px; color:white; font-weight:bold;">${p.vehicle}</div>
-                           </div>
-                           <div style="font-size:12px; color:white; font-weight:bold; margin-top:4px; text-shadow:0 0 5px #000; white-space:nowrap;">${driverName}</div>`,
-                        iconSize: [35, 35], iconAnchor: [17, 17]
+                        html: `<div class="car-card${stale ? ' stale' : ''}" style="border-color:${carColor};">
+                                 <div class="car-card-name"><span class="car-card-dot" style="background:${carColor}; box-shadow:0 0 8px ${carColor};"></span>${escapeHTML(driverName)} <span class="car-card-prog" title="已完成站數 / 總站數 (同地點多單算一站)">${doneCnt}/${stopsAll.size}</span></div>
+                                 <div class="car-card-next">${nextLine}</div>
+                                 ${stale ? `<div class="car-card-age">最後回報 ${ageMin} 分前</div>` : ''}
+                               </div>
+                               <div class="glowing-dot${stale ? ' stale' : ''}" style="background:${carColor}; box-shadow:0 0 20px ${carColor}"></div>`,
+                        iconSize: [14, 14], iconAnchor: [7, 7]
                     });
                     const m = L.marker([p.lat, p.lng], { icon: icon }).addTo(map).on('click', (e) => {
                         L.DomEvent.stopPropagation(e);
@@ -5142,7 +5489,7 @@
                             updateStats();
                             showToast(res);
                             refreshData();
-                        }).adminDispatchTasks(tasksData, selectedCar);
+                        }).adminDispatchTasks(tasksData, selectedCar, ATOKEN());
                 }
             );
         }
@@ -5160,7 +5507,91 @@
                     window.isDragging = false;
                     window.isDirty = false;
                     refreshData();
-                }).updateTaskOrder(tasks);
+                }).updateTaskOrder(tasks, ATOKEN());
+        }
+
+        // V40：指定到貨時間 helper (下拉 09:00~18:00 每半小時)
+        function fillForceArrivePreset(selectId) {
+            const sel = document.getElementById(selectId);
+            if (!sel) return;
+            let opts = '<option value="">-- 選時間 --</option>';
+            for (let h = 9; h <= 18; h++) {
+                for (const m of [0, 30]) {
+                    const hh = String(h).padStart(2, '0');
+                    const mm = String(m).padStart(2, '0');
+                    if (h === 18 && m === 30) continue;
+                    opts += `<option value="${hh}:${mm}">${hh}:${mm} 前</option>`;
+                }
+            }
+            sel.innerHTML = opts;
+        }
+
+        function toggleForceArrive(chkId, wrapId) {
+            const chk = document.getElementById(chkId);
+            const wrap = document.getElementById(wrapId);
+            if (!chk || !wrap) return;
+            wrap.style.display = chk.checked ? 'flex' : 'none';
+            wrap.style.flexDirection = 'column';
+            if (chk.checked) fillForceArrivePreset(wrap.querySelector('select').id);
+            updateTempFreightEstimate();
+        }
+
+        // V39.24: 手動建單表單 - 地址/重量/指定時間任一變動就重新估算運費，避免完全看不到報價
+        let _tFreightDebounce = null;
+        function updateTempFreightEstimate() {
+            const estValEl = document.getElementById('tFreightEstVal');
+            const estDetailEl = document.getElementById('tFreightEstDetail');
+            if (!estValEl) return;
+
+            const address = document.getElementById('tAddr').value.trim();
+            const weight = document.getElementById('tWeight').value;
+            const isTimed = document.getElementById('tForceArrive') ? document.getElementById('tForceArrive').checked : false;
+
+            if (!address) {
+                estValEl.textContent = '--';
+                estDetailEl.textContent = '(請先輸入送貨地址)';
+                return;
+            }
+
+            estValEl.textContent = '計算中...';
+            estDetailEl.textContent = '';
+
+            clearTimeout(_tFreightDebounce);
+            _tFreightDebounce = setTimeout(() => {
+                google.script.run
+                    .withSuccessHandler(res => {
+                        estValEl.textContent = '$' + (res.estFee || 0);
+                        estDetailEl.textContent = res.detail || '';
+                    })
+                    .withFailureHandler(() => {
+                        estValEl.textContent = '--';
+                        estDetailEl.textContent = '(估算失敗)';
+                    })
+                    .estimateFreight_V11(address, weight, isTimed);
+            }, 400);
+        }
+
+        function syncForceArrivePreset(pickId, customId) {
+            const pick = document.getElementById(pickId);
+            const custom = document.getElementById(customId);
+            if (!pick || !custom) return;
+            custom.value = '';
+        }
+
+        function clearForceArrivePreset(pickId, customId) {
+            const pick = document.getElementById(pickId);
+            const custom = document.getElementById(customId);
+            if (!pick || !custom) return;
+            if (custom.value) pick.value = '';
+        }
+
+        function getForceArriveValue(chkId, pickId, customId) {
+            const chk = document.getElementById(chkId);
+            if (!chk || !chk.checked) return '';
+            const pick = document.getElementById(pickId);
+            const custom = document.getElementById(customId);
+            const v = custom && custom.value.trim() ? custom.value.trim() : (pick ? pick.value : '');
+            return v;
         }
 
         function submitTemp() {
@@ -5177,6 +5608,7 @@
                 contact: document.getElementById('tContact').value,
                 phone: document.getElementById('tPhone').value,
                 timeSlot: document.getElementById('tTimeSlot').value,
+                specifiedArrive: getForceArriveValue('tForceArrive', 'tForceArrivePick', 'tForceArriveCustom'),
                 size: document.getElementById('tSize').value,
                 boxes: document.getElementById('tBoxes').value,
                 notes: document.getElementById('tNotes').value,
@@ -5226,7 +5658,7 @@
                         }, 500);
                     }, 1000);
                 })
-                .adminAddTempTask(data);
+                .adminAddTempTask(data, ATOKEN());
         }
 
         function switchTab(t) {
@@ -5338,6 +5770,12 @@
 
         // V11.12: Toast 通知 (非阻斷式提示)
         function showToast(msg) {
+            // V41: 後端任何回傳含 AUTH_REQUIRED 的訊息 → 自動回到登入畫面 (避免每個呼叫點各自處理)
+            if (typeof handleAuthError === 'function' && String(msg || '').indexOf('AUTH_') !== -1 && !window.__authHandling) {
+                window.__authHandling = true;
+                setTimeout(() => { window.__authHandling = false; }, 1500);
+                if (String(msg).indexOf('AUTH_REQUIRED') !== -1) { handleAuthError(msg); return; }
+            }
             const t = document.getElementById('toast');
             if (!t) { alert(msg); return; }
             t.innerText = msg;
@@ -5520,7 +5958,7 @@
                 google.script.run.withSuccessHandler(() => {
                     pending--;
                     if (pending === 0) { showToast('✅ AI 批次指派完成！'); setTimeout(refreshData, 1000); }
-                }).adminDispatchTasks(tasksData, car);
+                }).adminDispatchTasks(tasksData, car, ATOKEN());
             });
         }
 
@@ -5538,7 +5976,7 @@
             }).withFailureHandler(err => {
                 setLoading(false);
                 showToast('❌ 操作失敗: ' + err.message);
-            }).adminResetAllAssignments();
+            }).adminResetAllAssignments(ATOKEN());
         }
         // AI OCR 辨識流程 (支援多檔與拖拉)
         let ocrQueue = [];
@@ -5595,8 +6033,12 @@
             startAiScanOverlay(ocrQueue.length);
 
             updateBatchBtnStatus();
-            processNextInQueue();
+            // V41 加速：同時跑 3 條辨識工作線 (每張圖各自一趟 Vision API，彼此獨立)
+            for (let w = 0; w < OCR_CONCURRENCY; w++) processNextInQueue();
         }
+
+        const OCR_CONCURRENCY = 3;
+        let ocrInFlight = 0;
 
         function updateBatchBtnStatus() {
             const btn = document.getElementById('batchStartBtn');
@@ -5654,14 +6096,14 @@
 
         function processNextInQueue() {
             if (ocrQueue.length === 0) {
-                finishAiScanOverlay(); // V35.2: 全部完成
-                updateBatchBtnStatus();
+                if (ocrInFlight === 0) { finishAiScanOverlay(); updateBatchBtnStatus(); } // 所有工作線都收工才算完成
                 return;
             }
 
             // 計算目前是第幾張 (基於總數 - 剩餘)
             const currentIdx = aiScanTotal - ocrQueue.length;
             const file = ocrQueue.shift();
+            ocrInFlight++;
             updateBatchBtnStatus();
 
             const reader = new FileReader();
@@ -5697,16 +6139,17 @@
                                 alert("❌ 辨識失敗 (" + file.name + "): " + res.error);
                                 markAiScanDone(currentIdx);
                             }
-                            // 稍微延遲一點點讓動畫跑完，然後處理下一張
-                            setTimeout(processNextInQueue, 800);
+                            ocrInFlight--;
+                            setTimeout(processNextInQueue, 120); // V41: 舊版硬等 800ms
                         })
                         .withFailureHandler(err => {
                             console.error("Backend Error: " + err.message);
                             alert("❌ 伺服器通訊錯誤 (" + file.name + "): " + err.message);
                             markAiScanDone(currentIdx);
-                            setTimeout(processNextInQueue, 800);
+                            ocrInFlight--;
+                            setTimeout(processNextInQueue, 120);
                         })
-                        .processVisionOcr_Backend(b64, "漢樺");
+                        .processVisionOcr_Backend(b64, "漢樺", ATOKEN());
                 };
                 img.src = evt.target.result;
             };
@@ -5763,6 +6206,17 @@
                         <span style="font-size:10px; margin-left:2px; color:#64748b;">KG</span>
                     </div>
                     <input type="text" id="${rowId}-eta" value="${escapeHTML(data.etaTime)}" style="width:100%; padding:6px; font-size:12px;" placeholder="時間">
+                    <!-- V40：指定到貨時間-強制 -->
+                    <div style="margin-top:6px; padding:6px 8px; border:1px solid rgba(239,68,68,0.4); border-radius:6px; background:rgba(239,68,68,0.06);">
+                        <label title="指定到貨時間，加收300元" style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#f87171; font-weight:900; font-size:12px; white-space:nowrap;">
+                            <input type="checkbox" id="${rowId}-forceArrive" style="width:16px; height:16px; accent-color:#ef4444; cursor:pointer; flex-shrink:0;" onchange="toggleOcrForceArrive('${rowId}')">
+                            指定費300
+                        </label>
+                        <div id="${rowId}-forceArriveWrap" style="display:none; margin-top:6px; flex-direction:column; gap:4px;">
+                            <select id="${rowId}-forcePick" style="width:100%; padding:4px 6px; background:#0f172a; border:1px solid #ef4444; border-radius:6px; color:#f87171; font-size:12px; font-weight:900;" onchange="syncForceArrivePreset('${rowId}-forcePick','${rowId}-forceCustom')"></select>
+                            <input type="text" id="${rowId}-forceCustom" placeholder="或手動 例：10:30~11:00" style="width:100%; padding:4px 6px; background:#0f172a; border:1px solid #ef4444; border-radius:6px; color:#f87171; font-size:12px;" oninput="clearForceArrivePreset('${rowId}-forcePick','${rowId}-forceCustom')">
+                        </div>
+                    </div>
                 </td>
                 <td style="padding:10px;">
                     <input type="text" id="${rowId}-size" value="${escapeHTML(data.size || '')}" 
@@ -5793,36 +6247,45 @@
                     </div>
                 </td>
                 <td style="padding:10px; text-align:right;" data-fullb64="${fullB64}">
-                    <div style="display:flex; flex-direction:column; gap:4px; width:96px; margin-left:auto;">
-                        <!-- 第一排 -->
+                    <div style="display:flex; flex-direction:column; gap:6px; width:112px; margin-left:auto;">
+                        <!-- 第一排：主要動作 -->
                         <div style="display:flex; gap:4px; width:100%;">
                             <button class="btn" id="${rowId}-submitBtn"
-                                style="flex:2; background:linear-gradient(135deg, #0ea5e9, #0284c7); color:white; padding:8px 0; font-size:13px; font-weight:bold; border-radius:6px; box-shadow:0 2px 6px rgba(14,165,233,0.2); transition: all 0.3s ease;" 
+                                style="flex:2; background:linear-gradient(135deg, #0ea5e9, #0284c7); color:white; padding:8px 0; font-size:13px; font-weight:bold; border-radius:6px; box-shadow:0 2px 6px rgba(14,165,233,0.2); transition: all 0.3s ease;"
                                 onclick="confirmRowAiOcr('${rowId}', this.closest('td').dataset.fullb64)">建立訂單</button>
                             <button class="btn" id="${rowId}-wrapBtn"
-                                style="flex:1; background:transparent; border:1.5px solid #22c55e; color:#22c55e; padding:8px 0; font-size:13px; font-weight:bold; border-radius:6px; cursor:pointer; transition: all 0.2s;" 
+                                style="flex:1; background:transparent; border:1.5px solid #22c55e; color:#22c55e; padding:8px 0; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; transition: all 0.2s;"
                                 onclick="toggleWrapModeUI('${rowId}')" data-active="false">膠膜</button>
                         </div>
-                        
-                        <!-- 第二排：移除 業務 原文 -->
+
+                        <!-- 第二排：次要動作 -->
                         <div style="display:flex; gap:3px; width:100%;">
                             <button class="btn" title="移除"
-                                style="flex:1; background:#475569; color:#f1f5f9; padding:6px 0; font-size:11px; border-radius:4px;" 
+                                style="flex:1; background:#475569; color:#f1f5f9; padding:6px 0; font-size:11px; border-radius:4px;"
                                 onclick="deleteRowAiOcr('${rowId}')">移除</button>
-                                
+
                             <button class="btn" id="${rowId}-salesBtn" title="業務"
-                                style="flex:1; background:#334155; color:#94a3b8; padding:6px 0; font-size:11px; border-radius:4px; transition:all 0.2s; border:1px solid transparent;" 
+                                style="flex:1; background:#334155; color:#94a3b8; padding:6px 0; font-size:11px; border-radius:4px; transition:all 0.2s; border:1px solid transparent;"
                                 onclick="toggleSalesModeUI('${rowId}')" data-active="false">業務</button>
-                                
+
                             <button class="btn" title="原文"
-                                style="flex:1; background:#1e3a5f; color:#93c5fd; padding:6px 0; font-size:11px; border-radius:4px;" 
+                                style="flex:1; background:#1e3a5f; color:#93c5fd; padding:6px 0; font-size:11px; border-radius:4px;"
                                 onclick="showRawOcrText('${rowId}')">原文</button>
+                        </div>
+
+                        <!-- V39.25: 第三排：貨運行集貨(堆高機下貨/加工廠倉庫)，運費會自動打5折，字樣拿掉改放title -->
+                        <div style="display:flex; width:100%; padding-top:2px; border-top:1px dashed rgba(249,115,22,0.25);">
+                            <button class="btn" id="${rowId}-carrierBtn" title="貨運行/倉庫集貨：全程堆高機下貨，司機不用搬，運費自動打5折"
+                                style="flex:1; background:transparent; border:1.5px solid #f97316; color:#f97316; padding:6px 0; font-size:11px; font-weight:bold; border-radius:4px; cursor:pointer; transition:all 0.2s; white-space:nowrap;"
+                                onclick="toggleCarrierModeUI('${rowId}')" data-active="false">☐ 貨運行</button>
                         </div>
                     </div>
                 </td>
             `;
             document.getElementById('aiOcrTbody').appendChild(tr);
             setWrapModeUI(rowId, String(data.wrapSeal || '').indexOf('封') !== -1);
+            // V39.28: 地址命中既有貨運行/加工廠清單時，「貨運行集貨」按鈕預設打勾，小姐不用每次手動勾
+            setCarrierModeUI(rowId, !!data.suggestCarrier);
 
             // 🤖 V13.1 智慧輔助：若 OCR 偵測客戶名有「樣品」，自動預設啟用「業務」按鈕狀態
             if (data.customerName && String(data.customerName).indexOf("樣品") !== -1) {
@@ -6002,6 +6465,42 @@
             return (btn && btn.dataset.active === 'true') ? '封' : '';
         }
 
+        // V39.23: 貨運行集貨(堆高機下貨) 切換 - 每天固定送貨、全程堆高機下貨的貨運行/倉庫，運費打5折
+        // V39.28: 拆成 set/toggle 兩個函式，讓「已知貨運行地址」可以在建立卡片時直接預設打勾
+        function setCarrierModeUI(rowId, active) {
+            const btn = document.getElementById(rowId + '-carrierBtn');
+            if (!btn) return;
+            if (active) {
+                btn.dataset.active = 'true';
+                btn.style.background = 'linear-gradient(135deg, #059669, #10b981)';
+                btn.style.border = '1.5px solid #10b981';
+                btn.style.color = '#fff';
+                btn.style.boxShadow = '0 0 10px rgba(16,185,129,0.45)';
+                btn.textContent = '✅ 貨運行'; // V39.34: 橘色打勾看不清楚，改用綠色勾選才夠明顯
+            } else {
+                btn.dataset.active = 'false';
+                btn.style.background = 'transparent';
+                btn.style.border = '1.5px solid #f97316';
+                btn.style.color = '#f97316';
+                btn.style.boxShadow = 'none';
+                btn.textContent = '☐ 貨運行';
+            }
+        }
+        function toggleCarrierModeUI(rowId) {
+            const btn = document.getElementById(rowId + '-carrierBtn');
+            if (!btn) return;
+            setCarrierModeUI(rowId, btn.dataset.active !== 'true');
+        }
+
+        function getCarrierValues(rowId) {
+            const btn = document.getElementById(rowId + '-carrierBtn');
+            const active = btn && btn.dataset.active === 'true';
+            return {
+                carrierFlag: active ? '貨運行集貨' : '',
+                carrierDiscount: active ? 0.5 : 1
+            };
+        }
+
         function getRowItems(rowId) {
             const itemDivs = document.querySelectorAll(`#${rowId}-items .ocr-item-row`);
             const updatedItems = [];
@@ -6054,12 +6553,14 @@
                 size: document.getElementById(rowId + '-size').value,
                 boxes: document.getElementById(rowId + '-boxes').value,
                 etaTime: document.getElementById(rowId + '-eta').value,
+                specifiedArrive: getForceArriveValue(rowId + '-forceArrive', rowId + '-forcePick', rowId + '-forceCustom'),
                 note: finalNote,
                 notes: finalNote,
                 wrapSeal: getWrapSealValue(rowId),
                 items: getRowItems(rowId), // 帶入動態修改後的明細
                 isSalesDelivery: document.getElementById(rowId + '-salesBtn').dataset.active === 'true', // V12: 改由按鈕 dataset 狀態抓取
-                uniqueKey: document.getElementById(rowId + '-branch').value + "-" + document.getElementById(rowId + '-order').value
+                uniqueKey: document.getElementById(rowId + '-branch').value + "-" + document.getElementById(rowId + '-order').value,
+                ...getCarrierValues(rowId) // V39.23: 貨運行集貨(打5折) carrierFlag/carrierDiscount
             };
 
             if (!data.orderId || !data.customerName || !data.address) {
@@ -6078,15 +6579,12 @@
                 btn.style.background = "#475569";
             }
 
-            // V36.6: 先上傳圖片到 Drive (不再卡死整個螢幕遮罩，改在按鈕顯示)
-            const base64Img = fullB64;
+            // V41 加速：縮圖改由後端在同一趟 upsert 內上傳 (省掉一次 GAS 往返)
+            data.thumbnailB64 = fullB64 ? fullB64.split(',')[1] : "";
+            if (btn) btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff;"></span> 寫入中';
 
-            google.script.run
-                .withSuccessHandler(thumbnailUrl => {
-                    if (btn) btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff;"></span> 寫入中';
-
-                    // 呼叫後端存檔
-                    data.thumbnail = (thumbnailUrl && !thumbnailUrl.includes("Error")) ? thumbnailUrl : "";
+            {
+                {
                     google.script.run
                         .withSuccessHandler(res => {
                             if (res.success) {
@@ -6117,21 +6615,18 @@
                             }
                             alert("❌ 系統連線異常: " + err);
                         })
-                        .upsertOrderFromOcr_V2(data);
-                })
-                .withFailureHandler(err => {
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = originalHTML;
-                        btn.style.background = originalBg;
-                    }
-                    alert("❌ 圖片上傳連線失敗: " + err);
-                })
-                .uploadFile({
-                    contents: base64Img ? base64Img.split(',')[1] : "",
-                    mimeType: "image/jpeg",
-                    folderName: "OCR_Thumbnails"
-                });
+                        .upsertOrderFromOcr_V2(data, ATOKEN());
+                }
+            }
+        }
+
+        function toggleOcrForceArrive(rowId) {
+            const chk = document.getElementById(rowId + '-forceArrive');
+            const wrap = document.getElementById(rowId + '-forceArriveWrap');
+            if (!chk || !wrap) return;
+            wrap.style.display = chk.checked ? 'flex' : 'none';
+            wrap.style.flexDirection = 'column';
+            if (chk.checked) fillForceArrivePreset(rowId + '-forcePick');
         }
 
         async function confirmAllAiOcr() {
@@ -6152,7 +6647,10 @@
             let currentCount = 0;
             const total = rows.length;
 
-            for (const row of rows) {
+            // V41 加速：2 筆並行 (後端寫入有鎖會排隊，但縮圖上傳與地理編碼在鎖外可重疊)
+            const BUILD_CONCURRENCY = 2;
+            const queue = rows.slice();
+            const processOneRow = async (row) => {
                 const rowId = row.id;
                 let finalNote = document.getElementById(rowId + '-note').value || "";
 
@@ -6171,12 +6669,14 @@
                     size: document.getElementById(rowId + '-size').value,
                     boxes: document.getElementById(rowId + '-boxes').value,
                     etaTime: document.getElementById(rowId + '-eta').value,
+                    specifiedArrive: getForceArriveValue(rowId + '-forceArrive', rowId + '-forcePick', rowId + '-forceCustom'),
                     note: finalNote,
                     notes: finalNote,
                     wrapSeal: getWrapSealValue(rowId),
                     items: getRowItems(rowId), // 帶入動態修改後的明細
                     isSalesDelivery: document.getElementById(rowId + '-salesBtn').dataset.active === 'true', // V12: 加入業務配送狀態
-                    uniqueKey: document.getElementById(rowId + '-branch').value + "-" + document.getElementById(rowId + '-order').value
+                    uniqueKey: document.getElementById(rowId + '-branch').value + "-" + document.getElementById(rowId + '-order').value,
+                    ...getCarrierValues(rowId) // V39.23: 貨運行集貨(打5折) carrierFlag/carrierDiscount
                 };
 
                 // 移除舊的錯誤樣式
@@ -6186,28 +6686,14 @@
                     currentCount++;
                     batchBtn.innerHTML = `<span class="loading-spinner"></span> 正在批次建立中 (${currentCount}/${total})`;
 
-                    // V36.6: 批次處理時也支援縮圖上傳
+                    // V36.6 / V41: 縮圖交給後端在同一趟 upsert 內上傳
                     const fCell = row.cells[row.cells.length - 1];
                     const fullB64 = fCell ? (fCell.dataset.fullb64 || "") : "";
-
-                    if (fullB64) {
-                        const thumbnailUrl = await new Promise((resolve, reject) => {
-                            google.script.run
-                                .withSuccessHandler(resolve)
-                                .withFailureHandler(reject)
-                                .uploadFile({
-                                    contents: fullB64.split(',')[1],
-                                    mimeType: "image/jpeg",
-                                    folderName: "OCR_Thumbnails"
-                                });
-                        });
-                        data.thumbnail = (thumbnailUrl && !thumbnailUrl.includes("Error")) ? thumbnailUrl : "";
-                    } else {
-                        data.thumbnail = "";
-                    }
+                    data.thumbnailB64 = fullB64 ? fullB64.split(',')[1] : "";
+                    data.thumbnail = "";
 
                     const res = await new Promise((resolve, reject) => {
-                        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).upsertOrderFromOcr_V2(data);
+                        google.script.run.withSuccessHandler(resolve).withFailureHandler(reject).upsertOrderFromOcr_V2(data, ATOKEN());
                     });
 
                     if (res.success) {
@@ -6226,7 +6712,9 @@
                     failCount++;
                     row.classList.add('ocr-row-error');
                 }
-            }
+            };
+            const worker = async () => { while (queue.length) { await processOneRow(queue.shift()); } };
+            await Promise.all(Array.from({ length: Math.min(BUILD_CONCURRENCY, rows.length) }, worker));
 
             // 🎯 完工動畫
             batchBtn.style.background = "linear-gradient(135deg, #059669, #10b981)";
@@ -6277,7 +6765,7 @@
         // V2631.17 系統設定 (Settings API - 全面升級)
         // ==========================
         let currentSettingTab = '';
-        let sysAuthPassed = true;
+        let sysAuthPassed = false;
         let settingHeaders = [];
         let settingRawData = [];
 
@@ -6361,17 +6849,10 @@
         }
 
         function unlockSettingTab() {
-            const pwd = document.getElementById('settingPwdInput').value;
-            if (!pwd) { document.getElementById('settingPwdInput').focus(); return; }
-            setLoading(true, '驗證中...');
-            google.script.run.withSuccessHandler(() => {
-                setLoading(false);
-                sysAuthPassed = true;
-                switchSettingTab(currentSettingTab);
-            }).withFailureHandler(err => {
-                setLoading(false);
-                showToast('❌ ' + err.message);
-            }).sysVerifyPwd(pwd);
+            // V41: 已持有 admin token 即視為通過 (白名單分頁不再另設第二道密碼)
+            if (!ATOKEN()) { showLoginOverlay(); return; }
+            sysAuthPassed = true;
+            switchSettingTab(currentSettingTab);
         }
 
         function refreshCurrentSettingTab() {
@@ -6402,20 +6883,22 @@
             };
 
             const runner = google.script.run.withSuccessHandler(cb).withFailureHandler(fail);
-            const pwd = document.getElementById('settingPwdInput').value || '54088';
+            const tok = ATOKEN();
 
             switch (currentSettingTab) {
-                case 'whitelist': runner.sysGetWhitelist(pwd); break;
-                case 'vehicles': runner.sysGetVehicles(); break;
+                case 'whitelist': runner.sysGetWhitelist(tok); break;
+                case 'vehicles': runner.sysGetVehicles(tok); break;
                 case 'logs': runner.sysGetDeliveryLog(
                     document.getElementById('logsCarSelect').value,
-                    document.getElementById('logsDriverSelect').value
+                    document.getElementById('logsDriverSelect').value,
+                    tok
                 ); break;
                 case 'itinerary': runner.sysGetItinerary(
                     document.getElementById('itinerary-car-select').value,
-                    document.getElementById('itinerary-driver-select').value
+                    document.getElementById('itinerary-driver-select').value,
+                    tok
                 ); break;
-                case 'maintenance': runner.sysGetMaintenance(document.getElementById('maintCarSelect').value); break;
+                case 'maintenance': runner.sysGetMaintenance(document.getElementById('maintCarSelect').value, tok); break;
             }
         }
 
@@ -6579,7 +7062,7 @@
             if (checked.length === 0) return showToast('⚠️ 請先勾選要刪除的列');
             if (!confirm(`確定要刪除選取的 ${checked.length} 筆資料嗎？此操作不可復原！`)) return;
             const rowIdxs = [...checked].map(cb => parseInt(cb.closest('tr').dataset.rowidx));
-            const pwd = document.getElementById('settingPwdInput').value || '54088';
+            const pwd = ATOKEN(); // V41: 傳 admin token
             setLoading(true, '刪除中...');
             google.script.run.withSuccessHandler(res => {
                 setLoading(false);
@@ -6620,7 +7103,7 @@
                 newRows.push(rowArr);
             });
 
-            const pwd = document.getElementById('settingPwdInput').value || '54088';
+            const pwd = ATOKEN(); // V41: 傳 admin token
             setLoading(true, '儲存中...');
             google.script.run.withSuccessHandler(res => {
                 setLoading(false);
@@ -6712,7 +7195,7 @@
                 return showToast('⚠️ 請至少輸入里程或勾選保養項目');
             }
 
-            const pwd = document.getElementById('settingPwdInput').value || '54088';
+            const pwd = ATOKEN(); // V41: 傳 admin token
             setLoading(true, '儲存保養紀錄中...');
             google.script.run.withSuccessHandler(res => {
                 setLoading(false);

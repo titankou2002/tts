@@ -8,7 +8,8 @@
  * 此函式只需在 GAS 後台執行一次，之後即可正常使用。
  * 同時清除英文暫時分頁「工作表6」。
  */
-function sysInitMaintSheet() {
+function sysInitMaintSheet(e) {
+    _requireSystemContext_(e);
     var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID);
 
     // 刪除英文暫時分頁（如果存在）
@@ -59,7 +60,8 @@ function sysInitMaintSheet() {
  * 一次性初始化函式：建立「修改紀錄」分頁並填入英文標題列（方便識別）。
  * 此函式只需在 GAS 後台執行一次。
  */
-function sysInitAuditSheet() {
+function sysInitAuditSheet(e) {
+    _requireSystemContext_(e);
     var ss = SpreadsheetApp.openById(V11_PROD_CONFIG.SS_ID);
 
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_AUDIT);
@@ -93,10 +95,7 @@ function sysInitAuditSheet() {
     return '✅ 修改紀錄分頁建立完成！共建立 ' + headers.length + ' 個欄位標題。';
 }
 
-function sysVerifyPwd(pwd) {
-    if (String(pwd).trim() !== '54088') throw new Error('密碼錯誤，拒絕存取');
-    return true;
-}
+// sysVerifyPwd 已統一移至 Auth.js（以 ADMIN_PASSWORD 換發 admin token）；本檔案各函式改以 token 驗證。
 
 /**
  * 從資料表（由舊到新排列）中，從底部往上找指定車號或司機最新一筆的日期。
@@ -120,8 +119,8 @@ function _findLatestDate(data, keyColIdx, dateColIdx, targetKey) {
 // ──────────────────────────────
 // 1. 系統白名單 (需密碼)
 // ──────────────────────────────
-function sysGetWhitelist(pwd) {
-    sysVerifyPwd(pwd);
+function sysGetWhitelist(token) {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_WHITELIST);
     if (!sheet) return { headers: [], data: [] };
@@ -132,7 +131,8 @@ function sysGetWhitelist(pwd) {
 // ──────────────────────────────
 // 2. 車輛管理 (全部)
 // ──────────────────────────────
-function sysGetVehicles() {
+function sysGetVehicles(token) {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_VEHICLE);
     if (!sheet) return { headers: [], data: [] };
@@ -143,7 +143,8 @@ function sysGetVehicles() {
 // ──────────────────────────────
 // 3. 送貨日誌 (依「車牌號碼」或「司機」篩選，近 30 天)
 // ──────────────────────────────
-function sysGetDeliveryLog(carNo, driverName) {
+function sysGetDeliveryLog(carNo, driverName, token) {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
     if (!sheet) return { headers: [], data: [] };
@@ -190,7 +191,8 @@ function sysGetDeliveryLog(carNo, driverName) {
 // ──────────────────────────────
 // 4. 每日行程表 (依「車牌號碼」或「司機」篩選，抓最新一天 + 行程足跡)
 // ──────────────────────────────
-function sysGetItinerary(carNo, driverName) {
+function sysGetItinerary(carNo, driverName, token) {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     if (!sheet) return { headers: [], data: [], footprint: [] };
@@ -306,7 +308,8 @@ function _extractRoad(addr) {
 // ──────────────────────────────
 // 5. 車輛保養 (依「車牌號碼」篩選，所有歷史，由新到舊)
 // ──────────────────────────────
-function sysGetMaintenance(carNo) {
+function sysGetMaintenance(carNo, token) {
+    _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_MAINT);
     if (!sheet) return { headers: [], data: [] };
@@ -329,8 +332,9 @@ function sysGetMaintenance(carNo) {
 // ──────────────────────────────
 // 6. 儲存修改（白名單 / 車輛管理 / 日誌 / 行程）+ Audit Trail
 // ──────────────────────────────
-function sysSaveEdits(tabKey, updates, newRows, pwd) {
-    sysVerifyPwd(pwd);
+function sysSaveEdits(tabKey, updates, newRows, token) {
+    _requireAdmin_(token);
+    if (tabKey === 'whitelist') { try { CacheService.getScriptCache().remove('deactivated_drivers_v1'); } catch (e) { } } // 停用名單即時生效
     var ss = getSS_V11();
     var sheetName = _getSheetNameByTab(tabKey);
     var sheet = ss.getSheetByName(sheetName);
@@ -360,8 +364,10 @@ function sysSaveEdits(tabKey, updates, newRows, pwd) {
 // ──────────────────────────────
 // 7. 刪除勾選列 + Audit Trail
 // ──────────────────────────────
-function sysDeleteRows(tabKey, rowIdxs, pwd) {
-    sysVerifyPwd(pwd);
+function sysDeleteRows(tabKey, rowIdxs, token) {
+    _requireAdmin_(token);
+    if (!Array.isArray(rowIdxs) || !rowIdxs.length) return { ok: false, deleted: 0 };
+    rowIdxs = rowIdxs.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return !isNaN(n) && n >= 0; });
     var ss = getSS_V11();
     var sheetName = _getSheetNameByTab(tabKey);
     var sheet = ss.getSheetByName(sheetName);
@@ -416,11 +422,13 @@ function _getSheetNameByTab(tabKey) {
         'itinerary': V11_PROD_CONFIG.SHEET_SCHEDULE,
         'maintenance': V11_PROD_CONFIG.SHEET_MAINT
     };
-    return map[tabKey] || tabKey;
+    if (!map.hasOwnProperty(tabKey)) throw new Error('不允許的分頁鍵: ' + tabKey);
+    return map[tabKey];
 }
 
-function testTrace() {
+function testTrace(e) {
     try {
+        _requireSystemContext_(e);
         var ss = getSS_V11();
         var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
         var data = sheet.getDataRange().getValues();

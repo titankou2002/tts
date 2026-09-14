@@ -1,5 +1,6 @@
-function debugGetSalesMap() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+function debugGetSalesMap(e) {
+  _requireSystemContext_(e);
+  var ss = getSS_V11();
   var salesMap = {};
   try {
     var sheetW = ss.getSheetByName("系統白名單");
@@ -28,4 +29,15 @@ function debugGetSalesMap() {
   } catch(e) { Logger.log("Error: " + e); }
   Logger.log("FINAL MAP: " + JSON.stringify(salesMap));
   return salesMap;
+}
+
+function testFreightEngineCalculation(e) {
+  _requireSystemContext_(e);
+  var address1 = "桃園市桃園區中正路1號"; // Zone 0, No remote, weight 120kg
+  var res1 = FreightEngine.calculateFreight(address1, 120, { isTimedDeliver: false });
+  Logger.log("Test 1 (桃園市區): " + JSON.stringify(res1));
+
+  var address2 = "宜蘭縣宜蘭市中山路二段"; // Zone 8, Remote x1.5, weight 450kg, 指定送貨+搬運
+  var res2 = FreightEngine.calculateFreight(address2, 450, { isTimedDeliver: true, isHeavyCarry: true });
+  Logger.log("Test 2 (宜蘭偏遠+附加服務): " + JSON.stringify(res2));
 }
