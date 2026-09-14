@@ -951,7 +951,7 @@
             const chip = k => `<span class="chip ${freightCond === k ? 'on' : ''}" onclick="setFreightCond('${k}')" style="${COND_COLOR[k] && freightCond !== k ? 'color:' + COND_COLOR[k] : ''}">${k}<b>${cnt[k] || 0}</b></span>`;
             document.getElementById('chips-kind').innerHTML = ['一般', '退貨', '貨運行', '偏遠'].map(chip).join('');
             document.getElementById('chips-cond').innerHTML = ['久候', '搬運', '指定時間'].map(chip).join('');
-            setText('stat-cond-count', base.filter(o => condsOf(o).length).length);
+            setText('stat-cond-count', base.filter(o => condsOf(o).some(c => c !== '偏遠')).length);
 
             const byCust = {};
             orders.forEach(o => { const n = o.customer || '(無名)'; byCust[n] = (byCust[n] || 0) + feeOf(o); });
