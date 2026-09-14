@@ -327,8 +327,8 @@
                 <span style="color:var(--text-dim); font-weight:600; margin-left:14px;">類型</span>
                 <div id="freightTypeBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
                     <button class="btn-branch active" data-type="全部" onclick="setFreightType('全部')">全部</button>
-                    <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般</button>
-                    <button class="btn-branch" data-type="退貨" onclick="setFreightType('退貨')" style="color:#f87171">退貨</button>
+                    <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般銷貨</button>
+                    <button class="btn-branch" data-type="退貨" onclick="setFreightType('退貨')" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.5); font-weight:700;">📦 退貨單</button>
                     <button class="btn-branch" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
                 </div>
                 <span style="flex:1"></span>
@@ -343,8 +343,14 @@
 
             <div class="results-table-container">
                 <div style="background: rgba(0,0,0,0.2); padding: 12px 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="font-weight: 700; font-size: 14px; color: var(--accent);"><i class="fas fa-file-invoice-dollar"></i> 每一筆運費明細</div>
-                    <div style="font-size: 12px; color: var(--text-dim);">「核定運費」欄可直接修改，按 Enter 或點別處即自動儲存。</div>
+                    <div style="font-weight: 700; font-size: 14px; color: var(--accent); display:flex; align-items:center; gap:12px;">
+                        <span><i class="fas fa-file-invoice-dollar"></i> 每一筆運費明細</span>
+                        <div style="display:inline-flex; border:1px solid var(--glass-border); border-radius:6px; overflow:hidden; background:#0f172a;">
+                            <button id="btnSortDesc" onclick="setFreightSortDir(-1)" style="background:rgba(56,189,248,0.25); color:var(--accent); border:none; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="降序：最新 / 金額最高 在上面">降序 ▼</button>
+                            <button id="btnSortAsc" onclick="setFreightSortDir(1)" style="background:transparent; color:var(--text-dim); border:none; border-left:1px solid var(--glass-border); padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="升序：最舊 / 金額最低 在上面">升序 ▲</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-dim);">※ 點擊欄位標頭可切換排序項目；「核定運費」欄可直接修改儲存。</div>
                 </div>
                 <div class="table-scroll">
                 <table id="freight-table">
@@ -901,7 +907,7 @@
             setText('stat-fee-ratio', fuelAmt ? (finalFreightTotal/fuelAmt).toFixed(1)+'x' : '--');
         }
 
-        // V41.40: 運費明細 類型篩選 + 欄位排序 (點表頭切換正序/倒序)
+        // V41.40: 運費明細 類型篩選 + 欄位排序 (標題旁 降序/升序 按鈕 + 表頭點擊)
         let freightType = '全部';
         let freightSort = { key: 'date', dir: -1 };
         function setFreightType(t) {
@@ -909,12 +915,31 @@
             document.querySelectorAll('#freightTypeBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.type === t));
             updateDashboard();
         }
+        // 注意：__lastFreightSets 是 let 宣告，不會掛在 window 上；之前寫成 window.__lastFreightSets 永遠 undefined → 按了沒反應
+        function setFreightSortDir(dir) {
+            freightSort.dir = dir;
+            syncSortDirBtns();
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
+        }
+        function syncSortDirBtns() {
+            const btnDesc = document.getElementById('btnSortDesc');
+            const btnAsc = document.getElementById('btnSortAsc');
+            if (btnDesc) {
+                btnDesc.style.background = freightSort.dir < 0 ? 'rgba(56,189,248,0.25)' : 'transparent';
+                btnDesc.style.color = freightSort.dir < 0 ? 'var(--accent)' : 'var(--text-dim)';
+            }
+            if (btnAsc) {
+                btnAsc.style.background = freightSort.dir > 0 ? 'rgba(56,189,248,0.25)' : 'transparent';
+                btnAsc.style.color = freightSort.dir > 0 ? 'var(--accent)' : 'var(--text-dim)';
+            }
+        }
         function freightSortBy(k) {
             if (freightSort.key === k) freightSort.dir = -freightSort.dir; else freightSort = { key: k, dir: (k === 'date' ? -1 : 1) };
-            renderFreight(__lastFreightSets.rawOrders, __lastFreightSets.schedule);
+            syncSortDirBtns();
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
         }
         function freightTypeOf(o) {
-            if (o.docType === '退貨') return '退貨';
+            if (o.docType === '退貨' || (o.status && o.status.indexOf('退貨') !== -1) || (o.shippingType && o.shippingType.indexOf('退貨') !== -1) || (o.customer && o.customer.indexOf('退貨') !== -1) || (o.returnReason && o.returnReason !== '')) return '退貨';
             if (o.docType === '樣品') return o.sampleTo === 'home' ? '樣品免費' : '樣品收費';
             return '銷貨';
         }
@@ -922,6 +947,8 @@
             const orders = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
             __lastFreightSets = { rawOrders, orders, schedule };
             renderFreightStats();
+            syncSortDirBtns();
+
             document.querySelectorAll('#freightHead th[data-k]').forEach(th => {
                 const on = th.dataset.k === freightSort.key;
                 th.classList.toggle('sorted', on);
@@ -953,6 +980,22 @@
                     ? (o.sampleTo === 'home' ? ' <span class="badge badge-warn" style="font-size:10px;" title="樣品送回公司：不計費">樣品免費</span>'
                                              : ' <span class="badge badge-info" style="font-size:10px;" title="樣品送到外面 (貨運行/加工廠/客戶)：照常計費">樣品收費</span>')
                     : (o.docType === '退貨' ? ' <span class="badge badge-danger" style="font-size:10px;">退貨</span>' : '');
+                const rawImg = o.thumbnail || o.signPhoto;
+                let fixUrl = '';
+                if (rawImg) {
+                    const u = String(rawImg).trim();
+                    const m = u.match(/[-\w]{25,}/);
+                    if (m && (u.includes('drive.google.com') || u.includes('docs.google.com'))) {
+                        fixUrl = 'https://lh3.googleusercontent.com/d/' + m[0];
+                    } else {
+                        fixUrl = u;
+                    }
+                }
+                // V41.41: 縮圖不另開欄位，單號本身就是連結 (有圖才可點，開大圖預覽)
+                const idCell = fixUrl
+                    ? `<a href="javascript:void(0)" onclick="showThumb('${escapeHTML(fixUrl)}')" title="點擊開啟銷貨單照片大圖" style="color:var(--accent); font-weight:700; text-decoration:underline dotted; text-underline-offset:3px;">${escapeHTML(o.id)} <i class="fas fa-image" style="font-size:10px; opacity:.7;"></i></a>`
+                    : `<span style="font-weight:700;">${escapeHTML(o.id)}</span>`;
+
                 const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}</span>`;
                 const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}"
                     style="width:76px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;"
@@ -960,7 +1003,7 @@
                 return `
                     <tr>
                         <td style="white-space:nowrap;">${o.date}</td>
-                        <td style="font-weight:700;">${escapeHTML(o.id)}</td>
+                        <td style="white-space:nowrap;">${idCell}</td>
                         <td>${branchTag(o.branch)}</td>
                         <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}</td>
                         <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg</span></td>

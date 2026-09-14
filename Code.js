@@ -732,18 +732,18 @@ function getWarRoomData_V11(force, targetDateStr, token) {
 function _clearDashboardCache_() {
   try {
     var c = CacheService.getScriptCache();
-    var meta = c.get('dashboard_stats_v3_meta');
+    var meta = c.get('dashboard_stats_v4_meta');
     var cnt = meta ? (JSON.parse(meta).count || 0) : 0;
-    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v3_' + i);
-    c.remove('dashboard_stats_v3_meta');
+    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v4_' + i);
+    c.remove('dashboard_stats_v4_meta');
   } catch (e) { }
 }
 
 function getDashboardData(force, token) {
   _requireAdmin_(token);
   const cache = CacheService.getScriptCache();
-  // V41.13: 改用分段快取 (原本 95KB 上限幾乎每次都超過 → 等於沒有快取，每次開頁都重讀 3 張表)
-  const DASH_CACHE_KEY = 'dashboard_stats_v3';
+  // V41.13: 改用分段快取 (升級至 v4 以強制使舊快取失效)
+  const DASH_CACHE_KEY = 'dashboard_stats_v4';
   if (!force) {
     const cachedObj = readChunkedCacheJson_V11(cache, DASH_CACHE_KEY);
     if (cachedObj && cachedObj.success) return cachedObj;
@@ -890,13 +890,13 @@ function getDashboardData(force, token) {
         isOvertimeWait: isOvertimeWait,
         isHeavyCarry: isHeavyCarry,
         carrierFlag: carrierFlagVal,
-        carrierDiscount: carrierDiscountVal
+        carrierDiscount: carrierDiscountVal,
+        isRemoteVal: isRemoteVal
       });
 
-      // 如果試算表已經存有系統估計運費且不是 0，以試算表儲存的為優先；否則以計算引擎動態算的為準
-      var finalEst = fEst > 0 ? fEst : calcResult.estFee;
-      var finalDetail = fDetail ? fDetail : calcResult.detail;
-      var finalRemote = isRemoteVal ? isRemoteVal : calcResult.isRemote;
+      var finalEst = calcResult.estFee;
+      var finalDetail = calcResult.detail;
+      var finalRemote = calcResult.isRemote;
 
       var adjFee = tIdx.adjustedFee !== -1 ? parseFloat(getSafeVal(row, tIdx.adjustedFee)) || 0 : 0;
 

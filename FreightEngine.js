@@ -132,20 +132,36 @@ const FreightEngine = {
     var subTotal = baseFee;
 
     // 2. 判定偏遠地區加乘
+    // 規則：若是外包/指送貨運行 (carrierFlag 有值)，因司機僅送到本地集貨站，故不計偏遠費率
     var multiplier = 1.0;
     var matchedRemote = false;
     var matchedKeyword = "";
-    for (var j = 0; j < rates.remoteAreas.length; j++) {
-      var kws = rates.remoteAreas[j].keywords;
-      for (var k = 0; k < kws.length; k++) {
-        if (kws[k] && String(address || "").indexOf(kws[k]) !== -1) {
-          multiplier = rates.remoteAreas[j].multiplier;
-          matchedRemote = true;
-          matchedKeyword = kws[k];
-          break;
+    var isCarrierDelivery = (options.carrierFlag && String(options.carrierFlag).trim() !== "");
+
+    if (options.isRemoteVal && options.isRemoteVal === "否") {
+      // 儲存格明確覆寫為否
+      matchedRemote = false;
+      multiplier = 1.0;
+    } else if (options.isRemoteVal && options.isRemoteVal.indexOf("是") !== -1) {
+      // 儲存格明確覆寫為是
+      var mMatch = options.isRemoteVal.match(/[\d.]+/);
+      multiplier = mMatch ? (parseFloat(mMatch[0]) || 1.0) : 1.0;
+      matchedRemote = multiplier > 1.0;
+      matchedKeyword = "指定";
+    } else if (!isCarrierDelivery) {
+      // 儲存格空白，且非貨運行指送時，自動比對地址
+      for (var j = 0; j < rates.remoteAreas.length; j++) {
+        var kws = rates.remoteAreas[j].keywords;
+        for (var k = 0; k < kws.length; k++) {
+          if (kws[k] && String(address || "").indexOf(kws[k]) !== -1) {
+            multiplier = rates.remoteAreas[j].multiplier;
+            matchedRemote = true;
+            matchedKeyword = kws[k];
+            break;
+          }
         }
+        if (matchedRemote) break;
       }
-      if (matchedRemote) break;
     }
     
     if (multiplier > 1.0) {
