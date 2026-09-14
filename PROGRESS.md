@@ -314,3 +314,14 @@ RE612114 代號無法被主要邏輯識別 → OCR 輸出混亂
 - 沒推 Warehousetools.html、沒動 Code.js / Auth.js（@592 多的 Auth.js 不帶回）。
 - 部署同一支：`AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw` **@598**。
 - 請測：https://bigt.cc/tts/QC.html → 應為驗貨，不是庫位表。
+
+## 2026-09-14 晚 @601 V41.37（本機 Claude；取代另一台的 @596–598 作法）
+
+- 問題根因：`bigt.cc/tts/QC.html` 用 iframe 包 `exec?p=warehouse`，**Chrome 封鎖跨網域 iframe 內的 `window.prompt()`**，V41 驗貨頁的密碼 prompt 問不出來 → 黑畫面。另一台電腦的 @596「Bypass admin password」是把**整個後台**授權拿掉（Code.js 舊版、無 Auth.js），不採用。
+- 作法：後端維持 V41（@600 全部功能），只針對驗貨頁「略過密碼」：
+  - `Auth.js` 新增 `_requireWarehouse_` / `_issueWarehouseToken_`（role=warehouse，30 天）
+  - `Code.js` doGet 渲染 Warehouse 時把 token 塞進 `userInfo`
+  - `DispatchLogic.js` 5 個驗貨函式改用 `_requireWarehouse_`（admin token 仍可用）；其他 admin 功能不受影響
+  - `Warehouse.html` 讀 `WH_USERINFO.token`；備援改頁內登入框，**不可再用 prompt()**
+- 已驗證：QC.html 直接顯示待裝車清單，不問密碼。GAS @601；GitHub aa8fc0d。
+- `Warehouse.html` 檔名不變、`?p=warehouse` 網址不變。
