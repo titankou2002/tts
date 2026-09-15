@@ -143,7 +143,7 @@ function getDirectMapDefault_V20() {
         { key: "韋承", fullName: "韋承加工", address: "新北市鶯歌區高職西街118巷42-25號(韋承加工)", phone: "" },
         { key: "鈦度", fullName: "鈦度加工", address: "新北市五股區民義路一段282-1號(鈦度加工)", phone: "" },
         { key: "中誌", fullName: "中誌加工", address: "新北市五股區壟鉤路7-5號(中誌加工)", phone: "" },
-        { key: "棨新", fullName: "棨新陶瓷", address: "新北市鶯歌區高職西街118巷42之51號(棨新)", phone: "" },
+        { key: "棨新,啟新,檠新,棊新,紫新,祭新", fullName: "棨新陶瓷", address: "新北市鶯歌區高職西街118巷42之51號(棨新)", phone: "" },
         { key: "仟聖,任聖,仼聖,韌聖", fullName: "仟聖加工", address: "新北市鶯歌區西湖街279巷11號(仟聖加工)", phone: "" },
         { key: "甲等", fullName: "甲等加工", address: "新北市鶯歌區二甲路297號(甲等加工)", phone: "" },
         { key: "晨亦", fullName: "晨亦加工", address: "新北市鶯歌區西湖街279巷20-3號(晨亦)", phone: "" },
@@ -687,21 +687,40 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
     // 11. 指送/直送 自動取代 (V34.22: 在上半部搜尋)
     // V36.27+: 改為全域搜尋，支援單號在表格下方的單據 (如雅麗佳案例)
     const directMap = getDirectMap_V20();
-    var directMatch = text.match(/(?:指\s*送|直\s*送)\s*[:：\s]*\s*([^\s\x00-\x1f/]{2,100})/);
+    // V41.48: 抓「指送」後面的字，允許 OCR 把兩個字切開 (「棨 新」) → 容許 1 字 + 空白 + 後續字，再把後面誤吞的欄位標籤切掉
+    var directMatch = text.match(/(?:指\s*送|直\s*送)\s*[:：\s]*\s*([^\s\x00-\x1f/]{1,100}(?:\s+[^\s\x00-\x1f/]{1,100})?)/);
     var foundDirect = null;
     if (directMatch) {
-        var directText = directMatch[1].replace(/^[:：\s]+/, "").trim();
+        var directText = directMatch[1].replace(/^[:：\s]+/, "").replace(/\s*(項次|代號|名稱|數量|單位|備註|頁\s*次|業\s*務|S\/N).*$/i, "").replace(/\s+/g, "").trim();
         var directKeyword = directText.toUpperCase();
 
         // Step A: 先嘗試匹配預設清單 (加工廠/貨運行)
         for (let m of directMap) {
             var keys = m.key.split(/[,，、]/).map(k => String(k).trim().toUpperCase());
             for (let k of keys) {
-                if (directKeyword.includes(k) || k.includes(directKeyword)) {
+                if (k && (directKeyword.includes(k) || k.includes(directKeyword))) {
                     foundDirect = m; break;
                 }
             }
             if (foundDirect) break;
+        }
+        // Step A2: 近似比對 — 冷僻字 (棨、仟…) OCR 常認錯，兩字簡稱若只錯一個字、而且只有一家符合，就當它
+        if (!foundDirect && directKeyword.length >= 2) {
+            var cands = [];
+            directMap.forEach(function (m) {
+                m.key.split(/[,，、]/).map(function (k) { return String(k).trim().toUpperCase(); }).forEach(function (k) {
+                    if (k.length !== 2) return;
+                    for (var i = 0; i + 2 <= directKeyword.length; i++) {
+                        var w = directKeyword.substr(i, 2);
+                        if (w !== k && (w[0] === k[0] || w[1] === k[1])) { cands.push(m); return; }
+                    }
+                });
+            });
+            var uniq = cands.filter(function (m, i, a) { return a.indexOf(m) === i; });
+            if (uniq.length === 1) {
+                foundDirect = uniq[0];
+                result.note = (result.note ? result.note + " " : "") + "[指送辨識：「" + directText + "」≈" + foundDirect.fullName + "]";
+            }
         }
 
         if (foundDirect) {
