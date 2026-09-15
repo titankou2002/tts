@@ -909,6 +909,10 @@ function getDashboardData(force, token) {
 
       var carrierFlagVal = tIdx.carrierFlag !== -1 ? String(getSafeVal(row, tIdx.carrierFlag) || "").trim() : "";
       var carrierDiscountVal = tIdx.carrierDiscount !== -1 ? parseFloat(getSafeVal(row, tIdx.carrierDiscount)) : 1.0;
+      // V41.50: 指送到對照表上的貨運行/加工廠 (地址含「(財利貨運)」) 但沒標貨運行的舊單，讀取時一律補成貨運行集貨 5 折
+      if (!carrierFlagVal && typeof _isCarrierAddress_ === 'function' && _isCarrierAddress_(addressVal)) {
+        carrierFlagVal = "貨運行集貨"; carrierDiscountVal = 0.5;
+      }
       if (isNaN(carrierDiscountVal) || carrierDiscountVal <= 0) {
         carrierDiscountVal = 1.0;
       } else if (carrierDiscountVal > 1.0) {

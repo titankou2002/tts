@@ -113,6 +113,20 @@ function getDirectMap_V20() {
     try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(list), 600); } catch (e) { }
     return list;
 }
+/**
+ * V41.50: 地址是否為指送對照表上的貨運行/加工廠 (地址含「(財利貨運)」之類的全名、或整個地址相同)。
+ * 是的話一律視為「貨運行集貨」(打折、不算偏遠)，不再靠掃描畫面上的按鈕有沒有被勾到。
+ */
+function _isCarrierAddress_(addr) {
+    var a = String(addr || "").replace(/\s/g, "");
+    if (!a) return false;
+    try {
+        return getDirectMap_V20().some(function (m) {
+            var full = String(m.fullName || "").replace(/\s/g, "");
+            return (full && a.indexOf(full) !== -1) || a === String(m.address || "").replace(/\s/g, "");
+        });
+    } catch (e) { return false; }
+}
 /** [選單] 把預設指送清單寫進運費管理表 J–L (只在該區空白時) */
 function menuSeedDirectMap() {
     var ui = SpreadsheetApp.getUi();
@@ -978,8 +992,10 @@ function upsertOrderFromOcr_V2(parsedData, token) {
                 if (parsedData.specifiedArrive) setCell(idx.specifiedArrive, parsedData.specifiedArrive); // V40
                 if (parsedData.thumbnail) setCell(idx.thumbnail, parsedData.thumbnail); // V36.6
                 setCell(idx.isRemote, remoteInfo.isRemote); // V39.23
-                setCell(idx.carrierFlag, parsedData.carrierFlag || ""); // V39.23
-                setCell(idx.carrierDiscount, parsedData.carrierDiscount || 1); // V39.23
+                // V41.50: 指送貨運行/加工廠 → 一律貨運行集貨 (不靠前端按鈕)
+                var autoCarrierU = !parsedData.carrierFlag && _isCarrierAddress_(parsedData.address);
+                setCell(idx.carrierFlag, parsedData.carrierFlag || (autoCarrierU ? "貨運行集貨" : "")); // V39.23
+                setCell(idx.carrierDiscount, parsedData.carrierFlag ? (parsedData.carrierDiscount || 1) : (autoCarrierU ? 0.5 : 1)); // V39.23
                 if (lat && lng) { setCell(idx.lat, lat); setCell(idx.lng, lng); }
 
                 // 寫入品項明細到主表欄位
@@ -1014,8 +1030,9 @@ function upsertOrderFromOcr_V2(parsedData, token) {
             if (idx.eta !== -1) newRow[idx.eta] = parsedData.etaTime;
             if (idx.specifiedArrive !== -1) newRow[idx.specifiedArrive] = parsedData.specifiedArrive || ""; // V40
             if (idx.isRemote !== -1) newRow[idx.isRemote] = remoteInfo.isRemote; // V39.23
-            if (idx.carrierFlag !== -1) newRow[idx.carrierFlag] = parsedData.carrierFlag || ""; // V39.23
-            if (idx.carrierDiscount !== -1) newRow[idx.carrierDiscount] = parsedData.carrierDiscount || 1; // V39.23
+            var autoCarrierN = !parsedData.carrierFlag && _isCarrierAddress_(parsedData.address); // V41.50
+            if (idx.carrierFlag !== -1) newRow[idx.carrierFlag] = parsedData.carrierFlag || (autoCarrierN ? "貨運行集貨" : ""); // V39.23
+            if (idx.carrierDiscount !== -1) newRow[idx.carrierDiscount] = parsedData.carrierFlag ? (parsedData.carrierDiscount || 1) : (autoCarrierN ? 0.5 : 1); // V39.23
             if (idx.note !== -1) newRow[idx.note] = parsedData.note;
             if (idx.wrapSeal !== -1) newRow[idx.wrapSeal] = (typeof normalizeWrapSeal_Core === 'function' ? normalizeWrapSeal_Core(parsedData.wrapSeal) : (String(parsedData.wrapSeal || "").indexOf("封") !== -1 ? "封" : ""));
             if (idx.status !== -1) newRow[idx.status] = "待指派";
