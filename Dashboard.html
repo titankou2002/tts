@@ -5800,7 +5800,7 @@
             if (btn) btn.classList.toggle('active', aiMode);
             if (aiMode) {
                 showToast('🤖 AI 規劃模式已開啟，建議分配已標示於訂單清單');
-                applyAISuggestion();
+                loadDispatchHabits(applyAISuggestion);
             } else {
                 document.querySelectorAll('.ai-suggest').forEach(el => {
                     el.classList.remove('ai-suggest');
@@ -5819,7 +5819,46 @@
             }
         }
 
-        // V11.12.2: AI 建議邏輯 (地理聚類 + 重量平衡)
+        // V41.46: 排車習慣 (近 90 天，行政區 → 車牌 → 趟數)。使用者排車只看路線/重量/時段，所以只用行政區。
+        let dispatchHabits = null;
+        function loadDispatchHabits(cb) {
+            if (dispatchHabits) { cb(); return; }
+            google.script.run
+                .withSuccessHandler(res => { dispatchHabits = (res && res.success) ? res : { byDistrict: {}, trips: 0 }; cb(); })
+                .withFailureHandler(() => { dispatchHabits = { byDistrict: {}, trips: 0 }; cb(); })
+                .getDispatchHabits_V41(90, ATOKEN());
+        }
+        function districtOfAddr(addr) {
+            const m = String(addr || '').match(/[\u4e00-\u9fff]{2,3}(區)/);
+            return m ? m[0] : '';
+        }
+        // 某台車對一群訂單的「路線熟悉度」= 該群各行政區這台車近 90 天跑過的趟數合計
+        function routeFamiliarity(plate, group) {
+            const bd = (dispatchHabits && dispatchHabits.byDistrict) || {};
+            let score = 0, topD = '', topN = 0;
+            const seen = {};
+            group.forEach(t => {
+                const d = districtOfAddr(t.address);
+                if (!d || seen[d]) return; seen[d] = 1;
+                const n = (bd[d] && bd[d][plate]) || 0;
+                score += n;
+                if (n > topN) { topN = n; topD = d; }
+            });
+            return { score, topD, topN };
+        }
+        // 分群 → 車 配對：每一群優先給最熟這條路線的車 (貪婪，一台車一群)；完全沒歷史就維持原本順序
+        function matchClustersToVehicles(groups, candidates) {
+            const used = new Set(), result = new Array(groups.length).fill(null);
+            const pairs = [];
+            groups.forEach((g, gi) => candidates.forEach(v => { const f = routeFamiliarity(v.name, g); pairs.push({ gi, v, f }); }));
+            pairs.sort((a, b) => b.f.score - a.f.score);
+            pairs.forEach(p => { if (p.f.score > 0 && result[p.gi] === null && !used.has(p.v.name)) { result[p.gi] = { v: p.v, f: p.f }; used.add(p.v.name); } });
+            let k = 0;
+            groups.forEach((g, gi) => { if (result[gi]) return; while (k < candidates.length && used.has(candidates[k].name)) k++; if (k < candidates.length) { result[gi] = { v: candidates[k], f: { score: 0, topD: '', topN: 0 } }; used.add(candidates[k].name); } });
+            return result;
+        }
+
+        // V11.12.2: AI 建議邏輯 (地理聚類 + 重量平衡 + V41.46 路線熟悉度配對)
         function applyAISuggestion() {
             if (!aiMode || vehicles.length === 0) return;
             const unassigned = allTasks.filter(t => !t.vehicle && t.lat && t.lng);
@@ -5910,8 +5949,14 @@
             window.aiCircles = [];
             window.aiPlan = {}; // 儲存建議計劃
 
-            assignedVehicles.forEach((v, i) => {
-                const group = unassigned.filter((_, j) => assignments[j] === i);
+            // V41.46: 分好群之後，決定「哪台車接哪一群」改看路線熟悉度 (近 90 天誰常跑這些行政區)，候選是全部車輛不只前 k 台
+            const groupsForMatch = assignedVehicles.map((_, i) => unassigned.filter((_, j) => assignments[j] === i));
+            const matched = matchClustersToVehicles(groupsForMatch, vehicles);
+            let habitHits = 0;
+            groupsForMatch.forEach((group, i) => {
+                const m = matched[i]; if (!m) return;
+                const v = m.v; if (m.f.score > 0) habitHits++;
+                const famLabel = m.f.score > 0 ? ` · ${m.f.topD}常跑×${m.f.topN}` : '';
                 const color = getCarColor(v.name);
                 const c = centroids[i];
 
@@ -5923,7 +5968,7 @@
                     const circle = L.circle([c.lat, c.lng], {
                         radius, color: color, fillColor: color, fillOpacity: 0.08,
                         weight: 2, dashArray: '6, 6', opacity: 0.5
-                    }).bindTooltip(`${v.driver} 建議負責區域 (${group.length} 站)`, { permanent: false }).addTo(map);
+                    }).bindTooltip(`${v.driver} 建議負責區域 (${group.length} 站)${famLabel}`, { permanent: false }).addTo(map);
                     window.aiCircles.push(circle);
                 }
 
@@ -5935,7 +5980,7 @@
                     el.classList.add('ai-suggest');
                     el.style.borderLeft = `4px solid ${color}`;
                     if (!el.querySelector('.ai-label')) {
-                        el.insertAdjacentHTML('beforeend', `<div class="ai-label" style="background:${color}">AI: ${v.driver}</div>`);
+                        el.insertAdjacentHTML('beforeend', `<div class="ai-label" style="background:${color}" title="${m.f.score > 0 ? '路線熟悉度：' + m.f.topD + ' 近90天跑過 ' + m.f.topN + ' 趟' : '無歷史，依地理分群'}">AI: ${v.driver}${famLabel}</div>`);
                     }
                 });
             });
@@ -5949,7 +5994,7 @@
                         ✅ 採用 AI 建議 — 一鍵全部指派
                     </button>`);
             }
-            showToast(`🤖 AI 規劃完成：${k} 位司機 / ${unassigned.length} 張訂單`);
+            showToast(`🤖 AI 規劃完成：${k} 位司機 / ${unassigned.length} 張訂單` + (habitHits ? `（${habitHits} 群依路線熟悉度配車）` : '（無排車歷史，純地理分群）'));
         }
 
         // V11.12.1: 一鍵採用 AI 建議

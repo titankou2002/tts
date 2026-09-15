@@ -641,3 +641,48 @@ function undoVerifyTask_V3(id, token) {
     return { success: true };
   } catch (e) { return { success: false, error: e.message }; }
 }
+
+/**
+ * V41.46 排車習慣 → 「路線熟悉度」
+ * 把「排車習慣記錄」近 N 天的每一趟，彙總成 行政區 → {車牌: 趟數}，給戰情室 AI 排車做「分群 → 車」配對用。
+ * 使用者的排車只看路線 / 重量 / 時段，不看客戶，所以只彙總行政區，不做客戶維度。
+ * 回傳 { byDistrict: { '三峽區': { CAP8377: 12, ... } }, trips: 總趟數, days: N }；CacheService 1 小時。
+ */
+function getDispatchHabits_V41(days, token) {
+  try {
+    _requireAdmin_(token);
+    days = parseInt(days, 10) || 90;
+    var cache = CacheService.getScriptCache();
+    var cacheKey = 'dispatch_habits_v1_' + days;
+    var hit = cache.get(cacheKey);
+    if (hit) return JSON.parse(hit);
+
+    var ss = getSS();
+    var sheet = ss.getSheetByName('排車習慣記錄');
+    var out = { success: true, byDistrict: {}, trips: 0, days: days };
+    if (!sheet || sheet.getLastRow() < 2) return out;
+    var lastRow = sheet.getLastRow();
+    var start = Math.max(2, lastRow - 3000); // 最多看最近 3000 趟
+    var data = sheet.getRange(start, 1, lastRow - start + 1, sheet.getLastColumn()).getValues();
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(function (v) { return String(v).trim(); });
+    var cTime = headers.indexOf('記錄時間'), cPlate = headers.indexOf('車牌'), cDist = headers.indexOf('行政區集合'), cTop = headers.indexOf('主要行政區');
+    if (cPlate === -1 || (cDist === -1 && cTop === -1)) return out;
+    var since = Date.now() - days * 86400000;
+    data.forEach(function (r) {
+      var t = r[cTime] instanceof Date ? r[cTime].getTime() : Date.parse(String(r[cTime] || ''));
+      if (t && t < since) return;
+      var plate = String(r[cPlate] || '').trim();
+      if (!plate) return;
+      var raw = String((cDist !== -1 && r[cDist]) || (cTop !== -1 && r[cTop]) || '');
+      var list = raw.split(/[、,，\s]+/).map(function (s) { return s.trim(); }).filter(function (s) { return s && s !== '未知'; });
+      if (!list.length) return;
+      out.trips++;
+      list.forEach(function (d) {
+        var m = out.byDistrict[d] || (out.byDistrict[d] = {});
+        m[plate] = (m[plate] || 0) + 1;
+      });
+    });
+    try { cache.put(cacheKey, JSON.stringify(out), 3600); } catch (e) { }
+    return out;
+  } catch (e) { return { success: false, error: e.message, byDistrict: {}, trips: 0 }; }
+}
