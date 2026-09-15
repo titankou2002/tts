@@ -46,17 +46,48 @@ const V11_PROD_CONFIG = {
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu("🚛 鈦傳速工具")
-    .addItem("🧼 執行 3 天數據封存清理", "cleanupOldLogsAndTasks_V11")
+    .addItem("🧾 立即更新樣品/退貨判定", "menuRefreshSalesDoc")
     .addItem("🆘 救回誤封存訂單 (從封存區移回)", "emergencyRestoreTasks")
     .addSeparator()
-    .addItem("⏰ 建立/更新定時排程 (LINE + Email + 3天自動封存)", "setupHourlyDeliverySummaryTrigger_V11")
-    .addSeparator()
-    .addItem("🔑 設定管理員密碼", "menuSetAdminPassword")
-    .addItem("🧾 建立每 2 小時「樣品/退貨判定」排程 (並立即更新)", "menuSetupSalesDocTrigger")
-    .addItem("🧾 立即更新樣品/退貨判定", "menuRefreshSalesDoc")
-    .addItem("🧹 清理屬性空間 (UUID 垃圾)", "menuCleanupProperties")
-    .addItem("🚚 把指送地點清單寫進運費管理表 (J–L 欄，只在空白時)", "menuSeedDirectMap")
+    .addSubMenu(ui.createMenu("⚙️ 設定")
+      .addItem("🔑 設定管理員密碼", "menuSetAdminPassword")
+      .addItem("⏰ 建立/更新全部排程 (LINE + Email + 3天封存 + 樣品判定)", "menuSetupAllTriggers")
+      .addItem("🚚 把指送地點清單寫進運費管理表 (J–L 欄)", "menuSeedDirectMap"))
+    .addSubMenu(ui.createMenu("🧹 維護")
+      .addItem("🧼 立即執行 3 天封存清理", "cleanupOldLogsAndTasks_V11")
+      .addItem("🧹 清理屬性空間 (UUID 垃圾)", "menuCleanupProperties")
+      .addItem("🗑 刪除沒用到的分頁", "menuDeleteUnusedSheets"))
     .addToUi();
+}
+
+/** V41.47: 一次建好所有排程 (取代原本兩個分開的選單項) */
+function menuSetupAllTriggers() {
+  var ui = SpreadsheetApp.getUi();
+  var msg = [];
+  try { msg.push(String(setupHourlyDeliverySummaryTrigger_V11() || "✅ LINE/Email/封存排程 OK")); } catch (e) { msg.push("❌ LINE/Email/封存排程：" + e.message); }
+  try { msg.push(String(setupSalesDocTypeTrigger_V41() || "✅ 樣品判定排程 OK")); } catch (e) { msg.push("❌ 樣品判定排程：" + e.message); }
+  ui.alert(msg.join("\n\n"));
+}
+
+/**
+ * V41.47: 刪除程式已經不讀不寫的分頁 (一鍵)。名單以程式碼實際引用為準：
+ *   撿貨明細 — OCR 子表，驗貨/戰情室都直接讀派送清單品項欄，從沒被讀過 (寫入程式已一併移除)
+ *   KPI 統計 — 只有「確保存在」，KPI 早改即時計算
+ *   運費管理表_歷史 — 舊版設定備份，已停用 (改用試算表版本記錄)
+ *   指送對照表 / 分公司代碼表 — 設定裡有名字、程式從沒讀過 (指送清單現在在運費管理表 J–L)
+ * 「排車習慣記錄」有在用 (AI 排車路線熟悉度)，不在名單內。
+ */
+var UNUSED_SHEETS_V41 = ["撿貨明細", "KPI 統計", "運費管理表_歷史", "指送對照表", "分公司代碼表"];
+function menuDeleteUnusedSheets() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = getSS_V11();
+  var found = UNUSED_SHEETS_V41.filter(function (n) { return !!ss.getSheetByName(n); });
+  if (!found.length) { ui.alert("✅ 沒用到的分頁都已經不在了，不用刪。"); return; }
+  var ok = ui.alert("🗑 刪除沒用到的分頁", "將刪除以下 " + found.length + " 個分頁 (程式已不讀不寫)：\n\n" + found.join("\n") + "\n\n刪掉後可從「檔案 → 版本記錄」還原。確定？", ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+  var done = [], fail = [];
+  found.forEach(function (n) { try { ss.deleteSheet(ss.getSheetByName(n)); done.push(n); } catch (e) { fail.push(n + "：" + e.message); } });
+  ui.alert("已刪除 " + done.length + " 個：" + done.join("、") + (fail.length ? "\n\n失敗：\n" + fail.join("\n") : ""));
 }
 
 /** V41: 從試算表選單設定管理員密碼 (屬性超過 50 個時 Apps Script 設定頁無法編輯，改走這裡) */
@@ -71,7 +102,6 @@ function menuSetAdminPassword() {
   }
 }
 
-function menuSetupSalesDocTrigger() { SpreadsheetApp.getUi().alert(setupSalesDocTypeTrigger_V41()); }
 function menuRefreshSalesDoc() { SpreadsheetApp.getUi().alert(refreshSalesDocTypes_V41()); }
 
 /** V41: 從試算表選單清理屬性空間 */
@@ -1954,17 +1984,6 @@ function adminResetAllAssignments(token) {
   } catch (e) { return "❌ 操作失敗: " + e.message; }
 }
 
-/** V11.12.2: 確保 KPI 統計分頁存在 */
-function ensureKPISheet_V12() {
-  var ss = getSS_V11();
-  var sheet = ss.getSheetByName("KPI 統計");
-  if (!sheet) {
-    sheet = ss.insertSheet("KPI 統計");
-    sheet.getRange(1, 1, 1, 7).setValues([["日期", "訂單數", "送達", "退貨", "待完成", "總重量(KG)", "更新時間"]]);
-    sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#1e293b").setFontColor("#ffffff");
-  }
-  return sheet;
-}
 
 function updateTaskOrder(tasks, token) {
   var lock = LockService.getScriptLock();
@@ -4955,44 +4974,6 @@ function adminBatchReturnTasks_V11(updates, token) {
   finally { lock.releaseLock(); }
 }
 
-/**
- * V11.26: 批次寫入撿貨明細 (子表)
- * 此功能會自動比對產品主檔，帶出圖片與規格
- */
-function upsertPickingItems_V11(uniqueKey, items) {
-  _requireCtx_();
-  if (!items || items.length === 0) return;
-  
-  var ss = getSS_V11();
-  var sheet = ss.getSheetByName("撿貨明細") || ss.insertSheet("撿貨明細");
-  
-  // 初始化標頭 (如果新表)
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["單號KEY", "項次", "產品編號", "片數", "批號", "圖檔連結", "中文系列", "尺寸", "撿貨狀態", "更新時間"]);
-    sheet.getRange("1:1").setBackground("#1e293b").setFontColor("#ffffff").setFontWeight("bold");
-  }
-  
-  // V41 加速：舊版逐列 deleteRow + 逐筆 appendRow (每次都是一趟 API)，改為一次讀、記憶體過濾、一次寫
-  var productMap = lookupProductMasterData_V11();
-  var now = new Date();
-  var newRows = items.map(function (item) {
-    var pInfo = findProductInfo_V11(productMap, item.code);
-    if (!pInfo || !pInfo.name) pInfo = { name: "未建檔", size: "", img: "", pcsPerBox: "", kgPerBox: "" };
-    return [uniqueKey, item.seq, item.code, item.qty, item.lot, pInfo.img, pInfo.name, pInfo.size, "待撿貨", now];
-  });
-
-  var lastRow = sheet.getLastRow();
-  var data = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 10).getValues() : [];
-  var hasOld = data.some(function (r) { return String(r[0]) === String(uniqueKey); });
-  if (!hasOld) {
-    // 沒有舊明細：直接整塊附加
-    sheet.getRange(lastRow + 1, 1, newRows.length, 10).setValues(newRows);
-    return;
-  }
-  var kept = data.filter(function (r) { return String(r[0]) !== String(uniqueKey); }).concat(newRows);
-  if (data.length > 0) sheet.getRange(2, 1, data.length, 10).clearContent();
-  if (kept.length > 0) sheet.getRange(2, 1, kept.length, 10).setValues(kept);
-}
 
 function normalizeProductCode_V11(code) {
   var s = String(code || "").trim().toUpperCase();

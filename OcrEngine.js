@@ -973,11 +973,6 @@ function upsertOrderFromOcr_V2(parsedData, token) {
                 }
                 sheet.getRange(targetRow, 1, 1, rowVals.length).setValues([rowVals]);
 
-                // V11.26: 同步寫入子表 (撿貨明細)
-                if (parsedData.items && parsedData.items.length > 0) {
-                    upsertPickingItems_V11(parsedData.uniqueKey, parsedData.items);
-                }
-
                 return { success: true, message: "已更新現有待指派單據與明細：" + parsedData.uniqueKey, data: parsedData };
             } else {
                 return { success: false, error: "單據 [" + parsedData.uniqueKey + "] 已處於「" + currentStatus + "」狀態，禁止覆蓋更新。" };
@@ -1029,11 +1024,6 @@ function upsertOrderFromOcr_V2(parsedData, token) {
                 sortSalesSheetByCompany_Core(sheet);
             }
             
-            // V11.26: 同步寫入子表 (撿貨明細)
-            if (parsedData.items && parsedData.items.length > 0) {
-                upsertPickingItems_V11(parsedData.uniqueKey, parsedData.items);
-            }
-
             return { success: true, message: "已成功新增至 [" + targetSheetName + "]：" + parsedData.uniqueKey, data: parsedData };
         }
     } catch (e) {
