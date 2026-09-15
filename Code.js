@@ -480,6 +480,7 @@ function getWarRoomData_V11(force, targetDateStr, token) {
       archived: findHIdx_Core(h, "ARCHIVE"),
       timeSlot: h.indexOf("到貨時間"),
       specifiedArrive: h.indexOf("指定到貨時間"), // V40: 強制指定到貨時間 (電梯管制)
+      isTimedDeliver: h.indexOf("指定送貨"),      // V41.52: 計費上的「指定時間 +300」旗標 (可能只有備註寫限時、沒填時間)
       location: findHIdx_Core(h, "LOCATION"), // V4.1: 地點分頁
       thumbnail: findHIdx_Core(h, "THUMBNAIL") , // V36.6
       shippingType: findHIdx_Core(h, "SHIPPING_TYPE"),
@@ -594,6 +595,7 @@ function getWarRoomData_V11(force, targetDateStr, token) {
         lat: hasGPS ? lat : null, lng: hasGPS ? lng : null, weight: Number(getSafeVal(row, idx.weight)) || 0,
         timeSlot: String(getSafeVal(row, idx.timeSlot) || ""),  // V11.12.2
         specifiedArrive: _fmtArriveTime_(getSafeVal(row, idx.specifiedArrive)),  // V40: 強制指定到貨時間
+        isTimed: idx.isTimedDeliver !== -1 && String(getSafeVal(row, idx.isTimedDeliver) || "").trim() === "是", // V41.52
         rowIndex: i + 1, hasGPS: hasGPS, date: rowDate,
         location: String(getSafeVal(row, idx.location) || ""),
         size: String(getSafeVal(row, idx.size) || ""),
