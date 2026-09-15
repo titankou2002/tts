@@ -132,6 +132,9 @@ function menuSeedDirectMap() {
 /** 預設清單 (運費管理表 J–L 空白時使用) */
 function getDirectMapDefault_V20() {
     return [
+        // V41.45: 自家倉庫 — 手寫「指送 安帝嘉 / 指送 喜悅納」就把地址換成鶯歌倉 (地址含公司名 → 會命中 HOME_ADDR_KEYWORDS → 樣品免費、歸「載回鶯歌」)
+        { key: "安帝嘉,安帝嘉倉,回安帝嘉", fullName: "安帝嘉鶯歌倉", address: "新北市鶯歌區高職東街13號(安帝嘉)", phone: "" },
+        { key: "喜悅納,喜悅納倉,回喜悅納", fullName: "喜悅納鶯歌倉", address: "新北市鶯歌區高職東街13號(喜悅納)", phone: "" },
         { key: "弘昇", fullName: "弘昇貨運", address: "桃園市八德區後庄街52-1號(弘昇貨運)", phone: "" },
         { key: "財利", fullName: "財利貨運", address: "新北市鶯歌區德昌二街70巷32弄88號-5(財利貨運)", phone: "" },
         { key: "超奕", fullName: "超奕貨運", address: "新北市三峽區麻園路40之9號(超奕貨運)", phone: "" },
