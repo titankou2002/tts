@@ -1048,10 +1048,13 @@
                 const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
                     ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">🚛 ${escapeHTML(o.carrierFlag)}</span>`
                     : '';
+                // V41.43: 標籤滑過顯示「為什麼這樣判」(o.docWhy 由後端 _classifyDocTypeWhy_ 給)；點標籤可改判
+                const why = escapeHTML(o.docWhy || '');
+                const act = `style="font-size:10px; cursor:pointer;" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','銷貨')"`;
                 const typeBadge = o.docType === '樣品'
-                    ? (o.sampleTo === 'home' ? ' <span class="badge badge-warn" style="font-size:10px;" title="樣品送回公司：不計費">樣品免費</span>'
-                                             : ' <span class="badge badge-info" style="font-size:10px;" title="樣品送到外面 (貨運行/加工廠/客戶)：照常計費">樣品收費</span>')
-                    : (o.docType === '退貨' ? ' <span class="badge badge-danger" style="font-size:10px;">退貨</span>' : '');
+                    ? (o.sampleTo === 'home' ? ` <span class="badge badge-warn" ${act} title="樣品送回公司：不計費。判定原因：${why}。點一下改為一般銷貨">樣品免費</span>`
+                                             : ` <span class="badge badge-info" ${act} title="樣品送到外面 (貨運行/加工廠/客戶)：照常計費。判定原因：${why}。點一下改為一般銷貨">樣品收費</span>`)
+                    : (o.docType === '退貨' ? ` <span class="badge badge-danger" ${act} title="判定原因：${why}。點一下改為一般銷貨">退貨</span>` : '');
                 const rawImg = o.thumbnail || o.signPhoto;
                 let fixUrl = '';
                 if (rawImg) {

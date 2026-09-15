@@ -1221,18 +1221,27 @@ function _buildSalesDocTypeMapLive_(branch, cache, key) {
 
 /** 單筆判定：優先查該分公司銷售報表；查不到 (或漢樺) 就看派送清單上的客戶名 / 備註關鍵字 */
 function _classifyDocType_(branch, orderId, customer, note, shippingType, mapCache) {
+  return _classifyDocTypeWhy_(branch, orderId, customer, note, shippingType, mapCache).t;
+}
+/** V41.43: 同上，但連「為什麼這樣判」一起回傳 {t, why}，前端滑過標籤可看原因 */
+function _classifyDocTypeWhy_(branch, orderId, customer, note, shippingType, mapCache) {
   var b = String(branch || "").trim();
   var st = String(shippingType || "");
-  if (st.indexOf("退") !== -1) return "退貨";
+  if (st.indexOf("退") !== -1) return { t: "退貨", why: "派送清單「送貨類型」含「退」(" + st + ")" };
   var key = Object.keys(V11_PROD_CONFIG.SALES_REPORT).filter(function (k) { return b.indexOf(k) !== -1; })[0];
   if (key) {
     if (!(key in mapCache)) mapCache[key] = _loadSalesDocTypeMap_(key);
     var m = mapCache[key];
     var hit = m && m[_stripOrderSuffix_(orderId)];
-    if (hit) return hit.t;
+    if (hit) {
+      var src = key + " 銷售報表";
+      if (hit.t === "退貨") return { t: "退貨", why: src + "「類別」欄含「退」" };
+      if (hit.t === "樣品") return { t: "樣品", why: src + "：全部品項為樣品 (客戶編號 -S / 樣品關鍵字) 或金額合計 0 (金額 " + hit.a + ")" };
+      return { t: "銷貨", why: src + "：一般銷貨 (金額 " + hit.a + ")" };
+    }
   }
-  if (SAMPLE_KEYWORD_RE.test(String(customer || "") + " " + String(note || ""))) return "樣品";
-  return "銷貨";
+  if (SAMPLE_KEYWORD_RE.test(String(customer || "") + " " + String(note || ""))) return { t: "樣品", why: "客戶名/備註含樣品關鍵字 (樣品/陳列/贈/SAMPLE/送樣/扣帶)" + (key ? "；銷售報表查無此單號" : "") };
+  return { t: "銷貨", why: key ? "銷售報表查無此單號，且無樣品關鍵字 → 預設銷貨" : "此分公司無銷售報表 → 預設銷貨" };
 }
 
 /** 地址是否為「送回公司 / 倉庫」 */
@@ -1254,15 +1263,16 @@ function _annotateDocTypes_(list) {
     try {
       var manual = String(o.docTypeManual || "").trim();
       o.__manualSampleTo = '';
-      if (manual === "樣品收費") { o.docType = "樣品"; o.__manualSampleTo = 'out'; }
-      else if (manual === "樣品免費") { o.docType = "樣品"; o.__manualSampleTo = 'home'; }
+      if (manual === "樣品收費") { o.docType = "樣品"; o.__manualSampleTo = 'out'; o.docWhy = "人工判定：樣品收費"; }
+      else if (manual === "樣品免費") { o.docType = "樣品"; o.__manualSampleTo = 'home'; o.docWhy = "人工判定：樣品免費"; }
       else if (manual === "樣品" || manual === "銷貨" || manual === "退貨") {
-        o.docType = manual; // 人工判定永遠優先於規則
+        o.docType = manual; o.docWhy = "人工判定：" + manual; // 人工判定永遠優先於規則
       } else {
         // 客戶名用原始值 (cleanCustName_V11 會把「-樣品」之類的後綴切掉)
-        o.docType = _classifyDocType_(o.branch, o.id, o.rawCustomer || o.customer, o.note, o.shippingType, mapCache);
+        var r = _classifyDocTypeWhy_(o.branch, o.id, o.rawCustomer || o.customer, o.note, o.shippingType, mapCache);
+        o.docType = r.t; o.docWhy = r.why;
       }
-    } catch (e) { o.docType = "銷貨"; }
+    } catch (e) { o.docType = "銷貨"; o.docWhy = "判定出錯，預設銷貨：" + e.message; }
     if (o.docType === "樣品") {
       o.sampleTo = o.__manualSampleTo || (_isHomeAddress_(o.address) ? 'home' : 'out');
       o.isSample = (o.sampleTo === 'home');
