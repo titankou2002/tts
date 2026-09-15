@@ -1111,6 +1111,9 @@ function _stripOrderSuffix_(id) {
 }
 
 var SALES_DOC_CACHE_SHEET = "單據類型快取";
+// V41.44: 判定規則改版時把版本號 +1 → 舊的 CacheService / 快取分頁一律作廢，立刻改用新規則現場重算 (排程 2 小時內會把分頁補回)
+var SALES_DOC_CACHE_VER = "v2";
+function _salesDocCacheKey_(branch) { return "salesdoc_" + branch + "_" + SALES_DOC_CACHE_VER; }
 
 /**
  * 單號 → {t: 類型, a: 金額} 對照。讀取順序：
@@ -1122,7 +1125,7 @@ function _loadSalesDocTypeMap_(branch) {
   var cfg = V11_PROD_CONFIG.SALES_REPORT[branch];
   if (!cfg) return null;
   var cache = CacheService.getScriptCache();
-  var key = 'salesdoc_' + branch + '_v1';
+  var key = _salesDocCacheKey_(branch);
   var hit = readChunkedCacheJson_V11(cache, key);
   if (hit) return hit;
   var fromSheet = _readSalesDocCacheSheet_(branch);
@@ -1134,6 +1137,7 @@ function _readSalesDocCacheSheet_(branch) {
   try {
     var sheet = getSS_V11().getSheetByName(SALES_DOC_CACHE_SHEET);
     if (!sheet || sheet.getLastRow() < 2) return null;
+    if (String(sheet.getRange(1, 6).getValue() || "") !== SALES_DOC_CACHE_VER) return null; // 舊版規則算的快取不用
     var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
     var map = {}, n = 0;
     rows.forEach(function (r) { if (String(r[0]) === branch && r[1] !== "") { map[String(r[1])] = { t: String(r[2]), a: Number(r[3]) || 0 }; n++; } });
@@ -1146,19 +1150,19 @@ function refreshSalesDocTypes_V41(e) {
   _requireSystemContext_(e);
   var ss = getSS_V11();
   var sheet = ss.getSheetByName(SALES_DOC_CACHE_SHEET) || ss.insertSheet(SALES_DOC_CACHE_SHEET);
-  var out = [["分公司", "單號", "類型", "金額", "更新時間"]];
+  var out = [["分公司", "單號", "類型", "金額", "更新時間", SALES_DOC_CACHE_VER]];
   var now = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd HH:mm");
   var cache = CacheService.getScriptCache();
   var summary = [];
   Object.keys(V11_PROD_CONFIG.SALES_REPORT).forEach(function (branch) {
-    var map = _buildSalesDocTypeMapLive_(branch, cache, 'salesdoc_' + branch + '_v1');
+    var map = _buildSalesDocTypeMapLive_(branch, cache, _salesDocCacheKey_(branch));
     if (!map) { summary.push(branch + ": 讀取失敗"); return; }
     var c = { 樣品: 0, 退貨: 0, 銷貨: 0 };
-    Object.keys(map).forEach(function (no) { out.push([branch, no, map[no].t, map[no].a, now]); c[map[no].t] = (c[map[no].t] || 0) + 1; });
+    Object.keys(map).forEach(function (no) { out.push([branch, no, map[no].t, map[no].a, now, ""]); c[map[no].t] = (c[map[no].t] || 0) + 1; });
     summary.push(branch + ": 樣品 " + c["樣品"] + " / 退貨 " + c["退貨"] + " / 銷貨 " + c["銷貨"]);
   });
   sheet.clearContents();
-  sheet.getRange(1, 1, out.length, 5).setValues(out);
+  sheet.getRange(1, 1, out.length, 6).setValues(out);
   sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#34495e").setFontColor("#ffffff");
   _clearDashboardCache_();
   var msg = "✅ 單據類型快取已更新 (" + (out.length - 1) + " 筆)\n" + summary.join("\n");
@@ -1192,13 +1196,17 @@ function _buildSalesDocTypeMapLive_(branch, cache, key) {
     if (idx.no === -1 || idx.amt === -1) return null;
     var start = Math.max(2, lastRow - 6000);
     var rows = sheet.getRange(start, 1, lastRow - start + 1, lastCol).getValues();
-    var agg = {};
+    // V41.44: ERP 的銷貨單與退貨單各有一套流水號，同一個號碼可能同時是某張銷貨單又是某張退貨單。
+    // 以前把同號碼的所有列混在一起，只要有一列「類別」含退，整個號碼就被判退貨 → 一堆正常銷貨單被標成退貨。
+    // 現在銷/退分開彙總：有銷貨列就以銷貨列判 (樣品/銷貨)；只有退貨列的號碼才算退貨。
+    var agg = {}, retOnly = {};
     rows.forEach(function (r) {
       var no = String(r[idx.no] || "").trim();
       if (!no) return;
-      var a = agg[no] || (agg[no] = { ret: false, allSample: true, amount: 0, n: 0 });
+      var isRet = idx.type !== -1 && String(r[idx.type] || "").indexOf("退") !== -1;
+      if (isRet) { retOnly[no] = true; return; }
+      var a = agg[no] || (agg[no] = { allSample: true, amount: 0, n: 0 });
       a.n++;
-      if (idx.type !== -1 && String(r[idx.type] || "").indexOf("退") !== -1) a.ret = true;
       var code = idx.code !== -1 ? String(r[idx.code] || "").trim().toUpperCase() : "";
       var text = [idx.cust !== -1 ? r[idx.cust] : "", idx.prod !== -1 ? r[idx.prod] : "", idx.note !== -1 ? r[idx.note] : ""].join(" ");
       var lineSample = /-S1?$/.test(code) || SAMPLE_KEYWORD_RE.test(text);
@@ -1208,9 +1216,10 @@ function _buildSalesDocTypeMapLive_(branch, cache, key) {
     });
     Object.keys(agg).forEach(function (no) {
       var a = agg[no];
-      var type = a.ret ? "退貨" : ((a.allSample || Math.round(a.amount) === 0) ? "樣品" : "銷貨");
+      var type = (a.allSample || Math.round(a.amount) === 0) ? "樣品" : "銷貨";
       map[no] = { t: type, a: Math.round(a.amount) };
     });
+    Object.keys(retOnly).forEach(function (no) { if (!map[no]) map[no] = { t: "退貨", a: 0 }; });
     writeChunkedCacheJson_V11(cache, key, map, 21600);
   } catch (e) {
     console.log("讀取 " + branch + " 銷售報表失敗: " + e.message);
@@ -1233,6 +1242,10 @@ function _classifyDocTypeWhy_(branch, orderId, customer, note, shippingType, map
     if (!(key in mapCache)) mapCache[key] = _loadSalesDocTypeMap_(key);
     var m = mapCache[key];
     var hit = m && m[_stripOrderSuffix_(orderId)];
+    // V41.44: 純數字流水號 (1509xxxxx) 一定是掃描進來的銷貨單，退貨單在派送清單都是 T 開頭 (手寫建單)。
+    // 報表裡同號碼的退貨單不能拿來判銷貨單 → 數字單號一律不吃報表的「退貨」
+    var isNumericSalesId = /^\d{6,}$/.test(_stripOrderSuffix_(orderId));
+    if (hit && hit.t === "退貨" && isNumericSalesId) hit = null;
     if (hit) {
       var src = key + " 銷售報表";
       if (hit.t === "退貨") return { t: "退貨", why: src + "「類別」欄含「退」" };
