@@ -273,6 +273,20 @@
             font-weight: 900;
         }
 
+    
+        /* V41.53: 全站統一按鈕回饋 — 不管有沒有 class、有沒有 inline style，每顆按鈕都有 hover 提亮、按下縮放、disabled 變淡 */
+        button, .btn-branch, .btn-preset, .chip, .cmd-btn, .mini-btn, .driver-weight-card, [role="button"] {
+            transition: transform .08s ease, filter .15s ease, box-shadow .15s ease, background .15s ease, opacity .15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        button:hover:not(:disabled), .chip:hover, .driver-weight-card:hover { filter: brightness(1.12); }
+        button:active:not(:disabled), .btn-branch:active, .btn-preset:active, .chip:active, .cmd-btn:active, .mini-btn:active, .driver-weight-card:active, [role="button"]:active {
+            transform: scale(0.95);
+            filter: brightness(1.25);
+            transition-duration: .05s;
+        }
+        button:disabled { opacity: .5; cursor: not-allowed !important; transform: none; filter: none; }
+        @media (prefers-reduced-motion: reduce) { button, .chip, .cmd-btn { transition: none; } }
     </style>
 </head>
 <body>
