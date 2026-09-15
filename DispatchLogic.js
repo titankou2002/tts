@@ -197,9 +197,10 @@ function getDrivers_V3(token) {
     const h = data[0].map(v => String(v).trim());
     const cp = h.findIndex(n => n.includes('車牌'));
     const cn = h.findIndex(n => n.includes('司機') || n.includes('姓名'));
+    const cc = h.findIndex(n => n.includes('載重') || n.includes('噸')); // V41.51: AI 排車要知道每台車能載多少
     const drivers = [];
     for (let i = 1; i < data.length; i++) {
-        if (data[i][cn]) drivers.push({ plate: String(data[i][cp]).trim(), name: String(data[i][cn]).trim() });
+        if (data[i][cn]) drivers.push({ plate: String(data[i][cp]).trim(), name: String(data[i][cn]).trim(), capacity: cc !== -1 ? (parseFloat(data[i][cc]) || 0) : 0 });
     }
     return { success: true, drivers: drivers };
   } catch (e) { return { success: false, error: e.message }; }

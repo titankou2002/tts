@@ -249,7 +249,9 @@
                 <!-- 司機分配載重 -->
                 <div style="height: 160px; padding:12px 20px; background:#1e293b; border-top:3px solid var(--color-primary); flex-shrink:0;">
                     <div style="display:flex; justify-content:space-between; margin-bottom:10px; align-items:center;">
-                        <span style="color:var(--color-primary); font-size:15px; font-weight:900;">🚛 司機分配載重</span>
+                        <span style="color:var(--color-primary); font-size:15px; font-weight:900;">🚛 司機分配載重
+                            <button onclick="aiDispatchPlan_V41()" title="依路線熟悉度 + 載重 + 時段，把待指派的單分給司機 (先預覽再套用)" style="margin-left:10px; background:linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; border:0; padding:5px 12px; border-radius:8px; font-size:13px; font-weight:900; cursor:pointer; box-shadow:0 0 12px rgba(168,85,247,.45);">🤖 AI 排車</button>
+                        </span>
                         <div style="color:var(--color-gray); font-size:12px; display:flex; align-items:center; gap:10px;">
                             <span>已選: <span id="dispatchSelectedCount" style="color:var(--color-accent); font-weight:900;">0</span> 筆 | 共計 <span id="selWeightTotal" style="color:var(--color-success); font-weight:900;">0</span> kg</span>
                         </div>
@@ -1472,6 +1474,80 @@
         t.style.cssText = "position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.9);color:#fff;padding:12px 24px;border-radius:30px;z-index:1000002;border:2px solid #38bdf8;";
         document.body.appendChild(t);
         setTimeout(() => t.remove(), 2500);
+    }
+
+    // ===== V41.51 AI 排車 (排車視窗版) =====
+    // 規則 (使用者定義)：只看 路線 / 重量 / 時段，不看客戶。
+    //   1. 待指派的單依「行政區」分組
+    //   2. 每一區交給近 90 天最常跑這一區的司機 (排車習慣記錄)；沒歷史的區 → 給目前最空的車
+    //   3. 超過載重就把整區搬到還裝得下、且對這區次熟的車；同一區盡量不拆
+    //   4. 「指定時間」的單先排 (早上的時段優先給已經在那一區的車)
+    // 先開預覽讓人看，按「套用」才真的寫入 (recordDispatch_V3，一司機一批)。
+    function aiDispatchPlan_V41() {
+        const dv = document.getElementById('filterDate').value;
+        const todo = dispatchAllTasks.filter(t => !t.assignedDriver && !t.vehicle && String(t.status || '').indexOf('退回') === -1 && (dv === 'all' || t.date === dv));
+        if (!todo.length) { showToast('✅ 沒有待指派的單'); return; }
+        const fleet = dispatchDrivers.filter(d => d.plate && d.name && !/外車|回頭車/.test(d.plate + d.name));
+        if (!fleet.length) { showToast('❌ 沒有可用車輛'); return; }
+        showToast('🤖 讀取排車習慣中…');
+        loadDispatchHabits(() => {
+            const cap = d => d.capacity || ((d.plate.includes('BX') || d.plate.includes('BND')) ? 6000 : 3500);
+            const distOf = t => (String(t.address || '').match(/[\u4e00-\u9fff]{2,3}(區)/) || [''])[0] || '其他';
+            const bd = (dispatchHabits && dispatchHabits.byDistrict) || {};
+            // 已指派的單先算進各車今天的載重 (同一天)
+            const load = {}; fleet.forEach(d => load[d.plate] = 0);
+            dispatchAllTasks.filter(t => (dv === 'all' || t.date === dv) && t.vehicle && load[t.vehicle] !== undefined).forEach(t => load[t.vehicle] += (parseFloat(t.weight) || 0));
+            // 分區
+            const groups = {};
+            todo.forEach(t => { const d = distOf(t); (groups[d] = groups[d] || []).push(t); });
+            const gList = Object.keys(groups).map(d => ({ d, tasks: groups[d], w: groups[d].reduce((s, t) => s + (parseFloat(t.weight) || 0), 0), timed: groups[d].some(t => t.specifiedArrive || /上午|中午前/.test(t.timeSlot || '')) }))
+                .sort((a, b) => (b.timed - a.timed) || (b.w - a.w));   // 有指定時段的區先排、重的先排
+            const plan = {}; fleet.forEach(d => plan[d.plate] = { d, tasks: [], w: 0, why: [] });
+            gList.forEach(g => {
+                const fam = fleet.map(d => ({ d, n: (bd[g.d] && bd[g.d][d.plate]) || 0 })).sort((a, b) => b.n - a.n || (load[a.d.plate] + plan[a.d.plate].w) - (load[b.d.plate] + plan[b.d.plate].w));
+                let pick = fam.find(f => load[f.d.plate] + plan[f.d.plate].w + g.w <= cap(f.d));
+                let reason;
+                if (pick && pick.n > 0) reason = `${g.d} 近90天跑過 ${pick.n} 趟`;
+                else if (pick) reason = `${g.d} 無歷史，給目前最空的車`;
+                else { pick = fam.sort((a, b) => (load[a.d.plate] + plan[a.d.plate].w) - (load[b.d.plate] + plan[b.d.plate].w))[0]; reason = `⚠ 全部都超載，先給最空的車 (${g.d})`; }
+                plan[pick.d.plate].tasks.push(...g.tasks); plan[pick.d.plate].w += g.w; plan[pick.d.plate].why.push(reason);
+            });
+            showAiPlanPreview_V41(plan, load, cap, todo.length);
+        });
+    }
+    function showAiPlanPreview_V41(plan, load, cap, total) {
+        document.querySelectorAll('#aiPlanModal').forEach(el => el.remove());
+        const m = document.createElement('div'); m.id = 'aiPlanModal';
+        m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:10000;padding:16px;';
+        const cols = Object.values(plan).filter(p => p.tasks.length).map(p => {
+            const c = cap(p.d), tot = load[p.d.plate] + p.w, over = tot > c;
+            return `<div style="background:#0f172a;border:1px solid ${over ? '#ef4444' : '#334155'};border-radius:12px;padding:12px;min-width:230px;flex:1;">
+                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><b style="color:${getDriverColor(p.d.name)};font-size:16px;">${escapeHTML(p.d.name)}</b><span style="font-size:11px;color:#94a3b8;">${escapeHTML(p.d.plate)}</span></div>
+                <div style="font-size:12px;color:${over ? '#f87171' : '#22c55e'};margin-bottom:6px;">載重 ${Math.round(tot)} / ${c} kg${load[p.d.plate] ? `（已派 ${Math.round(load[p.d.plate])} + 新 ${Math.round(p.w)}）` : ''}</div>
+                <div style="font-size:11px;color:#a78bfa;margin-bottom:8px;">${p.why.map(escapeHTML).join('<br>')}</div>
+                ${p.tasks.map(t => `<div style="font-size:12px;padding:4px 0;border-top:1px dashed rgba(255,255,255,.08);display:flex;gap:6px;"><span style="color:#e2e8f0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(t.customer)}</span><span style="color:#94a3b8;">${escapeHTML((String(t.address||'').match(/[\u4e00-\u9fff]{2,3}區/)||[''])[0])}</span><span style="color:#fbbf24;">${Math.round(parseFloat(t.weight)||0)}kg</span>${t.specifiedArrive ? `<span style="color:#38bdf8;">${escapeHTML(t.specifiedArrive)}</span>` : ''}</div>`).join('')}
+            </div>`;
+        }).join('');
+        m.innerHTML = `<div style="background:#1e293b;border:3px solid #7c3aed;border-radius:16px;padding:20px;max-width:1100px;width:100%;max-height:92vh;display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;"><h3 style="margin:0;color:#c4b5fd;">🤖 AI 排車建議</h3><span style="color:#94a3b8;font-size:13px;">${total} 張待指派 ｜ 規則：路線熟悉度 → 載重 → 時段（不看客戶）</span>
+                <span style="flex:1"></span>
+                <button onclick="document.getElementById('aiPlanModal').remove()" style="background:#334155;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;">取消</button>
+                <button id="aiPlanApplyBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:0;padding:8px 16px;border-radius:8px;font-weight:900;cursor:pointer;">✅ 套用全部</button></div>
+            <div class="custom-scroll" style="display:flex;gap:12px;overflow:auto;flex-wrap:wrap;align-content:flex-start;">${cols}</div>
+        </div>`;
+        document.body.appendChild(m);
+        document.getElementById('aiPlanApplyBtn').onclick = () => {
+            const btn = document.getElementById('aiPlanApplyBtn'); btn.disabled = true; btn.textContent = '寫入中…';
+            const batches = Object.values(plan).filter(p => p.tasks.length);
+            let i = 0;
+            const next = () => {
+                if (i >= batches.length) { m.remove(); showToast('✅ AI 排車完成'); openDispatchModal_V3(); return; }
+                const p = batches[i++];
+                google.script.run.withSuccessHandler(next).withFailureHandler(err => { showToast('❌ ' + p.d.name + ' 寫入失敗：' + (err && err.message || err)); next(); })
+                    .recordDispatch_V3(p.tasks, { plate: p.d.plate, name: p.d.name, shift: '1', source: 'AI排車' }, ATOKEN());
+            };
+            next();
+        };
     }
 
     function quickDispatch_V7(plate, name) {
