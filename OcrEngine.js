@@ -687,39 +687,42 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
     // 11. 指送/直送 自動取代 (V34.22: 在上半部搜尋)
     // V36.27+: 改為全域搜尋，支援單號在表格下方的單據 (如雅麗佳案例)
     const directMap = getDirectMap_V20();
-    // V41.48: 抓「指送」後面的字，允許 OCR 把兩個字切開 (「棨 新」) → 容許 1 字 + 空白 + 後續字，再把後面誤吞的欄位標籤切掉
-    var directMatch = text.match(/(?:指\s*送|直\s*送)\s*[:：\s]*\s*([^\s\x00-\x1f/]{1,100}(?:\s+[^\s\x00-\x1f/]{1,100})?)/);
+    // V41.49: 「指送」比對改成「視窗搜尋」——不再要求關鍵字緊接在冒號後面。
+    // 喜悅納的單備註是「736公斤 / 指送：財利」同一行，Vision 常把冒號/斜線/空白讀得亂七八糟，
+    // 以前的正則只要冒號後第一個字不是簡稱就整個失敗。現在：找到「指送」後往後取 60 字，
+    // 去掉空白，只要對照表任何簡稱出現在這段裡就算命中 (長簡稱優先)。
+    var dPos = text.search(/指\s*送|直\s*送/);
     var foundDirect = null;
-    if (directMatch) {
-        var directText = directMatch[1].replace(/^[:：\s]+/, "").replace(/\s*(項次|代號|名稱|數量|單位|備註|頁\s*次|業\s*務|S\/N).*$/i, "").replace(/\s+/g, "").trim();
-        var directKeyword = directText.toUpperCase();
+    if (dPos !== -1) {
+        var winRaw = text.substr(dPos, 70).replace(/^(?:指\s*送|直\s*送)\s*[:：\s]*/, "");
+        // 切掉後面誤吞的欄位標籤 / 表格標頭
+        winRaw = winRaw.replace(/\s*(項\s*次|代\s*號|名\s*稱|數\s*量|單\s*位|備\s*註|頁\s*次|業\s*務|S\/N|銷\s*貨\s*單\s*號).*$/i, "");
+        var win = winRaw.replace(/\s+/g, "").toUpperCase();
+        var directText = win.split(/[\/|,，、]/)[0] || win;   // 給「指送地址」/ 備註用的第一段
 
-        // Step A: 先嘗試匹配預設清單 (加工廠/貨運行)
-        for (let m of directMap) {
-            var keys = m.key.split(/[,，、]/).map(k => String(k).trim().toUpperCase());
-            for (let k of keys) {
-                if (k && (directKeyword.includes(k) || k.includes(directKeyword))) {
-                    foundDirect = m; break;
-                }
-            }
-            if (foundDirect) break;
-        }
+        // Step A: 對照表簡稱只要出現在視窗裡就算 (長的先比，避免「仟聖」蓋掉「仟聖加工」)
+        var keyList = [];
+        directMap.forEach(function (m) { m.key.split(/[,，、]/).forEach(function (k) { k = String(k).trim().toUpperCase(); if (k) keyList.push({ k: k, m: m, pos: -1 }); }); });
+        keyList.forEach(function (e) { e.pos = win.indexOf(e.k); });
+        var hits = keyList.filter(function (e) { return e.pos !== -1; }).sort(function (a, b) { return a.pos - b.pos || b.k.length - a.k.length; });
+        if (hits.length) foundDirect = hits[0].m;
+
         // Step A2: 近似比對 — 冷僻字 (棨、仟…) OCR 常認錯，兩字簡稱若只錯一個字、而且只有一家符合，就當它
-        if (!foundDirect && directKeyword.length >= 2) {
+        var looksLikeAddr = /[\u4e00-\u9fff]+(?:縣|市|區|里|鄰|路|街|巷|弄|號|樓)/.test(directText);
+        if (!foundDirect && directText.length >= 2 && directText.length <= 4 && !looksLikeAddr) {
             var cands = [];
-            directMap.forEach(function (m) {
-                m.key.split(/[,，、]/).map(function (k) { return String(k).trim().toUpperCase(); }).forEach(function (k) {
-                    if (k.length !== 2) return;
-                    for (var i = 0; i + 2 <= directKeyword.length; i++) {
-                        var w = directKeyword.substr(i, 2);
-                        if (w !== k && (w[0] === k[0] || w[1] === k[1])) { cands.push(m); return; }
-                    }
-                });
+            var probe = directText;
+            keyList.forEach(function (e) {
+                if (e.k.length !== 2) return;
+                for (var i = 0; i + 2 <= probe.length; i++) {
+                    var w = probe.substr(i, 2);
+                    if (w !== e.k && (w[0] === e.k[0] || w[1] === e.k[1])) { cands.push(e.m); return; }
+                }
             });
             var uniq = cands.filter(function (m, i, a) { return a.indexOf(m) === i; });
             if (uniq.length === 1) {
                 foundDirect = uniq[0];
-                result.note = (result.note ? result.note + " " : "") + "[指送辨識：「" + directText + "」≈" + foundDirect.fullName + "]";
+                result.note = (result.note ? result.note + " " : "") + "[指送辨識：「" + probe + "」≈" + foundDirect.fullName + "]";
             }
         }
 
@@ -728,16 +731,13 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
             result.note = (result.note ? result.note + " " : "") + "[指送：" + foundDirect.fullName + "]";
             result.address = foundDirect.address;
             result.location = foundDirect.fullName;
+        } else if (looksLikeAddr) {
+            // 情境 2: 未匹配清單但像地址 -> 視為「指送地址」
+            result.address = directText;
+            result.location = "[指送地]";
         } else {
-            // 情境 2: 未匹配清單 -> 檢查是否包含地名關鍵字，若有則視為「指送地址」
-            // 包含 縣/市/區/路/街... 等特徵
-            if (directText.match(/[\u4e00-\u9fff]+(?:縣|市|區|里|鄰|路|街|巷|弄|號|樓)/)) {
-                result.address = directText;
-                result.location = "[指送地]";
-            } else {
-                // 純文字備註 (不具地址特徵)
-                result.note = (result.note ? result.note + " " : "") + "[指送：" + directText + "]";
-            }
+            // 情境 3: 認不出來 -> 把 OCR 讀到的原文留在備註，小姐一眼看得出是哪家、也方便把誤讀字加進運費管理表 J 欄
+            result.note = (result.note ? result.note + " " : "") + "[指送未辨識：" + (directText || winRaw.substr(0, 12)) + "]";
         }
     }
 
