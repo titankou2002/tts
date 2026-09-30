@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>鈦傳速</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-os.svg">
+  <style>
+    body { margin: 0; min-height: 100vh; background: #020617; color: #e2e8f0; font-family: -apple-system, "Noto Sans TC", sans-serif; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+    .card { width: 100%; max-width: 360px; text-align: center; }
+    h1 { font-size: 24px; margin: 0 0 20px; }
+    a.btn { display: block; margin: 10px 0; padding: 15px; border-radius: 14px; background: #1e293b; border: 1px solid #334155; color: #fff; text-decoration: none; font-size: 17px; font-weight: 700; }
+    #msg { color: #94a3b8; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <!-- V43.10 bigt.cc/tts/ 首頁：
+       1. LINE 登入 (LIFF) 完成後會先回到這裡 (網址帶 liff.state)，由 LIFF 轉回原本按登入的那一頁。
+       2. 平常直接打開 bigt.cc/tts/ 顯示選單，不再露出整個資料夾的檔案清單。 -->
+  <div class="card" id="card"><div id="msg">載入中…</div></div>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var state = q.get('liff.state');
+      var fromLine = state !== null || q.has('code') || q.has('liffClientId');
+      function menu() {
+        document.getElementById('card').innerHTML = '<h1>鈦傳速物流系統</h1>'
+          + '<a class="btn" href="DRIVER.html">🚚 司機端</a>'
+          + '<a class="btn" href="OS.html">🗺 戰情室</a>'
+          + '<a class="btn" href="QC.html">📦 倉庫驗貨</a>'
+          + '<a class="btn" href="Analytics.html">📊 分析中心</a>';
+      }
+      /* 只允許轉回本資料夾的頁面，避免被帶去別的網站 */
+      function safeTarget(s) {
+        s = String(s || '').replace(/^\/+/, '').replace(/^tts\//, '');
+        return /^[A-Za-z0-9_\-]+\.html(\?[A-Za-z0-9_\-=&%.]*)?$/.test(s) ? s : '';
+      }
+      if (!fromLine) { menu(); return; }
+      document.getElementById('msg').textContent = 'LINE 登入中，請稍候…';
+      var before = location.href;
+      liff.init({ liffId: '2007666611-s3AKUd3F' }).then(function () {
+        /* LIFF 會自己轉到 liff.state 指的頁面；1.5 秒後還在這頁就手動轉 */
+        setTimeout(function () {
+          if (location.href !== before && !/\/tts\/(index\.html)?(\?|$)/.test(location.pathname + location.search)) return;
+          var t = safeTarget(state);
+          if (t) location.replace(t); else menu();
+        }, 1500);
+      }).catch(function (e) {
+        document.getElementById('msg').textContent = 'LINE 登入失敗：' + (e && e.message || e) + '，請回上一頁再試一次';
+      });
+    })();
+  </script>
+</body>
+</html>
