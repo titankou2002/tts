@@ -40,6 +40,13 @@
     var LOGIN_URI = 'https://bigt.cc/tts/glogin.php';
     var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
     var waiting = [], inited = false, pendingCred = '', pendingErr = false;
+    /* V43.8: LINE / Facebook / IG / 微信 等 App 內建瀏覽器，Google 禁止在裡面登入 (會一片空白)，要改用手機的瀏覽器開 */
+    var ua = navigator.userAgent || '';
+    var inApp = /\bLine\//i.test(ua) ? 'line' : (/FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|KAKAOTALK|musical_ly|Bytedance/i.test(ua) ? 'other' : '');
+    function externalUrl() {
+      var u = location.href.split('#')[0];
+      return u + (u.indexOf('?') === -1 ? '?' : '&') + 'openExternalBrowser=1';
+    }
 
     /* 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
     var m = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
@@ -85,6 +92,15 @@
         document.getElementById('ttsGsiCancel').onclick = function () { send({ type: 'tts-google-cancel' }); };
       }
       el.style.display = 'flex';
+      if (inApp) {
+        var box = document.getElementById('ttsGsiBtn');
+        box.style.flexDirection = 'column';
+        box.innerHTML = '<div style="font-size:14px;color:#fbbf24;line-height:1.7;margin-bottom:14px">Google 不允許在 ' + (inApp === 'line' ? 'LINE' : '這個 App') + ' 裡面登入，<br>請改用手機的瀏覽器開啟。</div>'
+          + (inApp === 'line'
+            ? '<a href="' + externalUrl() + '" style="display:block;padding:13px;border-radius:999px;background:#2563eb;color:#fff;font-weight:800;font-size:16px;text-decoration:none">用 Safari／Chrome 開啟</a>'
+            : '<div style="font-size:14px;color:#e2e8f0;line-height:1.7">請點右上角「⋯」<br>選「用瀏覽器開啟」後再登入</div>');
+        return;
+      }
       renderBtn();
     }
     window.addEventListener('message', function (ev) {
