@@ -10,7 +10,8 @@ header('Referrer-Policy: no-referrer');
 $allowed = array('DRIVER.html', 'OS.html', 'Analytics.html', 'approve.html');
 $ret = isset($_COOKIE['tts_login_return']) ? $_COOKIE['tts_login_return'] : '';
 $page = basename((string) parse_url($ret, PHP_URL_PATH));
-if (!in_array($page, $allowed, true)) { $page = 'DRIVER.html'; }
+/* V43.11: 手機主畫面「網頁 App」模式登入時，iPhone 常把返回頁記錄 (cookie) 弄丟 → 回選單讓使用者自己選，不再預設丟到司機端 */
+if (!in_array($page, $allowed, true)) { $page = ''; }
 $query = (string) parse_url($ret, PHP_URL_QUERY);
 $query = $query !== '' ? '?' . preg_replace('/[^A-Za-z0-9_\-=&%.]/', '', $query) : '';
 $back = '/tts/' . $page . $query;

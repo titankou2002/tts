@@ -44,6 +44,7 @@
     if (m) pending = { credential: m[1], provider: 'google' };
     if (/[#&]gerr=1/.test(location.hash)) pendingErr = true;
     if (m || pendingErr) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } }
+    try { var sg = sessionStorage.getItem('tts_gcred'); if (sg && !pending) { pending = { credential: sg, provider: 'google' }; } sessionStorage.removeItem('tts_gcred'); } catch (e) { }
 
     /* LINE：初始化 LIFF；如果是按了「用 LINE 登入」跳轉回來的，就取出 LINE 的身分證明 */
     var liffReady = (window.liff ? liff.init({ liffId: LIFF_ID }) : Promise.reject(new Error('LIFF 載入失敗'))).then(function () {

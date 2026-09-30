@@ -37,6 +37,19 @@
         s = String(s || '').replace(/^\/+/, '').replace(/^tts\//, '');
         return /^[A-Za-z0-9_\-]+\.html(\?[A-Za-z0-9_\-=&%.]*)?$/.test(s) ? s : '';
       }
+      /* V43.11: Google 整頁跳轉回來但找不到原本的頁面 → 先把登入結果暫存，使用者點選單進去就是已登入 */
+      var gm = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
+      var gerr = /[#&]gerr=1/.test(location.hash);
+      if (gm || gerr) {
+        try { if (gm) sessionStorage.setItem('tts_gcred', gm[1]); } catch (e) { }
+        try { history.replaceState(null, '', location.pathname); } catch (e) { }
+        menu();
+        var note = document.createElement('div');
+        note.style.cssText = 'margin:0 0 14px;color:' + (gm ? '#86efac' : '#fca5a5') + ';font-size:15px';
+        note.textContent = gm ? '已完成 Google 登入，請選擇要進入的系統' : '登入沒有完成，請再試一次（或改用 LINE 登入）';
+        document.getElementById('card').insertBefore(note, document.getElementById('card').children[1]);
+        return;
+      }
       if (!fromLine) { menu(); return; }
       document.getElementById('msg').textContent = 'LINE 登入中，請稍候…';
       var before = location.href;
