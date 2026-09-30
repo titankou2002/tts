@@ -30,7 +30,8 @@
           + '<a class="btn" href="DRIVER.html">🚚 司機端</a>'
           + '<a class="btn" href="OS.html">🗺 戰情室</a>'
           + '<a class="btn" href="QC.html">📦 倉庫驗貨</a>'
-          + '<a class="btn" href="Analytics.html">📊 分析中心</a>';
+          + '<a class="btn" href="Analytics.html">📊 分析中心</a>'
+          + '<a class="btn" href="/ait/inventory.html">📐 版面神器（業務）</a>';
       }
       /* 只允許轉回本資料夾的頁面，避免被帶去別的網站 */
       function safeTarget(s) {
@@ -41,6 +42,16 @@
       var gm = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
       var gerr = /[#&]gerr=1/.test(location.hash);
       if (gm || gerr) {
+        /* 2026-09-30: cookie 弄丟時，看跳轉前另存的返回頁 (20 分鐘內有效)，直接帶登入結果回去 */
+        if (gm) {
+          var back = null;
+          try { back = JSON.parse(localStorage.getItem('tts_login_return') || 'null'); localStorage.removeItem('tts_login_return'); } catch (e) { }
+          var bp = back && back.p && Date.now() - back.t < 20 * 60 * 1000 ? String(back.p) : '';
+          if (/^\/ait\/inventory\.html(\?[A-Za-z0-9_\-=&%.]*)?$/.test(bp) || (/^\/tts\//.test(bp) && safeTarget(bp) && !/^index\.html/i.test(safeTarget(bp)))) {
+            location.replace(bp + '#gcred=' + gm[1]);
+            return;
+          }
+        }
         try { if (gm) sessionStorage.setItem('tts_gcred', gm[1]); } catch (e) { }
         try { history.replaceState(null, '', location.pathname); } catch (e) { }
         menu();

@@ -86,6 +86,7 @@
         if (standalone) {
           cfg.ux_mode = 'redirect'; cfg.login_uri = LOGIN_URI;
           document.cookie = 'tts_login_return=' + encodeURIComponent(location.pathname + location.search) + '; path=/tts; max-age=900; SameSite=Lax; Secure';
+          try { localStorage.setItem('tts_login_return', JSON.stringify({ p: location.pathname + location.search, t: Date.now() })); } catch (e) { } /* iPhone 主畫面 App 常弄丟 cookie，另存一份 */
         } else {
           cfg.ux_mode = 'popup';
           cfg.callback = function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential, provider: 'google' }); };
