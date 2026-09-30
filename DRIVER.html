@@ -26,30 +26,40 @@
 </head>
 <body>
   <iframe src="https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?p=index" allow="geolocation; microphone; camera"></iframe>
-  <!-- V43.0/43.1 Google 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示 Google 登入按鈕（Google 只允許登記過的網站 bigt.cc 放按鈕）
-       → 把 Google 簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。
-       手機主畫面全螢幕 App 模式開不了彈出視窗，改用整頁跳轉：Google → glogin.php → 回到本頁 (#gcred=...) → 系統頁面載入後來領取。 -->
+  <!-- V43.0～43.9 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示「用 LINE 登入」與 Google 登入按鈕
+       （Google、LINE 都只允許登記過的網站 bigt.cc 使用）→ 把簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。
+       LINE 用整頁跳轉 (LIFF)；Google 一般用彈出視窗，手機主畫面全螢幕 App 模式改整頁跳轉 (glogin.php)。
+       LINE / FB / IG 內建瀏覽器 Google 禁止登入，只顯示 LINE 登入。 -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script>
   (function () {
     var CLIENT_ID = '488092523611-2012hnf14cch4s7p6sl3dp37dvihjsdm.apps.googleusercontent.com';
     var LOGIN_URI = 'https://bigt.cc/tts/glogin.php';
+    var LIFF_ID = '2007666611-s3AKUd3F';
     var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
-    var waiting = [], inited = false, pendingCred = '', pendingErr = false;
-    /* V43.8: LINE / Facebook / IG / 微信 等 App 內建瀏覽器，Google 禁止在裡面登入 (會一片空白)，要改用手機的瀏覽器開 */
     var ua = navigator.userAgent || '';
     var inApp = /\bLine\//i.test(ua) ? 'line' : (/FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|KAKAOTALK|musical_ly|Bytedance/i.test(ua) ? 'other' : '');
-    function externalUrl() {
-      var u = location.href.split('#')[0];
-      return u + (u.indexOf('?') === -1 ? '?' : '&') + 'openExternalBrowser=1';
-    }
+    var waiting = [], inited = false, pending = null, pendingErr = false;
 
-    /* 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
+    /* Google 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
     var m = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
-    if (m) pendingCred = m[1];
+    if (m) pending = { credential: m[1], provider: 'google' };
     if (/[#&]gerr=1/.test(location.hash)) pendingErr = true;
     if (m || pendingErr) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } }
-    if (pendingCred) setTimeout(function () { pendingCred = ''; }, 30 * 60 * 1000);
+
+    /* LINE：初始化 LIFF；如果是按了「用 LINE 登入」跳轉回來的，就取出 LINE 的身分證明 */
+    var liffReady = (window.liff ? liff.init({ liffId: LIFF_ID }) : Promise.reject(new Error('LIFF 載入失敗'))).then(function () {
+      var want = false; try { want = sessionStorage.getItem('tts_line_pending') === '1'; sessionStorage.removeItem('tts_line_pending'); } catch (e) { }
+      if (want && liff.isLoggedIn()) { var t = liff.getIDToken(); if (t) pending = { credential: t, provider: 'line' }; }
+      if (/[?&](code|liffClientId|liff\.state)=/.test(location.search)) {
+        var q = new URLSearchParams(location.search);
+        ['code', 'state', 'liffClientId', 'liffRedirectUri', 'liff.state'].forEach(function (k) { q.delete(k); });
+        try { history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q.toString() : '')); } catch (e) { }
+      }
+    });
+    liffReady.catch(function () { });
+    setTimeout(function () { pending = null; }, 30 * 60 * 1000);
 
     function okOrigin(o) { return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(o); }
     function send(msg) {
@@ -57,8 +67,22 @@
       waiting = [];
       var el = document.getElementById('ttsGsi'); if (el) el.style.display = 'none';
     }
-    function renderBtn() {
-      if (!window.google || !google.accounts || !google.accounts.id) { setTimeout(renderBtn, 200); return; }
+    function lineLogin() {
+      var btn = document.getElementById('ttsLineBtn'); if (btn) btn.textContent = 'LINE 登入中…';
+      liffReady.then(function () {
+        if (liff.isLoggedIn()) {
+          var dec = liff.getDecodedIDToken(), t = liff.getIDToken();
+          if (t && dec && dec.exp * 1000 > Date.now() + 60000) { send({ type: 'tts-google-credential', credential: t, provider: 'line' }); return; }
+          liff.logout();
+        }
+        try { sessionStorage.setItem('tts_line_pending', '1'); } catch (e) { }
+        liff.login({ redirectUri: location.href.split('#')[0] });
+      }).catch(function (e) {
+        if (btn) btn.textContent = 'LINE 登入失敗，請再試一次';
+      });
+    }
+    function renderGoogle() {
+      if (!window.google || !google.accounts || !google.accounts.id) { setTimeout(renderGoogle, 200); return; }
       if (!inited) {
         var cfg = { client_id: CLIENT_ID, auto_select: false, itp_support: true };
         if (standalone) {
@@ -66,12 +90,12 @@
           document.cookie = 'tts_login_return=' + encodeURIComponent(location.pathname + location.search) + '; path=/tts; max-age=900; SameSite=Lax; Secure';
         } else {
           cfg.ux_mode = 'popup';
-          cfg.callback = function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential }); };
+          cfg.callback = function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential, provider: 'google' }); };
         }
         google.accounts.id.initialize(cfg);
         inited = true;
       }
-      var box = document.getElementById('ttsGsiBtn'); box.innerHTML = '';
+      var box = document.getElementById('ttsGsiBtn'); if (!box) return; box.innerHTML = '';
       google.accounts.id.renderButton(box, { theme: 'filled_blue', size: 'large', shape: 'pill', text: 'signin_with', locale: 'zh-TW', width: 280 });
     }
     function show() {
@@ -79,34 +103,33 @@
       if (!el) {
         el = document.createElement('div'); el.id = 'ttsGsi';
         el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(2,6,23,.94);display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,"Noto Sans TC",sans-serif';
+        var gHtml = inApp ? ''
+          : '<div style="margin:16px 0 10px;color:#64748b;font-size:12px">或</div><div id="ttsGsiBtn" style="display:flex;justify-content:center;min-height:44px"></div>';
         el.innerHTML = '<div style="background:#0f172a;border:1px solid #334155;border-radius:18px;padding:26px 22px;width:100%;max-width:360px;text-align:center;color:#e2e8f0">'
-          + '<div style="font-size:19px;font-weight:800;margin-bottom:6px">使用 Google 帳戶登入</div>'
-          + '<div style="font-size:13px;color:#94a3b8;margin-bottom:18px">請選擇你登記在鈦傳速系統的 Google 帳號</div>'
-          + '<div id="ttsGsiBtn" style="display:flex;justify-content:center;min-height:44px"></div>'
+          + '<div style="font-size:19px;font-weight:800;margin-bottom:6px">登入鈦傳速系統</div>'
+          + '<div style="font-size:13px;color:#94a3b8;margin-bottom:18px">請用你登記在系統的帳號登入</div>'
+          + '<button id="ttsLineBtn" type="button" style="width:280px;max-width:100%;padding:12px;border:0;border-radius:999px;background:#06C755;color:#fff;font-size:16px;font-weight:800;cursor:pointer">用 LINE 登入</button>'
+          + gHtml
           + '<button id="ttsGsiCancel" type="button" style="margin-top:18px;width:100%;padding:11px;border-radius:10px;border:1px solid #475569;background:transparent;color:#94a3b8;font-size:15px">取消</button></div>';
         document.body.appendChild(el);
+        document.getElementById('ttsLineBtn').onclick = lineLogin;
         document.getElementById('ttsGsiCancel').onclick = function () { send({ type: 'tts-google-cancel' }); };
       }
       el.style.display = 'flex';
-      if (inApp) {
-        var box = document.getElementById('ttsGsiBtn');
-        box.style.flexDirection = 'column';
-        box.innerHTML = '<div style="font-size:14px;color:#fbbf24;line-height:1.7;margin-bottom:14px">Google 不允許在 ' + (inApp === 'line' ? 'LINE' : '這個 App') + ' 裡面登入，<br>請改用手機的瀏覽器開啟。</div>'
-          + (inApp === 'line'
-            ? '<a href="' + externalUrl() + '" style="display:block;padding:13px;border-radius:999px;background:#2563eb;color:#fff;font-weight:800;font-size:16px;text-decoration:none">用 Safari／Chrome 開啟</a>'
-            : '<div style="font-size:14px;color:#e2e8f0;line-height:1.7">請點右上角「⋯」<br>選「用瀏覽器開啟」後再登入</div>');
-        return;
-      }
-      renderBtn();
+      var lb = document.getElementById('ttsLineBtn'); if (lb) lb.textContent = '用 LINE 登入';
+      if (!inApp) renderGoogle();
     }
     window.addEventListener('message', function (ev) {
       if (!okOrigin(ev.origin)) return;
       var d = ev.data || {};
       if (d.type === 'tts-google-pending') {
-        /* 系統頁面載入時來問：剛才整頁跳轉有沒有帶回登入結果 */
-        var reply = pendingCred ? { type: 'tts-google-credential', credential: pendingCred } : { type: pendingErr ? 'tts-google-failed' : 'tts-google-none' };
-        pendingCred = ''; pendingErr = false;
-        try { ev.source.postMessage(reply, ev.origin); } catch (e) { }
+        /* 系統頁面載入時來問：剛才整頁跳轉 (LINE / Google) 有沒有帶回登入結果 */
+        var src = ev.source, origin = ev.origin;
+        liffReady.catch(function () { }).then(function () {
+          var reply = pending ? { type: 'tts-google-credential', credential: pending.credential, provider: pending.provider } : { type: pendingErr ? 'tts-google-failed' : 'tts-google-none' };
+          pending = null; pendingErr = false;
+          try { src.postMessage(reply, origin); } catch (e) { }
+        });
         return;
       }
       if (d.type !== 'tts-google-login') return;
