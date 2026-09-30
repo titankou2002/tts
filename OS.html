@@ -30,5 +30,54 @@
 </head>
 <body>
   <iframe src="https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?p=admin" allow="geolocation; microphone; camera"></iframe>
+  <!-- V43.0 Google 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示 Google 登入按鈕（Google 只允許登記過的網站 bigt.cc 放按鈕）
+       → 把 Google 簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。 -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+  (function () {
+    var CLIENT_ID = '488092523611-2012hnf14cch4s7p6sl3dp37dvihjsdm.apps.googleusercontent.com';
+    var waiting = [], inited = false;
+    function okOrigin(o) { return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(o); }
+    function send(msg) {
+      waiting.forEach(function (w) { try { w.src.postMessage(msg, w.origin); } catch (e) { } });
+      waiting = [];
+      var el = document.getElementById('ttsGsi'); if (el) el.style.display = 'none';
+    }
+    function renderBtn() {
+      if (!window.google || !google.accounts || !google.accounts.id) { setTimeout(renderBtn, 200); return; }
+      if (!inited) {
+        google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: 'popup', auto_select: false, itp_support: true,
+          callback: function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential }); } });
+        inited = true;
+      }
+      var box = document.getElementById('ttsGsiBtn'); box.innerHTML = '';
+      google.accounts.id.renderButton(box, { theme: 'filled_blue', size: 'large', shape: 'pill', text: 'signin_with', locale: 'zh-TW', width: 280 });
+    }
+    function show() {
+      var el = document.getElementById('ttsGsi');
+      if (!el) {
+        el = document.createElement('div'); el.id = 'ttsGsi';
+        el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(2,6,23,.94);display:flex;align-items:center;justify-content:center;padding:20px;font-family:-apple-system,"Noto Sans TC",sans-serif';
+        el.innerHTML = '<div style="background:#0f172a;border:1px solid #334155;border-radius:18px;padding:26px 22px;width:100%;max-width:360px;text-align:center;color:#e2e8f0">'
+          + '<div style="font-size:19px;font-weight:800;margin-bottom:6px">使用 Google 帳戶登入</div>'
+          + '<div style="font-size:13px;color:#94a3b8;margin-bottom:18px">請選擇你登記在鈦傳速系統的 Google 帳號</div>'
+          + '<div id="ttsGsiBtn" style="display:flex;justify-content:center;min-height:44px"></div>'
+          + '<button id="ttsGsiCancel" type="button" style="margin-top:18px;width:100%;padding:11px;border-radius:10px;border:1px solid #475569;background:transparent;color:#94a3b8;font-size:15px">取消</button></div>';
+        document.body.appendChild(el);
+        document.getElementById('ttsGsiCancel').onclick = function () { send({ type: 'tts-google-cancel' }); };
+      }
+      el.style.display = 'flex';
+      renderBtn();
+    }
+    window.addEventListener('message', function (ev) {
+      if (!okOrigin(ev.origin)) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-google-login') return;
+      waiting.push({ src: ev.source, origin: ev.origin });
+      try { ev.source.postMessage({ type: 'tts-google-ack' }, ev.origin); } catch (e) { }
+      show();
+    });
+  })();
+  </script>
 </body>
 </html>

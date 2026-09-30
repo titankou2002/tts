@@ -2,30 +2,27 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>鈦傳速｜司機端工作站 V8.8</title>
-  <!-- DRIVER 專屬圖標： silver 圖標 -->
-  <link rel="icon" type="image/png" href="icon-silver.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="icon-silver.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>鈦傳速｜帳號審核</title>
+  <link rel="icon" type="image/svg+xml" href="favicon-os.svg">
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #020617;
-    }
-    iframe {
-      width: 100%;
-      height: calc(100% + 55px);
-      margin-top: -55px;
-      border: none;
-    }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #020617; }
+    iframe { width: 100%; height: calc(100% + 55px); margin-top: -55px; border: none; }
   </style>
 </head>
 <body>
-  <iframe src="https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?p=index" allow="geolocation; microphone; camera"></iframe>
+  <!-- V43.0 帳號申請審核：Telegram 群組的「核准／拒絕」按鈕打開這一頁；只把 r / a / s 三個參數轉給系統 -->
+  <iframe id="app"></iframe>
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search), out = new URLSearchParams({ p: 'approve' });
+      ['r', 'a', 's'].forEach(function (k) { if (q.get(k)) out.set(k, q.get(k)); });
+      document.getElementById('app').src = 'https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?' + out.toString();
+    })();
+  </script>
   <!-- V43.0 Google 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示 Google 登入按鈕（Google 只允許登記過的網站 bigt.cc 放按鈕）
        → 把 Google 簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。 -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
