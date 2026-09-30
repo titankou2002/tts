@@ -30,13 +30,24 @@
 </head>
 <body>
   <iframe src="https://script.google.com/macros/s/AKfycbz3DuFG6dOC5O0aXQ-7Ng6SOH-Su3MYQe7iVid5OuMFCKTDQ70ecxzror78asPHfiyUTw/exec?p=admin" allow="geolocation; microphone; camera"></iframe>
-  <!-- V43.0 Google 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示 Google 登入按鈕（Google 只允許登記過的網站 bigt.cc 放按鈕）
-       → 把 Google 簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。 -->
+  <!-- V43.0/43.1 Google 登入中繼：iframe 裡的系統頁面請求登入 → 這裡顯示 Google 登入按鈕（Google 只允許登記過的網站 bigt.cc 放按鈕）
+       → 把 Google 簽發的身分證明只回傳給發出請求的系統頁面，由系統後端驗證。
+       手機主畫面全螢幕 App 模式開不了彈出視窗，改用整頁跳轉：Google → glogin.php → 回到本頁 (#gcred=...) → 系統頁面載入後來領取。 -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
   (function () {
     var CLIENT_ID = '488092523611-2012hnf14cch4s7p6sl3dp37dvihjsdm.apps.googleusercontent.com';
-    var waiting = [], inited = false;
+    var LOGIN_URI = 'https://bigt.cc/tts/glogin.php';
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+    var waiting = [], inited = false, pendingCred = '', pendingErr = false;
+
+    /* 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
+    var m = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
+    if (m) pendingCred = m[1];
+    if (/[#&]gerr=1/.test(location.hash)) pendingErr = true;
+    if (m || pendingErr) { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } }
+    if (pendingCred) setTimeout(function () { pendingCred = ''; }, 30 * 60 * 1000);
+
     function okOrigin(o) { return /^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(o); }
     function send(msg) {
       waiting.forEach(function (w) { try { w.src.postMessage(msg, w.origin); } catch (e) { } });
@@ -46,8 +57,15 @@
     function renderBtn() {
       if (!window.google || !google.accounts || !google.accounts.id) { setTimeout(renderBtn, 200); return; }
       if (!inited) {
-        google.accounts.id.initialize({ client_id: CLIENT_ID, ux_mode: 'popup', auto_select: false, itp_support: true,
-          callback: function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential }); } });
+        var cfg = { client_id: CLIENT_ID, auto_select: false, itp_support: true };
+        if (standalone) {
+          cfg.ux_mode = 'redirect'; cfg.login_uri = LOGIN_URI;
+          document.cookie = 'tts_login_return=' + encodeURIComponent(location.pathname + location.search) + '; path=/tts; max-age=900; SameSite=Lax; Secure';
+        } else {
+          cfg.ux_mode = 'popup';
+          cfg.callback = function (r) { if (r && r.credential) send({ type: 'tts-google-credential', credential: r.credential }); };
+        }
+        google.accounts.id.initialize(cfg);
         inited = true;
       }
       var box = document.getElementById('ttsGsiBtn'); box.innerHTML = '';
@@ -72,6 +90,13 @@
     window.addEventListener('message', function (ev) {
       if (!okOrigin(ev.origin)) return;
       var d = ev.data || {};
+      if (d.type === 'tts-google-pending') {
+        /* 系統頁面載入時來問：剛才整頁跳轉有沒有帶回登入結果 */
+        var reply = pendingCred ? { type: 'tts-google-credential', credential: pendingCred } : { type: pendingErr ? 'tts-google-failed' : 'tts-google-none' };
+        pendingCred = ''; pendingErr = false;
+        try { ev.source.postMessage(reply, ev.origin); } catch (e) { }
+        return;
+      }
       if (d.type !== 'tts-google-login') return;
       waiting.push({ src: ev.source, origin: ev.origin });
       try { ev.source.postMessage({ type: 'tts-google-ack' }, ev.origin); } catch (e) { }
