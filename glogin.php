@@ -15,6 +15,8 @@ if (!in_array($page, $allowed, true)) { $page = ''; }
 $query = (string) parse_url($ret, PHP_URL_QUERY);
 $query = $query !== '' ? '?' . preg_replace('/[^A-Za-z0-9_\-=&%.]/', '', $query) : '';
 $back = '/tts/' . $page . $query;
+/* 2026-09-30: 高雅瓷業務系統 (bigt.cc/ait/inventory.html) 也用這裡接 Google 整頁跳轉登入 */
+if ((string) parse_url($ret, PHP_URL_PATH) === '/ait/inventory.html') { $back = '/ait/inventory.html' . $query; }
 
 $cred = isset($_POST['credential']) ? $_POST['credential'] : '';
 $csrfBody = isset($_POST['g_csrf_token']) ? $_POST['g_csrf_token'] : '';
