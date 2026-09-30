@@ -40,7 +40,7 @@
     var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
     var ua = navigator.userAgent || '';
     var inApp = /\bLine\//i.test(ua) ? 'line' : (/FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|KAKAOTALK|musical_ly|Bytedance/i.test(ua) ? 'other' : '');
-    var waiting = [], inited = false, pending = null, pendingErr = false;
+    var waiting = [], inited = false, pending = null, pendingErr = false, autoServed = false;
 
     /* Google 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
     var m = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
@@ -131,6 +131,26 @@
           pending = null; pendingErr = false;
           try { src.postMessage(reply, origin); } catch (e) { }
         });
+        return;
+      }
+      if (d.type === 'tts-line-auto') {
+        /* V43.12: 在 LINE 裡、頁面還沒登入 → 自動用 LINE 登入。LINE 已記得登入就直接回傳；
+           否則自動跳轉 LINE 登入一次 (同一次瀏覽只自動跳一次，避免取消後一直重跳) */
+        if (inApp !== 'line' || autoServed) return;
+        var asrc = ev.source, aorigin = ev.origin;
+        liffReady.then(function () {
+          if (autoServed) return;
+          if (liff.isLoggedIn()) {
+            var dec = liff.getDecodedIDToken(), t = liff.getIDToken();
+            if (t && dec && dec.exp * 1000 > Date.now() + 60000) { autoServed = true; try { asrc.postMessage({ type: 'tts-google-credential', credential: t, provider: 'line' }, aorigin); } catch (e) { } return; }
+            liff.logout();
+          }
+          var tried = false; try { tried = sessionStorage.getItem('tts_line_auto_tried') === '1'; } catch (e) { }
+          if (tried) return;
+          autoServed = true;
+          try { sessionStorage.setItem('tts_line_auto_tried', '1'); sessionStorage.setItem('tts_line_pending', '1'); } catch (e) { }
+          liff.login({ redirectUri: location.href.split('#')[0] });
+        }).catch(function () { });
         return;
       }
       if (d.type !== 'tts-google-login') return;
