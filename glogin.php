@@ -7,7 +7,7 @@
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
 
-$allowed = array('DRIVER.html', 'OS.html', 'Analytics.html', 'approve.html');
+$allowed = array('DRIVER.html', 'OS.html', 'Analytics.html', 'approve.html', 'QC.html');
 $ret = isset($_COOKIE['tts_login_return']) ? $_COOKIE['tts_login_return'] : '';
 $page = basename((string) parse_url($ret, PHP_URL_PATH));
 /* V43.11: 手機主畫面「網頁 App」模式登入時，iPhone 常把返回頁記錄 (cookie) 弄丟 → 回選單讓使用者自己選，不再預設丟到司機端 */
