@@ -38,7 +38,7 @@
     var ua = navigator.userAgent || '';
     var inApp = /\bLine\//i.test(ua) ? 'line' : (/FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|KAKAOTALK|musical_ly|Bytedance/i.test(ua) ? 'other' : '');
     var waiting = [], inited = false, pending = null, pendingErr = false, autoServed = false;
-    var VAULT_KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/, vaultReloaded = false;
+    var VAULT_KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/, vaultReloaded = false;
 
     /* Google 整頁跳轉回來：取出登入結果並立刻從網址清掉 */
     var m = /[#&]gcred=([A-Za-z0-9_\-.]+)/.exec(location.hash);
@@ -124,7 +124,7 @@
       var d = ev.data || {};
       /* V43.22 登入資料保管：iPhone 主畫面 App／LINE 會清掉 iframe 的儲存，這裡 (bigt.cc 第一方) 不會 → 關掉 App 再開不用重登 */
       if (d.type === 'tts-vault-get') { var vo = {}; try { for (var vi = 0; vi < localStorage.length; vi++) { var vk = localStorage.key(vi); if (vk && vk.indexOf('ttsv_') === 0) vo[vk.slice(5)] = localStorage.getItem(vk); } } catch (e) { } try { ev.source.postMessage({ type: 'tts-vault', data: vo }, ev.origin); } catch (e) { } return; }
-      if (d.type === 'tts-vault-set') { if (VAULT_KEYS.test(String(d.k)) && typeof d.v === 'string' && d.v.length < 5000) { try { localStorage.setItem('ttsv_' + d.k, d.v); } catch (e) { } } return; }
+      if (d.type === 'tts-vault-set') { if (VAULT_KEYS.test(String(d.k)) && typeof d.v === 'string' && d.v.length < 300000) { try { localStorage.setItem('ttsv_' + d.k, d.v); } catch (e) { } } return; }
       if (d.type === 'tts-vault-del') { if (VAULT_KEYS.test(String(d.k))) { try { localStorage.removeItem('ttsv_' + d.k); } catch (e) { } } return; }
       if (d.type === 'tts-vault-reload') { if (!vaultReloaded) { vaultReloaded = true; var vf = document.querySelector('iframe'); if (vf) vf.src = vf.src; } return; }
       if (d.type === 'tts-google-pending') {
