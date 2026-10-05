@@ -1,0 +1,68 @@
+<script>
+  /* V43.25 登入資料保管 (本檔內容直接寫在 Index/Dashboard/WebDashboard/Warehouse 的 <head>：<head> 裡的 include 會被 HtmlService 移除，改這段要四頁一起改)
+     iPhone 主畫面 App／LINE 會清掉這個 iframe (第三方) 的儲存，關掉 App 再開就要重登。
+     → 登入相關的 localStorage 一寫入就同步一份到 bigt.cc 外殼頁 (第一方，不會被清)；
+       打開時先向外殼頁拿回來，頁面的 window.onload 等拿到 (最多 0.4 秒) 才開始跑 → 只載入一次就是已登入。
+       萬一超過 0.4 秒才拿到，才蓋住畫面請外殼頁重新載入一次。注意：網址拆開寫 (GAS 會截斷兩個斜線)。 */
+  (function () {
+    var KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/;
+    var ORIGIN = 'https:' + '/' + '/bigt.cc';
+    var embedded = window.top !== window;
+    function post(m) { try { if (embedded) window.top.postMessage(m, ORIGIN); } catch (e) { } }
+
+    var ready = !embedded, waiters = [];
+    window.ttsVaultReady = function (cb) { if (ready) cb(); else waiters.push(cb); };
+    function markReady() {
+      if (ready) return;
+      ready = true;
+      var w = waiters; waiters = [];
+      w.forEach(function (f) { try { f(); } catch (e) { setTimeout(function () { throw e; }); } });
+    }
+    if (!ready) setTimeout(markReady, 400);
+
+    /* 頁面設定的 window.onload 改成「等登入資料拿回來」再執行 */
+    try {
+      var od = Object.getOwnPropertyDescriptor(window, 'onload') || Object.getOwnPropertyDescriptor(Window.prototype, 'onload');
+      if (embedded && od && od.set && od.get) {
+        Object.defineProperty(window, 'onload', {
+          configurable: true,
+          get: function () { return od.get.call(window); },
+          set: function (fn) { od.set.call(window, typeof fn === 'function' ? function (ev) { var self = this; window.ttsVaultReady(function () { fn.call(self, ev); }); } : fn); }
+        });
+      }
+    } catch (e) { }
+
+    var S, oset, odel;
+    try {
+      S = Storage.prototype; oset = S.setItem; odel = S.removeItem;
+      S.setItem = function (k, v) { oset.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-set', k: k, v: String(v) }); } catch (e) { } };
+      S.removeItem = function (k) { odel.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-del', k: k }); } catch (e) { } };
+    } catch (e) { markReady(); return; }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== ORIGIN) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-vault' || !d.data) return;
+      var restored = false;
+      Object.keys(d.data).forEach(function (k) {
+        if (!KEYS.test(k) || !d.data[k]) return;
+        var cur = null;
+        try { cur = window.localStorage.getItem(k); } catch (e) { return; }
+        if (!cur) { try { oset.call(window.localStorage, k, d.data[k]); restored = true; } catch (e) { } }
+      });
+      var late = ready;
+      markReady();
+      if (restored && late) {
+        /* 太晚拿到 (頁面已經開始跑)：蓋住畫面再請外殼頁重新載入一次，避免跳出「連線失敗 HTTP 0」 */
+        try {
+          var cv = document.createElement('div');
+          cv.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#020617';
+          (document.body || document.documentElement).appendChild(cv);
+        } catch (e) { }
+        window.alert = function () { };
+        post({ type: 'tts-vault-reload' });
+      }
+    });
+    post({ type: 'tts-vault-get' });
+  })();
+</script>

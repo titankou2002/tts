@@ -26,7 +26,7 @@ function _findHeader(arr, keys) {
 /** 1. 取得任務 (V15.1) */
 function getUnDispatchedTasks_V3(token) {
   try {
-    _requireWarehouse_(token);
+    _requireAuth_(token, ['warehouse', 'admin', 'viewer']); // V43.0: 業務可看
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const data = sheet.getDataRange().getValues();
@@ -59,7 +59,6 @@ function getUnDispatchedTasks_V3(token) {
       wrapSeal: findH(headers, ['封膠膜', '膠膜', '封膜']),
       note: findH(headers, ['備註', '備註欄', '備註事項']),
       returnReason: findH(headers, ['退回原因', '退回備註']),
-      driverConfirm: findH(headers, ['司機確認狀態']),
       specifiedArrive: findH(headers, ['指定到貨時間']) // V39.30: 強制指定時間，供派車介面閃爍提示用
     };
 
@@ -141,7 +140,6 @@ function getUnDispatchedTasks_V3(token) {
             whStatus: String(row[idx.whStatus] || '').trim(),
             whDriver: String(row[idx.whDriver] || '').trim(),
             whTime: String(row[idx.whTime] || '').trim(),
-            driverConfirm: idx.driverConfirm !== -1 ? String(row[idx.driverConfirm] || '').trim() : '',
             shippingType: idx.shippingType !== -1 ? String(row[idx.shippingType] || '').trim() : '',
             type: idx.type !== -1 ? String(row[idx.type] || '').trim() : '',
             note: idx.note !== -1 ? String(row[idx.note] || '').trim() : '',
@@ -207,7 +205,7 @@ function getDrivers_V3(token) {
 }
 
 /** 3. 核心指派 (寫入 V, W, G, H, AD 欄位) */
-function recordDispatch_V3(tasks, config, token) {
+function recordDispatch_V3_impl_(tasks, config, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -219,7 +217,6 @@ function recordDispatch_V3(tasks, config, token) {
     
     const cId = h.indexOf('單號');
     const cDrv = h.indexOf('派遣司機');     // V
-    const cShi = h.indexOf('派遣車次');     // W
     const cPla = h.findIndex(v => v === '車牌' || v === '車號'); // G
     const cSta = h.indexOf('狀態');        // H
     const cOrd = h.findIndex(v => v === '順序' || v === '趟次'); // AD
@@ -249,11 +246,10 @@ function recordDispatch_V3(tasks, config, token) {
       for(let k=1; k<data.length; k++) { if(String(data[k][cId]) === String(t.id)) { k0 = k; break; } }
       if (k0) {
         if(cDrv !== -1) data[k0][cDrv] = config.name;
-        if(cShi !== -1) data[k0][cShi] = config.shift;
         if(cPla !== -1) data[k0][cPla] = config.plate;
         if(cSta !== -1) data[k0][cSta] = '配送中';
         if(cOrd !== -1) { curMax++; data[k0][cOrd] = curMax; }
-        _writeRowCells_(sheet, k0 + 1, data[k0], [cDrv, cShi, cPla, cSta, cOrd]);
+        _writeRowCells_(sheet, k0 + 1, data[k0], [cDrv, cPla, cSta, cOrd]);
       }
     });
     if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_();
@@ -292,7 +288,7 @@ function updateWhDriver_V3(id, driver, token) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function updateBackYinggeStatus_V3(id, dummy, isB, token) {
+function updateBackYinggeStatus_V3_impl_(id, dummy, isB, token) {
   try {
     _requireAdmin_(token);
     const ss = getSS();
@@ -356,7 +352,7 @@ function batchDispatchSave_V3(jsonStr, token) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function recordDispatchOrder(updates, token) {
+function recordDispatchOrder_impl_(updates, token) {
   try {
     _requireAdmin_(token);
     const ss = getSS();
@@ -379,14 +375,14 @@ function recordDispatchOrder(updates, token) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function cancelDispatch_V3(id, token) {
+function cancelDispatch_V3_impl_(id, token) {
   try {
     _requireAdmin_(token);
     const ss = getSS();
     const sheet = ss.getSheetByName(CONFIG.SHEET_TASKS);
     const h = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(v => String(v).trim());
     const cId = h.indexOf('單號');
-    const targetCols = ['派遣司機', '派遣車次', '車牌', '車號', '狀態', '順序', '趟次'];
+    const targetCols = ['派遣司機', '車牌', '車號', '狀態', '順序', '趟次'];
     const data = sheet.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][cId]) === String(id)) {
@@ -406,7 +402,7 @@ function ensureDispatchHabitSheet_V2(ss) {
   const sheetName = '排車習慣記錄';
   const headers = [
     '記錄時間', '派遣批次ID', '派遣來源', '分公司',
-    '車牌', '司機', '派遣車次',
+    '車牌', '司機',
     '訂單數', '訂單清單', '客戶清單',
     '地址數', '地址清單', '主要行政區', '行政區集合',
     '總重量(kg)', '總箱數', '尺寸集合',
@@ -515,7 +511,6 @@ function logDispatchHabit_V8(ss, data) {
       '分公司': branches.join('、'),
       '車牌': config.plate || '',
       '司機': config.name || '',
-      '派遣車次': config.shift || '1',
       '訂單數': orderIds.length,
       '訂單清單': orderIds.join('、'),
       '客戶清單': customers.join('、'),
@@ -548,7 +543,7 @@ function extractDistrict(addr) {
 }
 
 /** 6.5 倉庫批次儲存 (V0708.8) */
-function batchWarehouseSave_V3(jsonStr, token) {
+function batchWarehouseSave_V3_impl_(jsonStr, token) {
   try {
     _requireWarehouse_(token);
     const ss = getSS();
@@ -560,16 +555,11 @@ function batchWarehouseSave_V3(jsonStr, token) {
     const cStat = findH(headers, ['驗貨狀態']);
     const cDrv = findH(headers, ['派遣司機']);
     const cWh = findH(headers, ['實際載貨人']);
-    const cConfirm = findH(headers, ['司機確認狀態']);
-    const cConfirmTime = findH(headers, ['司機確認時間']);
     if (cId === -1) throw new Error("無單號欄位");
 
     const payloads = JSON.parse(jsonStr);
     const rowMap = {};
     for (let i = 1; i < data.length; i++) rowMap[String(data[i][cId]).trim()] = i;
-
-    const tz = Session.getScriptTimeZone();
-    const now = Utilities.formatDate(new Date(), tz, "yyyy/MM/dd HH:mm:ss");
 
     for (const p of payloads) {
       const rowIdx = rowMap[String(p.id).trim()];
@@ -578,17 +568,13 @@ function batchWarehouseSave_V3(jsonStr, token) {
       if (cStat !== -1 && p.whStatus !== undefined) sheet.getRange(r, cStat + 1).setValue(p.whStatus || '');
       if (cDrv !== -1 && p.assignedDriver !== undefined) sheet.getRange(r, cDrv + 1).setValue(p.assignedDriver || '');
       if (cWh !== -1 && p.whDriver !== undefined) sheet.getRange(r, cWh + 1).setValue(p.whDriver || p.assignedDriver || '');
-      if (cConfirm !== -1 && p.driverConfirm !== undefined) {
-        sheet.getRange(r, cConfirm + 1).setValue(p.driverConfirm || '');
-        if (cConfirmTime !== -1) sheet.getRange(r, cConfirmTime + 1).setValue(p.driverConfirm === '已確認' ? now : '');
-      }
     }
     return { success: true, count: payloads.length };
   } catch (e) { return { success: false, error: e.message }; }
 }
 
 /** 7. 倉庫驗貨 (V1.0) */
-function verifyTask_V3(id, actualDriver, token) {
+function verifyTask_V3_impl_(id, actualDriver, token) {
   try {
     _requireWarehouse_(token);
     const ss = getSS();
@@ -616,7 +602,7 @@ function verifyTask_V3(id, actualDriver, token) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function undoVerifyTask_V3(id, token) {
+function undoVerifyTask_V3_impl_(id, token) {
   try {
     _requireWarehouse_(token);
     const ss = getSS();
@@ -651,7 +637,7 @@ function undoVerifyTask_V3(id, token) {
  */
 function getDispatchHabits_V41(days, token) {
   try {
-    _requireAdmin_(token);
+    _requireViewer_(token); // V43.0: 業務可看不能改
     days = parseInt(days, 10) || 90;
     var cache = CacheService.getScriptCache();
     var cacheKey = 'dispatch_habits_v1_' + days;
@@ -686,4 +672,116 @@ function getDispatchHabits_V41(days, token) {
     try { cache.put(cacheKey, JSON.stringify(out), 3600); } catch (e) { }
     return out;
   } catch (e) { return { success: false, error: e.message, byDistrict: {}, trips: 0 }; }
+}
+
+/**
+ * V42.54 AI 排車學習 第一階段：每次套用 AI 排車，把「每一張單」AI 建議的車 vs 最後實際派的車記一列。
+ * 沒被改的單也記（=主管確認過的正確答案，也是修正率的分母）；被改的單附上調整原因。
+ * 以車牌為主（司機會換人、車不會）。新資料插在第 2 列，最新的在最上面。欄位依標題名稱對應，不寫死欄位順序。
+ */
+var AI_LEARN_SHEET_V42 = 'AI排車學習記錄';
+var AI_LEARN_HEADERS_V42 = [
+  '記錄時間', '批次ID', '派送日期', '單號', '客戶', '地址', '行政區', '重量(kg)', '指定到貨時間', '時段',
+  'AI建議車牌', 'AI建議司機', 'AI理由', '最終車牌', '最終司機',
+  '是否調整', '調整原因', '是否納入學習', '備註',
+  '最終同車單號', '最終同車行政區', 'AI車上指定時間單', '寫入結果', '操作人'
+];
+
+function _ensureAiLearnSheet_V42_(ss) {
+  var sh = ss.getSheetByName(AI_LEARN_SHEET_V42);
+  var created = false;
+  if (!sh) { sh = ss.insertSheet(AI_LEARN_SHEET_V42); created = true; }
+  var lastCol = sh.getLastColumn();
+  var cur = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (v) { return String(v).trim(); }) : [];
+  while (cur.length && !cur[cur.length - 1]) cur.pop();
+  var missing = AI_LEARN_HEADERS_V42.filter(function (h) { return cur.indexOf(h) === -1; });
+  if (missing.length) {
+    sh.getRange(1, cur.length + 1, 1, missing.length).setValues([missing]);
+    cur = cur.concat(missing);
+  }
+  if (created) {
+    sh.getRange(1, 1, 1, cur.length).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return { sheet: sh, headers: cur };
+}
+
+function logAiDispatchLearning_V42(batchId, rows, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    var ctx = _requireAdmin_(token);
+    if (!Array.isArray(rows) || !rows.length) return { success: true, written: 0 };
+    if (rows.length > 500) throw new Error('一次最多 500 筆');
+    if (!lock.tryLock(15000)) throw new Error('同步鎖定中');
+    var target = _ensureAiLearnSheet_V42_(getSS());
+    var now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm:ss');
+    // 防止備註等自由文字被 Sheets 當成公式執行
+    var txt = function (v) {
+      var s = String(v == null ? '' : v).slice(0, 500);
+      return /^[=+\-@]/.test(s) ? "'" + s : s;
+    };
+    var out = rows.map(function (r) {
+      r = r || {};
+      var m = {
+        '記錄時間': now, '批次ID': txt(batchId), '派送日期': txt(r.date), '單號': txt(r.id),
+        '客戶': txt(r.customer), '地址': txt(r.address), '行政區': txt(r.district),
+        '重量(kg)': Number(r.weight) || 0, '指定到貨時間': txt(r.specifiedArrive), '時段': txt(r.timeSlot),
+        'AI建議車牌': txt(r.aiPlate), 'AI建議司機': txt(r.aiDriver), 'AI理由': txt(r.aiWhy),
+        '最終車牌': txt(r.finalPlate), '最終司機': txt(r.finalDriver),
+        '是否調整': r.adjusted === '是' ? '是' : '否', '調整原因': txt(r.reason), '是否納入學習': txt(r.learn),
+        '備註': txt(r.note), '最終同車單號': txt(r.sameCarIds), '最終同車行政區': txt(r.sameCarDistricts),
+        'AI車上指定時間單': txt(r.aiCarTimed), '寫入結果': txt(r.writeResult),
+        '操作人': txt((ctx && ctx.name) || '管理員')
+      };
+      return target.headers.map(function (h) { return m.hasOwnProperty(h) ? m[h] : ''; });
+    });
+    var sh = target.sheet;
+    sh.insertRowsAfter(1, out.length);
+    sh.getRange(2, 1, out.length, target.headers.length)
+      .setValues(out)
+      .setFontWeight('normal');
+    return { success: true, written: out.length };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
+}
+
+/** AI 排車修正率統計（排車視窗 AI 預覽上方顯示；之後分析中心也共用這支） */
+function getAiDispatchLearningStats_V42(days, token) {
+  try {
+    _requireViewer_(token); // V43.0: 業務可看不能改
+    days = parseInt(days, 10) || 30;
+    var out = { success: true, days: days, total: 0, adjusted: 0, batches: 0, byReason: {}, byDay: [] };
+    var sh = getSS().getSheetByName(AI_LEARN_SHEET_V42);
+    if (!sh || sh.getLastRow() < 2) return out;
+    var lastCol = sh.getLastColumn();
+    var h = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (v) { return String(v).trim(); });
+    var cT = h.indexOf('記錄時間'), cB = h.indexOf('批次ID'), cA = h.indexOf('是否調整'), cR = h.indexOf('調整原因');
+    if (cT === -1 || cA === -1) return out;
+    var n = Math.min(sh.getLastRow() - 1, 5000); // 最新的在最上面，讀前 5000 列就夠
+    var data = sh.getRange(2, 1, n, lastCol).getValues();
+    var since = Date.now() - days * 86400000;
+    var tz = Session.getScriptTimeZone();
+    var dayMap = {}, batchSet = {};
+    data.forEach(function (r) {
+      var tv = r[cT];
+      var tm = tv instanceof Date ? tv.getTime() : Date.parse(String(tv || ''));
+      if (!tm || tm < since) return;
+      out.total++;
+      if (cB !== -1 && r[cB]) batchSet[r[cB]] = 1;
+      var day = Utilities.formatDate(new Date(tm), tz, 'yyyy/MM/dd');
+      var dm = dayMap[day] || (dayMap[day] = { date: day, total: 0, adjusted: 0 });
+      dm.total++;
+      if (String(r[cA]).trim() === '是') {
+        out.adjusted++; dm.adjusted++;
+        var rs = (cR !== -1 && String(r[cR] || '').trim()) || '未填';
+        out.byReason[rs] = (out.byReason[rs] || 0) + 1;
+      }
+    });
+    out.batches = Object.keys(batchSet).length;
+    out.byDay = Object.keys(dayMap).sort().map(function (k) { return dayMap[k]; });
+    return out;
+  } catch (e) { return { success: false, error: e.message }; }
 }

@@ -2,6 +2,74 @@
 <html>
 
 <head>
+<script>
+  /* V43.25 登入資料保管 (本檔內容直接寫在 Index/Dashboard/WebDashboard/Warehouse 的 <head>：<head> 裡的 include 會被 HtmlService 移除，改這段要四頁一起改)
+     iPhone 主畫面 App／LINE 會清掉這個 iframe (第三方) 的儲存，關掉 App 再開就要重登。
+     → 登入相關的 localStorage 一寫入就同步一份到 bigt.cc 外殼頁 (第一方，不會被清)；
+       打開時先向外殼頁拿回來，頁面的 window.onload 等拿到 (最多 0.4 秒) 才開始跑 → 只載入一次就是已登入。
+       萬一超過 0.4 秒才拿到，才蓋住畫面請外殼頁重新載入一次。注意：網址拆開寫 (GAS 會截斷兩個斜線)。 */
+  (function () {
+    var KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/;
+    var ORIGIN = 'https:' + '/' + '/bigt.cc';
+    var embedded = window.top !== window;
+    function post(m) { try { if (embedded) window.top.postMessage(m, ORIGIN); } catch (e) { } }
+
+    var ready = !embedded, waiters = [];
+    window.ttsVaultReady = function (cb) { if (ready) cb(); else waiters.push(cb); };
+    function markReady() {
+      if (ready) return;
+      ready = true;
+      var w = waiters; waiters = [];
+      w.forEach(function (f) { try { f(); } catch (e) { setTimeout(function () { throw e; }); } });
+    }
+    if (!ready) setTimeout(markReady, 400);
+
+    /* 頁面設定的 window.onload 改成「等登入資料拿回來」再執行 */
+    try {
+      var od = Object.getOwnPropertyDescriptor(window, 'onload') || Object.getOwnPropertyDescriptor(Window.prototype, 'onload');
+      if (embedded && od && od.set && od.get) {
+        Object.defineProperty(window, 'onload', {
+          configurable: true,
+          get: function () { return od.get.call(window); },
+          set: function (fn) { od.set.call(window, typeof fn === 'function' ? function (ev) { var self = this; window.ttsVaultReady(function () { fn.call(self, ev); }); } : fn); }
+        });
+      }
+    } catch (e) { }
+
+    var S, oset, odel;
+    try {
+      S = Storage.prototype; oset = S.setItem; odel = S.removeItem;
+      S.setItem = function (k, v) { oset.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-set', k: k, v: String(v) }); } catch (e) { } };
+      S.removeItem = function (k) { odel.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-del', k: k }); } catch (e) { } };
+    } catch (e) { markReady(); return; }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== ORIGIN) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-vault' || !d.data) return;
+      var restored = false;
+      Object.keys(d.data).forEach(function (k) {
+        if (!KEYS.test(k) || !d.data[k]) return;
+        var cur = null;
+        try { cur = window.localStorage.getItem(k); } catch (e) { return; }
+        if (!cur) { try { oset.call(window.localStorage, k, d.data[k]); restored = true; } catch (e) { } }
+      });
+      var late = ready;
+      markReady();
+      if (restored && late) {
+        /* 太晚拿到 (頁面已經開始跑)：蓋住畫面再請外殼頁重新載入一次，避免跳出「連線失敗 HTTP 0」 */
+        try {
+          var cv = document.createElement('div');
+          cv.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#020617';
+          (document.body || document.documentElement).appendChild(cv);
+        } catch (e) { }
+        window.alert = function () { };
+        post({ type: 'tts-vault-reload' });
+      }
+    });
+    post({ type: 'tts-vault-get' });
+  })();
+</script>
     <base target="_top">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2450,6 +2518,22 @@
         }
         button:disabled { opacity: .5; cursor: not-allowed !important; transform: none; filter: none; }
         @media (prefers-reduced-motion: reduce) { button, .chip, .cmd-btn { transition: none; } }
+
+        /* V43.4 手機版上方列重新排版：原本左右兩塊都不換行，加上登入者後整列被擠出螢幕、右邊按鈕按不到。
+           改成 第一行 標誌＋司機/分公司＋統計、第二行 登入者、第三行 按鈕 (放不下自動換行，全部按得到) */
+        @media (max-width: 768px) {
+            .header { left: 8px; right: 8px; padding: 8px 10px; flex-direction: column; align-items: stretch; gap: 6px; }
+            .header-left { flex-wrap: wrap; white-space: normal; gap: 8px; min-width: 0; }
+            .header-left > svg { width: 30px; height: 20px; }
+            #header-clock { display: none; }
+            .header-view-switcher { margin-left: 4px; }
+            .header-kpi-bar { margin-left: 0; padding-left: 8px; gap: 8px; }
+            .header-right { flex-wrap: wrap; white-space: normal; flex-shrink: 1; gap: 6px; justify-content: flex-start; }
+            #meSlot { flex: 0 0 100%; }
+            #meSlot .tts-me { flex-direction: row; align-items: baseline; gap: 8px; margin-right: 0; }
+            #targetCar { margin-right: 2px !important; font-size: 12px !important; max-width: 90px; }
+            .guide-label { display: none; }
+        }
     </style>
 </head>
 
@@ -2485,6 +2569,8 @@
             </div>
 
             <button class="login-btn" onclick="verifyAdminLogin()">系統解鎖</button>
+            <!-- V43.0: Google 登入 (個人帳號，每個操作都記得到是誰) -->
+            <div id="gLoginSlot" style="margin-top:14px; display:flex; justify-content:center;"></div>
 
             <div class="progress-wrap">
                 <div class="progress-label">
@@ -2530,9 +2616,10 @@
             </div>
         </div>
         <div class="header-right">
+            <span id="meSlot"></span>
             <span id="targetCar" style="color:#fbbf24; font-weight:bold; margin-right:15px; font-size:14px;">請選車</span>
-            <button class="btn-rounded-outline"
-                onclick="document.getElementById('aiOcrModal').style.display='flex'" title="掃描上傳銷貨單">掃描</button>
+            <button class="btn-rounded-outline" onclick="openNewFeatureGuideModal()" title="查看全新功能全方位指南與按鈕教學" style="border:1px solid #38bdf8; color:#38bdf8; font-weight:bold; background:rgba(56,189,248,0.1); font-size:12px; display:inline-flex; align-items:center; gap:4px;">💡 <span class="guide-label">新功能指南</span></button>
+            <button class="btn-rounded-outline" onclick="document.getElementById('aiOcrModal').style.display='flex'" title="掃描上傳銷貨單">掃描</button>
             <button class="btn-rounded-outline" onclick="openModal()" title="新增行程">新增</button>
             <button class="btn-rounded-outline" onclick="openAnalytics()" title="報表分析">報表</button>
             <button class="btn-rounded-outline" onclick="toggleDispatchModal()" title="阿榮排車">排車</button>
@@ -2710,28 +2797,247 @@
                         <input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;">
                         <span style="color:#64748b; font-size:12px;">片</span>
                     </div>
-                    <div class="t-item-row" style="display:flex; gap:6px; align-items:center;">
-                        <input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;">
-                        <input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;">
-                        <span style="color:#64748b; font-size:12px;">片</span>
-                    </div>
-                    <div class="t-item-row" style="display:flex; gap:6px; align-items:center;">
-                        <input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;">
-                        <input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;">
-                        <span style="color:#64748b; font-size:12px;">片</span>
-                    </div>
                 </div>
                 <button id="tItemsAddBtn" onclick="addTItemRow()" style="margin-top:6px; background:transparent; color:#38bdf8; border:1px dashed #38bdf8; border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; font-weight:900;">+ 增加品項</button>
             </div>
             <div style="display:flex; gap:10px; margin-top:20px;">
-                <button id="submitTempBtn" class="btn btn-primary" onclick="submitTemp()"
-                    style="transition: all 0.3s ease; border: 2.5px solid #38bdf8;">提交任務</button>
+                <button id="submitTempBtn" class="btn btn-primary" onclick="submitTemp()" style="transition: all 0.3s ease; border: 2.5px solid #38bdf8;">提交任務</button>
                 <button class="btn btn-danger" onclick="closeModal()" style="width:100px;">取消</button>
             </div>
         </div>
     </div>
+    <div id="newFeatureGuideModal" style="display:none; position:fixed; inset:0; background:rgba(2,6,23,0.92); backdrop-filter:blur(8px); z-index:100050; align-items:center; justify-content:center; padding:15px;">
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:16px; width:95%; max-width:920px; height:85vh; display:flex; flex-direction:column; box-shadow:0 20px 50px rgba(0,0,0,0.7); overflow:hidden;">
+            
+            <!-- Modal Header -->
+            <div style="padding:16px 24px; background:linear-gradient(135deg, #1e293b, #0f172a); border-bottom:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="background:linear-gradient(135deg, #0284c7, #38bdf8); color:#fff; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:18px;">✨</div>
+                    <div>
+                        <h3 style="margin:0; color:#38bdf8; font-size:18px; font-weight:900;">鈦傳速 V42.06 新功能模擬介面帶領指南</h3>
+                        <div style="font-size:12px; color:#94a3b8; margin-top:2px;">依操作情境提供 1:1 介面示意圖，指明各按鈕位置與功能差異</div>
+                    </div>
+                </div>
+                <span style="color:#94a3b8; cursor:pointer; font-size:22px; font-weight:bold;" onclick="closeNewFeatureGuideModal()">✕</span>
+            </div>
 
-    <?!= include('DispatchSystem'); ?>
+            <!-- Tab Switcher -->
+            <div style="display:flex; background:#020617; border-bottom:1px solid #334155; padding:0 10px; overflow-x:auto;">
+                <button class="guide-tab active" onclick="switchGuideTab('tab1', this)" style="padding:12px 18px; background:transparent; border:none; border-bottom:3px solid #38bdf8; color:#38bdf8; font-weight:bold; font-size:13px; cursor:pointer; white-space:nowrap;">📷 1. 掃描錄單與常用點</button>
+                <button class="guide-tab" onclick="switchGuideTab('tab2', this)" style="padding:12px 18px; background:transparent; border:none; border-bottom:3px solid transparent; color:#94a3b8; font-weight:bold; font-size:13px; cursor:pointer; white-space:nowrap;">🚚 2. 派車退單與載回指派</button>
+                <button class="guide-tab" onclick="switchGuideTab('tab3', this)" style="padding:12px 18px; background:transparent; border:none; border-bottom:3px solid transparent; color:#94a3b8; font-weight:bold; font-size:13px; cursor:pointer; white-space:nowrap;">📱 3. 司機 App 現場異常</button>
+                <button class="guide-tab" onclick="switchGuideTab('tab4', this)" style="padding:12px 18px; background:transparent; border:none; border-bottom:3px solid transparent; color:#94a3b8; font-weight:bold; font-size:13px; cursor:pointer; white-space:nowrap;">💰 4. 運費調整與歷史修改</button>
+            </div>
+
+            <!-- Modal Content Area -->
+            <div class="custom-scroll" style="flex:1; overflow-y:auto; padding:20px; background:#0b1329;">
+                
+                <!-- TAB 1: 掃描錄單 -->
+                <div id="guide-tab1" class="guide-content" style="display:block;">
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:15px;">
+                        <div style="font-size:13px; font-weight:bold; color:#38bdf8; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span style="background:#0284c7; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">1</span>
+                            OCR 錄單表格 模擬 UI 介面圖
+                        </div>
+
+                        <!-- Mockup OCR Table -->
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; font-size:12px; overflow-x:auto;">
+                            <table style="width:100%; border-collapse:collapse; color:#fff;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #334155; color:#94a3b8;">
+                                        <th style="padding:6px; text-align:left;">客戶名稱 / 送貨地址* <span style="background:#10b981; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:6px;">❶ ＋ 常用點</span></th>
+                                        <th style="padding:6px; text-align:left;">重量</th>
+                                        <th style="padding:6px; text-align:left;">備註</th>
+                                        <th style="padding:6px; text-align:center;">操作 (矩陣按鈕列)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td style="padding:8px;">晋仕企業 / 桃園市八德區後莊街52-1號 (弘昇貨運)</td>
+                                        <td style="padding:8px;">62 KG</td>
+                                        <td style="padding:8px; color:#fbbf24;">[指送：弘昇貨運]</td>
+                                        <td style="padding:8px; text-align:center;">
+                                            <div style="display:flex; flex-direction:column; gap:4px; width:130px; margin:0 auto;">
+                                                <div style="background:#0284c7; color:#fff; padding:3px 0; border-radius:4px; font-weight:bold; font-size:11px;">建立訂單</div>
+                                                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px;">
+                                                    <span style="border:1px solid #10b981; color:#10b981; padding:2px 0; font-size:9px; border-radius:3px;">❷☐膠膜</span>
+                                                    <span style="background:linear-gradient(135deg,#059669,#10b981); color:#fff; padding:2px 0; font-size:9px; border-radius:3px;">❸☑堆高機</span>
+                                                    <span style="border:1px solid #eab308; color:#eab308; padding:2px 0; font-size:9px; border-radius:3px;">❹☐內部</span>
+                                                </div>
+                                                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:2px;">
+                                                    <span style="border:1px solid #475569; color:#94a3b8; padding:2px 0; font-size:9px; border-radius:3px;">❺業務</span>
+                                                    <span style="border:1px solid #475569; color:#94a3b8; padding:2px 0; font-size:9px; border-radius:3px;">原文</span>
+                                                    <span style="border:1px solid #ef4444; color:#ef4444; padding:2px 0; font-size:9px; border-radius:3px;">移除</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Details Explanation -->
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(16,185,129,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#10b981;">❶ 【＋ 常用點】按鈕</b>：位於表頭右側。點擊彈窗填寫指送簡稱、全名與完整地址，<b>自動寫入後台《運費管理表》J, K, L 欄</b>。
+                            <div style="color:#fbbf24; font-size:11px; margin-top:4px;">⚠️ 醒目提示：需確認現場備有【全程堆高機下貨】才可新增為常用點 (運費5折計)。若已記錄過則自動抓取帶入。</div>
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(249,115,22,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#f97316;">❸ 【☐ 堆高機】按鈕</b>：原「貨運」更名為「堆高機」。點擊亮起 <span style="color:#10b981; font-weight:bold;">☑ 堆高機</span>，代表現場堆高機下貨（司機免搬運），運費自動打 5 折。
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(234,179,8,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#eab308;">❹ 【☐ 內部】按鈕</b>：升級為<b>可手動點擊切換的互動按鈕</b>！點擊亮起 <span style="color:#eab308; font-weight:bold;">☑ 內部</span> 琥珀黃光，運費自動計算為 $0 (內部免費)。
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(148,163,184,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#94a3b8;">❺ 【業務】按鈕</b>：原「票務」更名為「業務」，點擊切換業務樣品點收模式。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: 派車退單 -->
+                <div id="guide-tab2" class="guide-content" style="display:none;">
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:15px;">
+                        <div style="font-size:13px; font-weight:bold; color:#c084fc; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span style="background:#a855f7; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">2</span>
+                            派車退單彈窗 模擬 UI 介面圖
+                        </div>
+
+                        <!-- Mockup Return Modal -->
+                        <div style="background:#0f172a; border:1px solid #a855f7; border-radius:8px; padding:14px; font-size:12px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                <span style="color:#a855f7; font-weight:bold; font-size:14px;">🔴 批次退回分公司</span>
+                                <div style="display:flex; gap:8px;">
+                                    <span style="background:#1e293b; border:1px solid #a855f7; color:#fbbf24; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold;">❻ 載回司機：▼ 羅昭軒</span>
+                                    <span style="background:#1e293b; border:1px solid #475569; color:#fff; padding:3px 8px; border-radius:4px; font-size:11px;">原因：選擇原因 ▼</span>
+                                </div>
+                            </div>
+                            <div style="background:#1e293b; border:1px solid #334155; border-radius:6px; padding:8px; margin-bottom:10px;">
+                                <div style="color:#fff; font-weight:bold;">辰照精品建材 (150918021)</div>
+                                <div style="margin-top:4px;">
+                                    <span style="background:#020617; border:1px solid #a855f7; color:#c084fc; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold;">❼ 原因：此單不接，載回鶯歌，請分公司業務自理 (內部運輸/免運費) ▼</span>
+                                </div>
+                            </div>
+                            <div style="background:rgba(168,85,247,0.1); border:1px dashed #a855f7; border-radius:6px; padding:8px; font-family:monospace; color:#cbd5e1; font-size:11px;">
+                                ❌ 退回高雅瓷 ❌<br>
+                                🟧 辰照精品建材<br>
+                                🟧 150918021<br>
+                                🟧 原因：此單不接，載回鶯歌，請分公司業務自理 (由羅昭軒載回)
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(168,85,247,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#c084fc;">❻ 【載回司機】下拉選單</b>：退單時可直接選取由哪一位司機載回倉庫，LINE / Telegram 通報訊息會自動呈現 `(由司機載回)`，並寫入該載回司機。
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(168,85,247,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#c084fc;">❼ 【此單不接，載回鶯歌，請分公司業務自理】</b>：選取此原因退單，LINE/Telegram 會通報業務自理，司機端 App 自動隱藏不配送，但<b>倉管驗貨點收系統會保留</b>供點收清點。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: 司機 App 現場異常 -->
+                <div id="guide-tab3" class="guide-content" style="display:none;">
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:15px;">
+                        <div style="font-size:13px; font-weight:bold; color:#f97316; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span style="background:#f97316; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">3</span>
+                            司機端 App 模擬 UI 介面圖
+                        </div>
+
+                        <!-- Mockup Driver App -->
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:14px; font-size:12px;">
+                            <div style="background:rgba(234,179,8,0.15); border:1px solid #eab308; color:#eab308; padding:4px 8px; border-radius:4px; font-weight:bold; font-size:11px; display:inline-block; margin-bottom:8px;">
+                                ❽ [內部運輸 - 下鶯歌倉 / 業務自理]
+                            </div>
+                            <div style="color:#fff; font-size:14px; font-weight:bold; margin-bottom:10px;">辰照精品建材有限公司 (150918021)</div>
+                            
+                            <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.3); border-radius:6px; padding:10px;">
+                                <div style="color:#f97316; font-weight:bold; margin-bottom:6px;">🚨 ❾ 現場收退貨異常回報 (運費連動與通報)</div>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; color:#cbd5e1; font-size:11px;">
+                                    <div>[☑] 📦 數量過多 (運費自動 x2)</div>
+                                    <div>[☑] 📍 距離過遠 (運費自動 x2)</div>
+                                    <div>[☑] 🚫 取消空跑 (計基本趟費)</div>
+                                    <div>[☑] ⏳ 等候過久 [ 超時1小時 ▼ ]</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(234,179,8,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#eab308;">❽ 【[內部運輸 - 下鶯歌倉]】標籤</b>：司機在手機上一眼即可辨認這是要載回鶯歌倉庫卸貨的單據，避免誤送到客戶端。
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(249,115,22,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#f97316;">❾ 【4 大現場收退異常回報】</b>：司機在結案時可勾選數量過多(運費x2)、距離過遠(運費x2)、等候超時、取消空跑。提交後<b>即時向 Telegram 發送警告通知</b>，運費自動連動調整。
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: 運費調整與歷史修改 -->
+                <div id="guide-tab4" class="guide-content" style="display:none;">
+                    <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px; margin-bottom:15px;">
+                        <div style="font-size:13px; font-weight:bold; color:#22c55e; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+                            <span style="background:#22c55e; color:#fff; border-radius:50%; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">4</span>
+                            對帳數據分析中心 (Analytics.html) 明細表格 模擬 UI 介面圖
+                        </div>
+
+                        <!-- Mockup Analytics Table -->
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px; font-size:12px; overflow-x:auto;">
+                            <table style="width:100%; border-collapse:collapse; color:#fff;">
+                                <thead>
+                                    <tr style="border-bottom:1px solid #334155; color:#94a3b8;">
+                                        <th style="padding:6px; text-align:left;">日期</th>
+                                        <th style="padding:6px; text-align:left;">單號</th>
+                                        <th style="padding:6px; text-align:left;">客戶名稱 / 單據標籤</th>
+                                        <th style="padding:6px; text-align:right;">系統估算</th>
+                                        <th style="padding:6px; text-align:right;">⓫ 核定運費 (手動修改)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr style="background:rgba(234,179,8,0.15);">
+                                        <td style="padding:8px;">2026/08/31</td>
+                                        <td style="padding:8px; color:#38bdf8;">T154516</td>
+                                        <td style="padding:8px;">
+                                            辰照精品建材 
+                                            <span style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:2px 6px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">❿ 樣品免費 (點擊切換)</span>
+                                        </td>
+                                        <td style="padding:8px; text-align:right;">$1,000</td>
+                                        <td style="padding:8px; text-align:right;">
+                                            <input type="number" value="0" style="width:70px; background:#020617; border:1px solid #22c55e; color:#22c55e; text-align:right; border-radius:4px; padding:2px 4px; font-weight:bold;"> 元
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#22c55e;">❿ 【單據標籤點擊切換】</b>：歷史單據若被誤判，在 [Analytics.html](https://bigt.cc/tts/Analytics.html) 對帳表格中<b>直接點擊 <span style="color:#eab308;">[樣品免費]</span> / <span style="color:#38bdf8;">[樣品收費]</span> / [銷貨] 標籤</b>，即可直接切換類型並重算金額！
+                        </div>
+                        <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(34,197,94,0.3); border-radius:8px; padding:12px;">
+                            <b style="color:#22c55e;">⓫ 【「核定運費」數字直接填寫】</b>：歷史單據若要指定金額，直接在框內輸入數字 (例如改成 $0)，前台與後台試算表即時同步！
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Modal Footer -->
+            <div style="padding:14px 24px; background:#020617; border-top:1px solid #334155; display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:12px; color:#64748b;">鈦傳速智慧物流派車神器 ‧ 系統模擬介面帶領指南</div>
+                <button class="btn" onclick="closeNewFeatureGuideModal()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; border:none; padding:10px 32px; border-radius:8px; font-weight:900; font-size:14px; cursor:pointer; box-shadow:0 4px 14px rgba(2,132,199,0.4);">
+                    🚀 我知道了，開啟系統
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    
+
+<?!= include('DispatchSystem'); ?>
 
     <!-- 全新 AI 批次辨識彈窗 (V2631.2) -->
     <div id="aiOcrModal" class="modal"
@@ -2776,7 +3082,11 @@
                             <th style="padding:10px; border-bottom:1px solid #334155; width:60px;">縮圖</th>
                             <th style="padding:10px; border-bottom:1px solid #334155; width:100px;">分公司 / 單號*</th>
                             <th style="padding:10px; border-bottom:1px solid #334155; width:120px;">日期 / 地點</th>
-                            <th style="padding:10px; border-bottom:1px solid #334155; min-width:220px;">客戶名稱 / 送貨地址*
+                            <th style="padding:10px; border-bottom:1px solid #334155; min-width:240px;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                                    <span>客戶名稱 / 送貨地址*</span>
+                                    <button class="btn" style="background:linear-gradient(135deg,#059669,#10b981); color:#fff; border:none; padding:3px 8px; border-radius:4px; font-size:11px; font-weight:bold; cursor:pointer; white-space:nowrap;" onclick="openAddLocationModal()">＋ 常用點</button>
+                                </div>
                             </th>
                             <th style="padding:10px; border-bottom:1px solid #334155; width:120px;">聯絡人 / 電話</th>
                             <th style="padding:10px; border-bottom:1px solid #334155; width:110px;">重量 / 時間</th>
@@ -2793,6 +3103,38 @@
                 </table>
             </div>
         </div>
+    </div>
+
+    <!-- ➕ 新增常用點 Modal -->
+    <div id="addLocationModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100020; align-items:center; justify-content:center;">
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:12px; width:90%; max-width:520px; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #1e293b; padding-bottom:10px;">
+                <h4 style="margin:0; color:#10b981; font-size:16px;">＋ 新增常用貨運行 / 加工廠點</h4>
+                <span style="color:#94a3b8; cursor:pointer; font-size:18px;" onclick="closeAddLocationModal()">✕</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <div style="background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color:#fbbf24; padding:8px 12px; border-radius:6px; font-size:12px; line-height:1.4;">
+                    ⚠️ <b>新增前請確認</b>：請務必確認此地點現場備有<b>【全程堆高機下貨】</b>（司機免搬運），才可新增為常用點 (運費自動以 5 折計算)。
+                </div>
+                <div>
+                    <label style="color:#94a3b8; font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">指送簡稱 (多個請用逗號分隔)</label>
+                    <input type="text" id="loc-short" placeholder="例：財利, 財利貨運" style="width:100%; background:#1e293b; border:1px solid #334155; color:#fff; padding:8px; border-radius:6px; font-size:13px;">
+                </div>
+                <div>
+                    <label style="color:#94a3b8; font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">全名</label>
+                    <input type="text" id="loc-fullname" placeholder="例：財利貨運" style="width:100%; background:#1e293b; border:1px solid #334155; color:#fff; padding:8px; border-radius:6px; font-size:13px;">
+                </div>
+                <div>
+                    <label style="color:#94a3b8; font-size:12px; font-weight:bold; display:block; margin-bottom:4px;">完整地址 <span style="color:#fbbf24; font-size:11px;">(提示：地址後面請附上全名，如：(財利貨運))</span></label>
+                    <input type="text" id="loc-address" placeholder="例：新北市鶯歌區德昌二街70巷22號-5(財利貨運)" style="width:100%; background:#1e293b; border:1px solid #334155; color:#fff; padding:8px; border-radius:6px; font-size:13px;">
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button id="saveLocBtn" onclick="submitNewCommonLocation()" style="flex:1.5; background:#10b981; color:#fff; padding:10px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">儲存並寫入運費管理表</button>
+                    <button onclick="closeAddLocationModal()" style="flex:1; background:#475569; color:#fff; padding:10px; border:none; border-radius:8px; cursor:pointer;">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
     </div>
     <!-- 縮圖預覽 Modal (V13.5: 改用獨特 ID 避免與 DispatchSystem.html 衝突) -->
     <div id="ocrImagePreviewModal" class="modal"
@@ -3210,6 +3552,8 @@
 
         // V11.24 A 等級：身分資訊注入
         const USER_INFO = (<?!= JSON.stringify(userInfo || {}) ?>);
+        // V43.16: 共用密碼登入關閉時，登入畫面只留 LINE / Google
+        if (USER_INFO.pwdLogin === false) { const st = document.createElement('style'); st.textContent = '#loginOverlay .input-group,#loginOverlay .login-btn{display:none!important}'; document.head.appendChild(st); }
         // V39.32: 伺服器端注入目前 doGet 路由用的 p 參數值 (admin/dispatch/...)，
         // 讓「?p=dispatch 自動開啟派車」這類判斷不用依賴不可靠的 window.location.search
         const SERVER_INITIAL_PAGE = (<?!= JSON.stringify(initialPage || '') ?>);
@@ -3274,7 +3618,7 @@
                 border-radius:50%; font-size:9px; font-weight:900;
                 display:flex; align-items:center; justify-content:center;
                 border:1px solid rgba(255,255,255,0.5);
-                z-index:10;">${b.letter}</div>`;
+                z-index:10;">${b.letter}<\/div>`;
         }
 
         function getBranchTag(branch) {
@@ -3286,11 +3630,12 @@
                 '漢樺': { name: '漢樺', bg: '#fbbf24', color: '#000' }
             };
             const b = branchMap[branch] || { name: branch.substring(0, 3), bg: '#64748b', color: '#fff' };
-            return `<span class="tag tag-branch" style="background:${b.bg} !important; color:${b.color} !important;">${b.name}</span>`;
+            return `<span class="tag tag-branch" style="background:${b.bg} !important; color:${b.color} !important;">${b.name}<\/span>`;
         }
 
         // V4.4: 地圖圖層切換函式
-        const tileLight = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        /* V41.56: 部署管線會吃掉字串內 // 之後的行尾，URL 拆兩段串接 */
+        const tileLight = 'https:/' + '/{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         // V41.4: Carto dark_all 圖磚自 2025 起需 API key (畫面出現 "API KEY REQUIRED" 浮水印)，
         // 改用同一份 OSM 圖磚，夜間模式以 CSS 反相濾鏡呈現 (見 #map.dark-tiles)
         const tileDark = tileLight;
@@ -3325,7 +3670,7 @@
                 districtLabels = [];
                 return;
             }
-            fetch('https://raw.githubusercontent.com/g0v/twgeojson/master/twCounty2010.geo.json')
+            fetch('https:/' + '/raw.githubusercontent.com/g0v/twgeojson/master/twCounty2010.geo.json')
                 .then(r => r.json())
                 .then(data => {
                     if (boundaryLayer) map.removeLayer(boundaryLayer);
@@ -3349,7 +3694,7 @@
                             const label = L.marker(center, {
                                 icon: L.divIcon({
                                     className: '',
-                                    html: `<div style="color:${color};font-size:13px;font-weight:900;white-space:nowrap;text-shadow:${shadow};pointer-events:none;letter-spacing:1px;">${name}</div>`,
+                                    html: `<div style="color:${color};font-size:13px;font-weight:900;white-space:nowrap;text-shadow:${shadow};pointer-events:none;letter-spacing:1px;">${name}<\/div>`,
                                     iconSize: [80, 24],
                                     iconAnchor: [40, 12]
                                 })
@@ -3481,7 +3826,7 @@
             const sel = document.getElementById('sidebarFilterDriver');
             if (!sel) return;
             const current = sel.value;
-            let html = '<option value="all">👤 所有司機</option><option value="unassigned">🔴 未指派</option>';
+            let html = '<option value="all">👤 所有司機<\/option><option value="unassigned">🔴 未指派<\/option>';
 
             // 從 carPositions 取得所有司機
             const drvs = carPositions.filter(p => !p.vehicle.includes('倉庫')).map(p => ({ id: p.vehicle, name: p.driver }));
@@ -3497,7 +3842,7 @@
             uniqueDrvs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
             uniqueDrvs.forEach(d => {
-                html += `<option value="${escapeHTML(d.id)}">${escapeHTML(d.name || d.id)}</option>`;
+                html += `<option value="${escapeHTML(d.id)}">${escapeHTML(d.name || d.id)}<\/option>`;
             });
             sel.innerHTML = html;
             if (Array.from(sel.options).some(o => o.value === current)) sel.value = current;
@@ -3741,6 +4086,12 @@
         function handleAuthError(msgOrErr) {
             const msg = String((msgOrErr && msgOrErr.message) || msgOrErr || '');
             if (msg.indexOf('AUTH_REQUIRED') === -1 && msg.indexOf('AUTH_FORBIDDEN') === -1) return false;
+            // V43.0: 沒權限 (例如業務帳號只能看) → 提示就好，不要登出
+            if (msg.indexOf('AUTH_FORBIDDEN') !== -1) {
+                const t0 = document.getElementById('toast');
+                if (t0) { t0.innerText = '🔒 ' + (msg.split('：')[1] || '權限不足'); t0.style.display = 'block'; setTimeout(() => { t0.style.display = 'none'; }, 3000); }
+                return true;
+            }
             setAdminToken('');
             const t = document.getElementById('toast');
             if (t) { t.innerText = '🔒 登入已逾時，請重新驗證'; t.style.display = 'block'; setTimeout(() => { t.style.display = 'none'; }, 3000); }
@@ -3750,6 +4101,7 @@
         function showLoginOverlay() {
             const overlay = document.getElementById('loginOverlay');
             if (!overlay) return;
+            if (window.TTSGoogle) TTSGoogle.autoLine({ app: 'admin', onSuccess: function (res) { setAdminToken(res.token); showMeBar(res); hideLoginOverlayAndStart(); } });
             overlay.style.display = '';
             overlay.style.opacity = '1';
             overlay.style.transform = 'none';
@@ -3777,6 +4129,13 @@
                 }, 1000);
             } else if (!window.__mainStarted) { window.__mainStarted = true; initMainSystem(); }
         }
+        function showMeBar(me) { window.__ME__ = me; if (window.TTSGoogle) TTSGoogle.showMe(document.getElementById('meSlot'), me); }
+        window.loginWithGoogleAdmin = function () {
+            TTSGoogle.start({
+                app: 'admin',
+                onSuccess: function (res) { setAdminToken(res.token); showMeBar(res); hideLoginOverlayAndStart(); }
+            });
+        };
         window.verifyAdminLogin = function () {
             const pwdInput = document.getElementById('adminPwdInput');
             if (!pwdInput) return;
@@ -3797,6 +4156,7 @@
                     pwdInput.disabled = false;
                     if (res && res.success && res.token) {
                         setAdminToken(res.token);
+                        showMeBar({ name: '管理員', via: '', loginAt: Date.now() });
                         hideLoginOverlayAndStart();
                     } else {
                         fail();
@@ -3994,7 +4354,7 @@
             const tok = ATOKEN();
             if (tok) {
                 google.script.run
-                    .withSuccessHandler(r => { if (r && r.valid) hideLoginOverlayAndStart(true); else { setAdminToken(''); showLoginOverlay(); } })
+                    .withSuccessHandler(r => { if (r && r.valid) { if (r.renewed) setAdminToken(r.renewed); showMeBar(r); hideLoginOverlayAndStart(true); } else { setAdminToken(''); showLoginOverlay(); } })
                     .withFailureHandler(() => showLoginOverlay())
                     .checkAdminSession(tok);
             } else {
@@ -4151,44 +4511,17 @@
                 // 合併後的最終清單
                 const finalSortedTasks = doneTasks.concat(pendingTasks);
 
-                // V6.2: 混合策略 ETA 推算（真實 ETA + 推估值）
-                // - 第 0 站：Google Maps 真實 ETA + 下貨 15 分鐘
-                // - 第 1+ 站：推估值（距離÷時速+下貨）
-                if (carPos && carPos.lat && carPos.lng) {
-                    let baseNow = nowD.getTime();
-                    let lastLat = carPos.lat;      // 追蹤上一站的緯度
-                    let lastLng = carPos.lng;      // 追蹤上一站的經度
+                // V42.58: 到貨時間改用共用算法 (只算今天、先算司機正在導航的那站)。
+                // 舊算法把所有未完成單 (含非今天) 依排車順序串起來，還在到達時間多加 15 分鐘下貨，導致地圖顯示 10 分鐘、行程表卻是好幾小時後。
+                Object.assign(vehicleETAs, computeVehicleETAs_(carPos, pendingTasks, nowD, dToday));
 
-                    pendingTasks.forEach((tk, idx) => {
-                        if (tk.lat && tk.lng) {
-                            let arrival;
-
-                            // ✅ 第 0 站（下一個要送的）：用 Google Maps 真實 ETA
-                            // carPos.targetPreciseMin = Google Maps 回傳的精確分鐘數
-                            if (idx === 0 && carPos && carPos.targetPreciseMin !== null && carPos.targetPreciseMin !== undefined) {
-                                const preciseMin = carPos.targetPreciseMin;
-                                const serviceMin = 15;  // 下貨 15 分鐘
-                                arrival = new Date(baseNow + (preciseMin + serviceMin) * 60000);
-                            }
-                            // ✅ 第 1 站以後：用推估值（距離 ÷ 時速 + 下貨 15 分鐘）
-                            else {
-                                const dist = getDistance_V24(lastLat, lastLng, tk.lat, tk.lng);
-                                const travelMin = Math.round((dist / 35) * 60);  // 行駛時間
-                                const serviceMin = 15;                            // 下貨時間
-                                const tripMin = travelMin + serviceMin;
-                                arrival = new Date(baseNow + tripMin * 60000);
-                            }
-
-                            // 推算出的時間寫入 ETA 表
-                            vehicleETAs[tk.id] = String(arrival.getHours()).padStart(2, '0') + ':' + String(arrival.getMinutes()).padStart(2, '0');
-
-                            // ✅ 更新下一站的起點
-                            // 下一站的開始時間 = 這一站的到達時間
-                            baseNow = arrival.getTime();
-                            lastLat = tk.lat;
-                            lastLng = tk.lng;
-                        }
-                    });
+                // V42.59: 今天還有單沒送、司機卻很久沒回報位置 → 在司機名字下面提醒主管
+                let signalBadge = '';
+                if (group.type === 'driver' && pendingTasks.some(t => !t.date || t.date === dToday)) {
+                    const sa = carPos ? carPosAge_(carPos, nowD) : { updTime: null };
+                    if (!sa.updTime || !sa.isToday) signalBadge = `<div style="font-size:10px; color:#fbbf24; margin-top:3px;" title="司機今天還沒打開 App 或沒開定位">📵 今天還沒定位<\/div>`;
+                    else if (sa.ageMin > ETA_MAX_AGE_MIN) signalBadge = `<div style="font-size:10px; color:#f87171; font-weight:900; margin-top:3px;" title="超過 ${ETA_MAX_AGE_MIN} 分鐘沒回報位置，到貨時間無法估算，建議聯絡司機">📵 ${sa.ageMin} 分沒定位<\/div>`;
+                    else if (sa.ageMin > 20) signalBadge = `<div style="font-size:10px; color:#94a3b8; margin-top:3px;" title="司機可能正在用 Google 地圖導航，到貨時間從最後回報時間推算">🕒 ${sa.ageMin} 分前定位<\/div>`;
                 }
 
                 let itineraryHTML = "";
@@ -4261,9 +4594,9 @@
                     if (curDate !== lastDate) {
                         if (curDate === dToday) {
                             const isOff = (!layerShowsTodayAM && !layerShowsTodayPM);
-                            itineraryHTML += `<span class="today-toggle-btn ${isOff ? 'off' : ''}" onclick="event.stopPropagation(); toggleTodayOnly()">今日</span>`;
+                            itineraryHTML += `<span class="today-toggle-btn ${isOff ? 'off' : ''}" onclick="event.stopPropagation(); toggleTodayOnly()">今日<\/span>`;
                         } else {
-                            itineraryHTML += `<span style="margin:0 8px; padding:2px 6px; background:#1e293b; border-radius:4px; font-size:10px; color:var(--cyan); border:1px solid var(--cyan)">${curDate.substring(5)}</span>`;
+                            itineraryHTML += `<span style="margin:0 8px; padding:2px 6px; background:#1e293b; border-radius:4px; font-size:10px; color:var(--cyan); border:1px solid var(--cyan)">${curDate.substring(5)}<\/span>`;
                         }
                     }
                     // 記錄顯示標記，用於判斷誰才是「下一站」(提前算，箭頭才知道要不要動)
@@ -4277,8 +4610,8 @@
                     if (curDate === lastDate && visibleIdx > 0) {
                         // V41.20: 通往下一站的箭頭改成三段推進閃爍
                         itineraryHTML += isNextTarget
-                            ? `<span class="itin-arrow active"><i>›</i><i>›</i><i>›</i></span>`
-                            : `<span class="itin-arrow" style="margin:0 4px; opacity:0.3">→</span>`;
+                            ? `<span class="itin-arrow active"><i>›</i><i>›</i><i>›</i><\/span>`
+                            : `<span class="itin-arrow" style="margin:0 4px; opacity:0.3">→<\/span>`;
                     }
                     lastDate = curDate;
                     visibleIdx++;
@@ -4296,11 +4629,11 @@
                             const dName = t.driver || vehicleToDriver[t.vehicle] || '-';
                             const initial = (dName && dName.length > 0) ? dName.substring(dName.length - 1) : '-';
                             const dColor = getCarColor(t.vehicle || "");
-                            prefix = `<span style="background:${dColor}; color:#000; font-size:10px; padding:1px 3px; border-radius:3px; margin-right:4px; font-weight:900; box-shadow:0 0 5px ${dColor}44;">${initial}</span>`;
+                            prefix = `<span style="background:${dColor}; color:#000; font-size:10px; padding:1px 3px; border-radius:3px; margin-right:4px; font-weight:900; box-shadow:0 0 5px ${dColor}44;">${initial}<\/span>`;
                         } else {
                             // 司機模式下：保留顯示分公司字母 (AEWS)
                             const bInfo2 = bMap2[t.branch] || { letter: String(t.branch).substring(0, 1), color: '#94a3b8' };
-                            prefix = `<span style="color:${bInfo2.color}; font-weight:bold; margin-right:2px;">${bInfo2.letter}</span>`;
+                            prefix = `<span style="color:${bInfo2.color}; font-weight:bold; margin-right:2px;">${bInfo2.letter}<\/span>`;
                         }
                         branchesHTML += prefix;
 
@@ -4311,10 +4644,10 @@
                         })();
 
                         const tRet = String(t.isReturn || '').includes('true') || t.isReturn === true || String(t.shippingType || t.type || '').includes('退');
-                        const shippingLabel = (t.shippingType && !String(t.shippingType).includes('退')) ? `<span style="color:var(--cyan); font-size:9px; border:1px solid var(--cyan); padding:0 2px; border-radius:3px; margin-left:2px;">${escapeHTML(t.shippingType)}</span>` : '';
+                        const shippingLabel = (t.shippingType && !String(t.shippingType).includes('退')) ? `<span style="color:var(--cyan); font-size:9px; border:1px solid var(--cyan); padding:0 2px; border-radius:3px; margin-left:2px;">${escapeHTML(t.shippingType)}<\/span>` : '';
                         // V41.38: 行程列只標「樣品收費」(影響計費)；「樣品免費」(送回公司) 不顯示，太吵
-                        const sampleLabel = (t.docType === '樣品' && t.sampleTo !== 'home') ? `<span style="color:#38bdf8; font-size:9px; border:1px solid currentColor; padding:0 2px; border-radius:3px; margin-left:2px;" title="樣品外送 (照常計費)">樣品收費</span>` : '';
-                        const cStr = escapeHTML(custShort2) + (tRet ? `<span style="color:#ef4444; font-size:10px;">(退)</span>` : '') + shippingLabel + sampleLabel;
+                        const sampleLabel = (t.docType === '樣品' && t.sampleTo !== 'home') ? `<span style="color:#38bdf8; font-size:9px; border:1px solid currentColor; padding:0 2px; border-radius:3px; margin-left:2px;" title="樣品外送 (照常計費)">樣品收費<\/span>` : '';
+                        const cStr = escapeHTML(custShort2) + (tRet ? `<span style="color:#ef4444; font-size:10px;">(退)<\/span>` : '') + shippingLabel + sampleLabel;
 
                         if (!seenCustStrs.has(cStr)) {
                             seenCustStrs.add(cStr);
@@ -4330,7 +4663,7 @@
                     let custTitle = '';
                     if (custStrs.length > 2) {
                         custTitle = custStrs.map(s => s.replace(/<[^>]+>/g, '')).join(' / ');
-                        customersHTML = custStrs[0] + `<span style="color:#38bdf8; font-weight:900; margin-left:3px;">+${custStrs.length - 1}家</span>`;
+                        customersHTML = custStrs[0] + `<span style="color:#38bdf8; font-weight:900; margin-left:3px;">+${custStrs.length - 1}家<\/span>`;
                     } else {
                         customersHTML = custStrs.join('/');
                     }
@@ -4339,7 +4672,7 @@
                     let timeRow = '';
                     if (isDone) {
                         const lastFinish = group.tasks.reduce((max, t) => (t.finishTime > max ? t.finishTime : max), '00:00');
-                        timeRow = `<div style="font-size:10px; color:#22c55e; font-weight:700; line-height:1.2;">✓ ${lastFinish}</div>`;
+                        timeRow = `<div style="font-size:10px; color:#22c55e; font-weight:700; line-height:1.2;">✓ ${lastFinish}<\/div>`;
                     } else if (isNextTarget && carPos && carPos.startTime && carPos.targetAddr && (
                         group.tasks.some(t => {
                             if (t.address === carPos.targetAddr) return true;
@@ -4348,39 +4681,40 @@
                             return tkA && tdA && (tkA === tdA || tkA.indexOf(tdA) !== -1 || tdA.indexOf(tkA) !== -1);
                         })
                     )) {
-                        var etaText = vehicleETAs[firstTask.id] ? '約 ' + vehicleETAs[firstTask.id] : '';
+                        var etaText = vehicleETAs[firstTask.id] ? (/^\d/.test(vehicleETAs[firstTask.id]) ? '約 ' : '') + vehicleETAs[firstTask.id] : '';
                         timeRow = `
                             <div style="font-size:10px; font-weight:900; line-height:1.2; position:relative; height:16px;">
-                                <span class="eta-blink-a" style="position:absolute; left:0; color:#38bdf8;">前往中</span>
-                                ${etaText ? `<span class="eta-blink-b" style="position:absolute; left:0; color:#f59e0b;">${etaText}</span>` : ''}
-                            </div>`;
+                                <span class="eta-blink-a" style="position:absolute; left:0; color:#38bdf8;">前往中<\/span>
+                                ${etaText ? `<span class="eta-blink-b" style="position:absolute; left:0; color:#f59e0b;">${etaText}<\/span>` : ''}
+                            <\/div>`;
                     } else if (isNextTarget && vehicleETAs[firstTask.id]) {
-                        timeRow = `<div style="font-size:10px; color:#f59e0b; font-weight:700; line-height:1.2;">約 ${vehicleETAs[firstTask.id]}</div>`;
+                        timeRow = `<div style="font-size:10px; color:#f59e0b; font-weight:700; line-height:1.2;">${/^\d/.test(vehicleETAs[firstTask.id]) ? '約 ' : ''}${vehicleETAs[firstTask.id]}<\/div>`;
                     } else {
-                        timeRow = `<div style="font-size:10px; color:#475569; line-height:1.2;">—</div>`;
+                        timeRow = `<div style="font-size:10px; color:#475569; line-height:1.2;">—<\/div>`;
                     }
 
                     itineraryHTML += [
                         `<div class="itinerary-point${isNextTarget ? ' next-target' : ''}" data-id="${escapeHTML(firstTask.id)}" style="flex-direction:column; align-items:flex-start; padding:4px 8px; min-width:64px; cursor:grab;"`,
                         ` onmouseover="hoverTask('${escapeHTML(firstTask.id)}')" onmouseout="unhoverTask('${escapeHTML(firstTask.id)}')"`,
                         ` onclick="event.stopPropagation(); itinPointClick('${escapeHTML(firstTask.id)}');" ondblclick="event.stopPropagation();"${custTitle ? ` title="${escapeHTML(custTitle)}"` : ''}>`,
-                        `<div style="font-size:11px; font-weight:900; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${branchesHTML}<span style="color:#e2e8f0; margin-left:4px;">${customersHTML}</span>${isBack ? ' <span style="font-size:10px; color:#f97316;" title="回鶯歌">🔙</span>' : ''}</div>`,
-                        `<div style="font-size:11px; color:#94a3b8; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${escapeHTML(road)}</div>`,
+                        `<div style="font-size:11px; font-weight:900; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${branchesHTML}<span style="color:#e2e8f0; margin-left:4px;">${customersHTML}<\/span>${isBack ? ' <span style="font-size:10px; color:#f97316;" title="回鶯歌">🔙<\/span>' : ''}<\/div>`,
+                        `<div style="font-size:11px; color:#94a3b8; line-height:1.3; ${isDone ? 'text-decoration:line-through; opacity:0.6;' : ''}">${escapeHTML(road)}<\/div>`,
                         timeRow,
-                        `</div>`
+                        `<\/div>`
                     ].join('');
                 });
 
                 return [
                     `<div class="fleet-row ${isSelected ? 'active' : ''}" data-type="${group.type}" data-id="${escapeHTML(group.id)}" onclick="${group.type === 'driver' ? `driverRowClick('${escapeHTML(group.id)}')` : ''}">`,
                     `<div class="fleet-col-info" style="flex:0 0 100px;">`,
-                    `<div style="font-weight:900; color:${group.color}; font-size:14px;">${escapeHTML(group.displayName)}</div>`,
-                    `<div style="font-size:10px; opacity:0.6; margin-top:2px;">${escapeHTML(group.subName)}</div>`,
-                    `</div>`,
+                    `<div style="font-weight:900; color:${group.color}; font-size:14px;">${escapeHTML(group.displayName)}<\/div>`,
+                    `<div style="font-size:10px; opacity:0.6; margin-top:2px;">${escapeHTML(group.subName)}<\/div>`,
+                    signalBadge,
+                    `<\/div>`,
                     `<div class="fleet-col-itinerary" style="flex:1; overflow-x:auto; display:flex; align-items:center; gap:5px; padding:0 10px;">`,
-                    `${itineraryHTML ? itineraryHTML : '<span style="opacity:0.5; font-size:12px;">無行程</span>'}`,
-                    `</div>`,
-                    `</div>`
+                    `${itineraryHTML ? itineraryHTML : '<span style="opacity:0.5; font-size:12px;">無行程<\/span>'}`,
+                    `<\/div>`,
+                    `<\/div>`
                 ].join('');
             }).join('');
         }
@@ -4535,7 +4869,7 @@
                 arrowsLayer = L.layerGroup().addTo(map);
                 // 站點編號 ①②③…
                 carTasks.forEach((t, i) => {
-                    const numIcon = L.divIcon({ className: 'stop-num-icon', html: `<div class="stop-num" style="background:${color};">${i + 1}</div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
+                    const numIcon = L.divIcon({ className: 'stop-num-icon', html: `<div class="stop-num" style="background:${color};">${i + 1}<\/div>`, iconSize: [20, 20], iconAnchor: [10, 10] });
                     arrowsLayer.addLayer(L.marker([t.lat, t.lng], { icon: numIcon, interactive: false, zIndexOffset: 500 }));
                 });
                 fetchOsrmRoute(carName, latlngs, color);
@@ -4615,17 +4949,17 @@
 
             overlay.innerHTML = `
                 <div id="previewDragHandle" style="width:100%; background:rgba(56,189,248,0.15); padding:8px 15px; border-bottom:1px solid rgba(56,189,248,0.2); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; cursor: move;">
-                    <span style="color:#38bdf8; font-size:12px; font-weight:900; letter-spacing:1px; pointer-events:none;">🖼️ 簽收單預覽 (可拖移視窗)</span>
+                    <span style="color:#38bdf8; font-size:12px; font-weight:900; letter-spacing:1px; pointer-events:none;">🖼️ 簽收單預覽 (可拖移視窗)<\/span>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <a href="${dlUrl}" target="_blank" onclick="event.stopPropagation()"
-                           style="font-size:12px; font-weight:900; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.5); padding:3px 10px; border-radius:6px; text-decoration:none; cursor:pointer;">⬇ 下載</a>
-                        <button onclick="closePreview()" style="font-size:12px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">✕ 關閉</button>
-                    </div>
-                </div>
+                           style="font-size:12px; font-weight:900; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.5); padding:3px 10px; border-radius:6px; text-decoration:none; cursor:pointer;">⬇ 下載<\/a>
+                        <button onclick="closePreview()" style="font-size:12px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">✕ 關閉<\/button>
+                    <\/div>
+                <\/div>
                 <div style="flex:1; width:100%; min-width:0; overflow:auto; background:#0f172a; padding:10px; display:block;">
                     <img src="${url}" onclick="event.stopPropagation()"
                          style="width:100%; max-width:100%; height:auto; display:block; border-radius:8px; object-fit:contain;">
-                </div>
+                <\/div>
             `;
             overlay.style.display = 'flex';
             initPreviewDraggable();
@@ -4797,7 +5131,7 @@
 
             const drvName = v.driver;
             showActionBubble(
-                `<b>⚠️ 任務指派</b><br>確定要將 <span style="color:var(--accent)">${escapeHTML(id)}</span><br>指派給 <span style="color:var(--accent)">👤 ${escapeHTML(drvName)}</span> 嗎？`,
+                `<b>⚠️ 任務指派<\/b><br>確定要將 <span style="color:var(--accent)">${escapeHTML(id)}<\/span><br>指派給 <span style="color:var(--accent)">👤 ${escapeHTML(drvName)}<\/span> 嗎？`,
                 () => {
                     showToast(`指派中...`);
                     google.script.run
@@ -4821,7 +5155,7 @@
             // Weight check removed as per user request.
 
             showActionBubble(
-                `<b>⚠️ 轉單確認</b><br>此單目前屬於 👤 ${escapeHTML(orgDrvName)}<br>確定要轉交給 <span style="color:var(--accent)">👤 ${escapeHTML(targetDrvName)}</span> 嗎？`,
+                `<b>⚠️ 轉單確認<\/b><br>此單目前屬於 👤 ${escapeHTML(orgDrvName)}<br>確定要轉交給 <span style="color:var(--accent)">👤 ${escapeHTML(targetDrvName)}<\/span> 嗎？`,
                 () => {
                     showToast(`轉單中... ${targetDrvName}`);
                     google.script.run
@@ -4853,19 +5187,19 @@
                     const currentLoad = allTasks.filter(t => t.vehicle === v.name && t.status !== '已完成').reduce((sum, tk) => sum + (parseFloat(tk.weight) || 0), 0);
                     const maxWeight = parseFloat(v.capacity) || 2500;
                     const isOver = (maxWeight > 0 && currentLoad + taskWeight > maxWeight);
-                    const overloadStr = isOver ? `<div style="color:var(--danger); font-size:12px; margin-top:4px; font-weight:bold;">(超載 ${((currentLoad + taskWeight) - maxWeight).toFixed(0)}KG)</div>` : '';
+                    const overloadStr = isOver ? `<div style="color:var(--danger); font-size:12px; margin-top:4px; font-weight:bold;">(超載 ${((currentLoad + taskWeight) - maxWeight).toFixed(0)}KG)<\/div>` : '';
                     return `<button class="btn" style="margin-bottom:8px; display:block; width:100%; background:#0f172a; border:1px solid ${getCarColor(v.name)}; color:#fff; text-align:left; padding:12px; border-radius:8px;" onclick="closePickCar(); openDispatchConfirm('${id}', '${v.name}');">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start;">
                             <div style="display:flex; flex-direction:column; align-items:flex-start;">
-                                <span style="font-size:16px;"><b style="color:${getCarColor(v.name)}">👤 ${escapeHTML(v.driver)}</b> <span style="font-size:13px; color:#94a3b8; margin-left:4px;">(${allTasks.filter(t => t.vehicle === v.name && t.status !== '已完成').length}單)</span></span>
-                                <span style="font-size:12px; color:#94a3b8; margin-top:4px;">${escapeHTML(v.name)}</span>
-                            </div>
+                                <span style="font-size:16px;"><b style="color:${getCarColor(v.name)}">👤 ${escapeHTML(v.driver)}<\/b> <span style="font-size:13px; color:#94a3b8; margin-left:4px;">(${allTasks.filter(t => t.vehicle === v.name && t.status !== '已完成').length}單)<\/span><\/span>
+                                <span style="font-size:12px; color:#94a3b8; margin-top:4px;">${escapeHTML(v.name)}<\/span>
+                            <\/div>
                             <div style="display:flex; flex-direction:column; align-items:flex-end;">
-                                <span style="font-size:14px; font-weight:bold; color:var(--warning)">${allTasks.filter(t => t.vehicle === v.name && t.status !== '已完成').length} 單</span>
+                                <span style="font-size:14px; font-weight:bold; color:var(--warning)">${allTasks.filter(t => t.vehicle === v.name && t.status !== '已完成').length} 單<\/span>
                                 ${overloadStr}
-                            </div>
-                        </div>
-                    </button>`;
+                            <\/div>
+                        <\/div>
+                    <\/button>`;
                 }).join('');
                 document.getElementById('pickCarList').innerHTML = btns;
                 document.getElementById('pickCarModal').style.display = 'flex';
@@ -4886,13 +5220,13 @@
             if (pos && task.status !== "已完成") {
                 // V11.24 A 等級：智慧 ETA 與路名顯示
                 const targetAddr = pos.targetAddr || (allTasks.find(t2 => t2.vehicle === task.vehicle && t2.status !== '已完成') || { address: '' }).address;
-                const roadDisplay = targetAddr ? `<br><span style="color:#25d366">➡ 正前往：${formatRoad(targetAddr)}</span>` : '';
+                const roadDisplay = targetAddr ? `<br><span style="color:#25d366">➡ 正前往：${formatRoad(targetAddr)}<\/span>` : '';
 
                 google.script.run.withSuccessHandler(eta => {
-                    showETABubble(`<b>🚛 任務詳情</b><br>單號：${id}<br>司機：${drvName}${roadDisplay}<br><span style="color:var(--accent)">🏁 到達時間：${eta}</span>`);
+                    showETABubble(`<b>🚛 任務詳情<\/b><br>單號：${id}<br>司機：${drvName}${roadDisplay}<br><span style="color:var(--accent)">🏁 到達時間：${eta}<\/span>`);
                 }).calculateSimpleETA(pos.lat, pos.lng, task.lat, task.lng, ATOKEN());
             } else {
-                showETABubble(`<b>🚛 任務詳情</b><br>單號：${id}<br>司機：${drvName}<br>狀態：${task.status}`);
+                showETABubble(`<b>🚛 任務詳情<\/b><br>單號：${id}<br>司機：${drvName}<br>狀態：${task.status}`);
             }
         }
 
@@ -4969,6 +5303,64 @@
 
         // V11.12.1: 行程清單點擊 - 兩段式圖片優先邏輯
         // V41.24: 地址模糊比對 (去掉市/縣/區前綴後互相包含即視為同一地點)
+        // V42.58: 司機到貨時間 (ETA) 共用算法 — 地圖標記卡與下方行程表共用，避免兩邊算出不同時間。
+        // 只算「今天、未完成」的單；先到司機 App 正在導航的那一站 (有 Google 回傳分鐘數就用它)，其餘依排車順序接續。
+        // 下貨時間加在「離開」這一站，不加在到達時間；同一個地點的多張單視為同時到達。
+        // V42.59: 解析司機最後回報位置的時間。新格式 "yyyy/MM/dd HH:mm:ss"；舊格式只有 "HH:mm:ss" 就當作今天 (比現在晚則算昨天)
+        function carPosAge_(p, now) {
+            const raw = String((p && p.lastUpdate) || '').trim();
+            let upd = null;
+            if (raw.includes('/') || raw.includes('-')) {
+                upd = new Date(raw.replace(/\//g, '-').replace(' ', 'T'));
+            } else if (raw) {
+                const parts = raw.split(':');
+                if (parts.length >= 2) {
+                    upd = new Date(now.getTime());
+                    upd.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), parts[2] ? parseInt(parts[2], 10) : 0, 0);
+                    if (upd > now) upd.setDate(upd.getDate() - 1);
+                }
+            }
+            if (!upd || isNaN(upd.getTime())) return { updTime: null, ageMin: null, isToday: false };
+            return { updTime: upd, ageMin: Math.max(0, Math.round((now - upd) / 60000)), isToday: upd.toDateString() === now.toDateString() };
+        }
+        // 超過這麼久沒回報位置，到貨時間就不估了 (估出來只會誤導)
+        const ETA_MAX_AGE_MIN = 60;
+
+        function computeVehicleETAs_(carPos, tasks, now, dToday) {
+            const out = {};
+            if (!carPos || !carPos.lat || !carPos.lng) return out;
+            const age = carPosAge_(carPos, now);
+            if (!age.updTime || !age.isToday || age.ageMin > ETA_MAX_AGE_MIN) return out;
+            const DONE = ['已完成', '結案', '退貨完成'];
+            const SERVICE_MIN = 15, KMH = 35;
+            const todo = tasks.filter(t => t.lat && t.lng && !DONE.includes(t.status) && (!t.date || t.date === dToday))
+                .sort((a, b) => (parseInt(a.seq) || 99) - (parseInt(b.seq) || 99));
+            const nav = carPos.targetAddr ? todo.find(t => addrLooseMatch(t.address, carPos.targetAddr)) : null;
+            const atNav = nav ? todo.filter(t => t === nav || getDistance_V24(nav.lat, nav.lng, t.lat, t.lng) < 0.05) : [];
+            const ordered = nav ? atNav.concat(todo.filter(t => atNav.indexOf(t) === -1)) : todo;
+            const hasPrecise = nav && carPos.targetPreciseMin !== null && carPos.targetPreciseMin !== undefined && carPos.targetPreciseMin !== '' && !isNaN(Number(carPos.targetPreciseMin));
+            const fmt = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+            // V42.59: 司機按導航後會切到 Google 地圖，司機 App 在背景就不再回報，位置停在出發點。
+            // 所以有導航目標時，第一段從「回報位置的時間」起算，而不是從現在起算 (否則會永遠顯示「還要 10 分鐘」)。
+            let departAt = nav ? age.updTime.getTime() : now.getTime(), lat = carPos.lat, lng = carPos.lng, prevArrival = null;
+            ordered.forEach((t, i) => {
+                const dist = getDistance_V24(lat, lng, t.lat, t.lng);
+                let arrival;
+                if (i > 0 && prevArrival !== null && dist < 0.05) {
+                    arrival = prevArrival;
+                } else {
+                    const min = (i === 0 && hasPrecise) ? Number(carPos.targetPreciseMin) : (dist / KMH) * 60;
+                    arrival = departAt + min * 60000;
+                    // 已經過了預估到達時間 (人應該在卸貨)，下一段最早也只能從現在出發
+                    departAt = Math.max(now.getTime(), arrival + SERVICE_MIN * 60000);
+                }
+                out[t.id] = arrival < now.getTime() - 60000 ? '應已抵達' : fmt(new Date(arrival));
+                prevArrival = arrival;
+                lat = t.lat; lng = t.lng;
+            });
+            return out;
+        }
+
         function addrLooseMatch(a, b) {
             if (!a || !b) return false;
             if (a === b) return true;
@@ -5166,7 +5558,7 @@
             if (!url) return url;
             if (url.indexOf('lh3.googleusercontent.com') !== -1) return url;
             const m = url.match(new RegExp('[?&]id=([^&]+)'));
-            if (m && m[1]) return 'https://lh3.googleusercontent.com/d/' + m[1];
+            if (m && m[1]) return 'https:/' + '/lh3.googleusercontent.com/d/' + m[1];
             return url;
         }
 
@@ -5212,10 +5604,10 @@
                         card.id = 'batchDlCard';
                         card.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1e293b;border:2px solid #fbbf24;color:#f8fafc;padding:14px 20px;border-radius:12px;z-index:99999;font-size:13px;font-weight:700;max-width:90%;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.6);';
                         card.innerHTML =
-                            '<div style="color:#fbbf24;font-size:15px;margin-bottom:8px;">📁 ' + res.folderName + '（共 ' + res.count + ' 張）</div>' +
-                            '<a href="' + res.folderUrl + '" target="_blank" style="display:inline-block;background:#fbbf24;color:#0f172a;padding:8px 22px;border-radius:8px;text-decoration:none;font-weight:900;margin-right:8px;">開啟 Drive 資料夾</a>' +
-                            '<span onclick="document.getElementById(\'batchDlCard\').remove()" style="cursor:pointer;color:#94a3b8;font-size:20px;vertical-align:middle;">✕</span>' +
-                            '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">在資料夾內選取全部 → 右鍵下載，即可取得 ZIP</div>';
+                            '<div style="color:#fbbf24;font-size:15px;margin-bottom:8px;">📁 ' + res.folderName + '（共 ' + res.count + ' 張）<\/div>' +
+                            '<a href="' + res.folderUrl + '" target="_blank" style="display:inline-block;background:#fbbf24;color:#0f172a;padding:8px 22px;border-radius:8px;text-decoration:none;font-weight:900;margin-right:8px;">開啟 Drive 資料夾<\/a>' +
+                            '<span onclick="document.getElementById(\'batchDlCard\').remove()" style="cursor:pointer;color:#94a3b8;font-size:20px;vertical-align:middle;">✕<\/span>' +
+                            '<div style="font-size:11px;color:#94a3b8;margin-top:8px;">在資料夾內選取全部 → 右鍵下載，即可取得 ZIP<\/div>';
                         document.body.appendChild(card);
                     } else {
                         showToast('⚠️ ' + (res ? res.error : '打包失敗'));
@@ -5256,30 +5648,7 @@
             const vehicleETAs = {};
             carPositions.forEach(p => {
                 if (!p.lat || !p.lng || !p.targetAddr || !p.departureTime) return;
-                const carTasks = allTasks.filter(t => t.vehicle === p.vehicle && t.status !== '已完成' && t.lat && t.lng);
-                const navTask = carTasks.find(tk => {
-                    if (tk.address === p.targetAddr) return true;
-                    var tkA = String(tk.address).replace(/.*?(市|縣|區)/g, "").replace(/\s/g, "");
-                    var tdA = String(p.targetAddr).replace(/.*?(市|縣|區)/g, "").replace(/\s/g, "");
-                    return tkA && tdA && (tkA === tdA || tkA.indexOf(tdA) !== -1 || tdA.indexOf(tkA) !== -1);
-                });
-                let lastTime = nowTime, lastLat = p.lat, lastLng = p.lng;
-                if (navTask) {
-                    const pm = (p.targetPreciseMin !== null && p.targetPreciseMin !== undefined) ? p.targetPreciseMin : Math.round((getDistance_V24(p.lat, p.lng, navTask.lat, navTask.lng) / 35) * 60);
-                    const arrival = new Date(nowTime.getTime() + pm * 60000);
-                    vehicleETAs[navTask.id] = String(arrival.getHours()).padStart(2, '0') + ':' + String(arrival.getMinutes()).padStart(2, '0');
-                    lastTime = new Date(arrival.getTime() + 10 * 60000);
-                    lastLat = navTask.lat; lastLng = navTask.lng;
-                }
-                const remainingTasks = carTasks.filter(t => !navTask || t.id !== navTask.id).sort((a, b) => (parseInt(a.seq) || 99) - (parseInt(b.seq) || 99));
-                remainingTasks.forEach(t => {
-                    const dist = getDistance_V24(lastLat, lastLng, t.lat, t.lng);
-                    const tm = (dist / 35) * 60;
-                    const arrival = new Date(lastTime.getTime() + tm * 60000);
-                    vehicleETAs[t.id] = String(arrival.getHours()).padStart(2, '0') + ':' + String(arrival.getMinutes()).padStart(2, '0');
-                    lastLat = t.lat; lastLng = t.lng;
-                    lastTime = new Date(arrival.getTime() + 10 * 60000);
-                });
+                Object.assign(vehicleETAs, computeVehicleETAs_(p, allTasks.filter(t => t.vehicle === p.vehicle), nowTime, dToday));
             });
 
             allTasks.forEach(t => {
@@ -5326,9 +5695,9 @@
                 const triangleIcon = L.divIcon({
                     className: 'dot-marker-icon',
                     html: `<div style="position:relative; display:flex; align-items:center; filter: ${isDoneMarker ? 'opacity(0.5) grayscale(0.8)' : 'none'};">
-                             <div style="width:12px; height:12px; border-radius:50%; background:${isDoneMarker ? '#64748b' : (carColor || '#38bdf8')}; box-shadow: 0 0 5px ${isDoneMarker ? 'transparent' : (carColor || '#38bdf8')}; z-index:2;"></div>
-                             ${window.showMapLabels ? `<div class="marker-label" style="border-radius:4px; border:1px solid ${isDoneMarker ? '#64748b' : (carColor || '#38bdf8')}; background:rgba(15,23,42,0.85); margin-left:4px; font-weight:bold; white-space:nowrap; padding:2px 6px; ${isDoneMarker ? 'opacity: 0.7;' : ''}">${branchLetter} ${escapeHTML(t.customer.replace(/(股份有限公司|有限公司|實業|設計|建材|工程|工作室|公司|商行|企業|磁磚|五金)/g, '').trim().substring(0, 2))}</div>` : ''}
-                           </div>`,
+                             <div style="width:12px; height:12px; border-radius:50%; background:${isDoneMarker ? '#64748b' : (carColor || '#38bdf8')}; box-shadow: 0 0 5px ${isDoneMarker ? 'transparent' : (carColor || '#38bdf8')}; z-index:2;"><\/div>
+                             ${window.showMapLabels ? `<div class="marker-label" style="border-radius:4px; border:1px solid ${isDoneMarker ? '#64748b' : (carColor || '#38bdf8')}; background:rgba(15,23,42,0.85); margin-left:4px; font-weight:bold; white-space:nowrap; padding:2px 6px; ${isDoneMarker ? 'opacity: 0.7;' : ''}">${branchLetter} ${escapeHTML(t.customer.replace(/(股份有限公司|有限公司|實業|設計|建材|工程|工作室|公司|商行|企業|磁磚|五金)/g, '').trim().substring(0, 2))}<\/div>` : ''}
+                           <\/div>`,
                     iconSize: [12, 12], iconAnchor: [6, 6]
                 });
 
@@ -5355,28 +5724,10 @@
                     if (!p.lat || !p.lng) return;
 
                     // ⚡️ V5.6.8: 只要有訊號就顯示（司機登入即可），不限制配送狀態
-                    if (p.lastUpdate) {
-                        let updTime = null;
-                        const raw = String(p.lastUpdate).trim();
-                        if (raw.includes('/') || raw.includes('-')) {
-                            // V34.10: 新格式 "yyyy/MM/dd HH:mm:ss"，轉成 ISO 格式才能跨瀏覽器正確解析
-                            updTime = new Date(raw.replace(/\//g, '-').replace(' ', 'T'));
-                        } else {
-                            // 舊格式相容 "HH:mm:ss"，補上今天的日期
-                            const parts = raw.split(':');
-                            if (parts.length >= 2) {
-                                updTime = new Date();
-                                updTime.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), parts[2] ? parseInt(parts[2], 10) : 0, 0);
-                                if (updTime > nowTime) updTime.setDate(updTime.getDate() - 1);
-                            }
-                        }
-                        // 超過 240 分鐘 (4小時) 或時間無效 → 隱藏
-                        if (!updTime || isNaN(updTime.getTime()) || (nowTime - updTime) / 60000 > 240) return;
-                        p.__ageMin = Math.round((nowTime - updTime) / 60000);
-                    } else {
-                        // 完全沒有更新時間 → 一律隱藏
-                        return;
-                    }
+                    // 沒有時間、時間無效、或超過 240 分鐘 (4 小時) 沒回報 → 地圖上不顯示這台車
+                    const posAge = carPosAge_(p, nowTime);
+                    if (!posAge.updTime || posAge.ageMin > 240) return;
+                    p.__ageMin = posAge.ageMin;
 
                     const carColor = getCarColor(p.vehicle);
                     const v = vehicles.find(vh => vh.name === p.vehicle);
@@ -5395,23 +5746,28 @@
                     // V41.25: 司機回報的導航目標若已送完 (沒再按下一站的出發)，就忽略它，改用排車順序
                     const navT = p.targetAddr ? undone.find(t => addrLooseMatch(t.address, p.targetAddr)) : null;
                     const nextT = navT || undone[0];
-                    let etaMin = null;
-                    if (navT && p.targetPreciseMin !== null && p.targetPreciseMin !== undefined) etaMin = p.targetPreciseMin;
-                    else if (nextT && nextT.lat && nextT.lng) etaMin = Math.round((getDistance_V24(p.lat, p.lng, nextT.lat, nextT.lng) / 35) * 60);
-                    const nextRoad = navT ? formatRoad(p.targetAddr) : (nextT ? formatRoad(nextT.address) : '');
                     const ageMin = p.__ageMin || 0;
                     const stale = ageMin > 20;
+                    // V42.59: 超過 60 分鐘沒定位 → 不再估時間，改成紅字提醒主管聯絡司機
+                    const lost = ageMin > ETA_MAX_AGE_MIN;
+                    let etaMin = null;
+                    // Google 回傳的分鐘數是「從回報位置出發」算的，要扣掉已經過去的時間
+                    if (navT && p.targetPreciseMin !== null && p.targetPreciseMin !== undefined) etaMin = Number(p.targetPreciseMin) - ageMin;
+                    else if (nextT && nextT.lat && nextT.lng && !stale) etaMin = Math.round((getDistance_V24(p.lat, p.lng, nextT.lat, nextT.lng) / 35) * 60);
+                    const nextRoad = navT ? formatRoad(p.targetAddr) : (nextT ? formatRoad(nextT.address) : '');
+                    const etaHtml = (lost || etaMin === null) ? ''
+                        : etaMin > 0 ? ` <b style="color:#fbbf24;">${etaMin}分<\/b>` : ' <b style="color:#22c55e;">應已抵達<\/b>';
                     const nextLine = nextRoad
-                        ? `<span style="color:#38bdf8;">→ ${escapeHTML(nextRoad)}</span>${etaMin !== null ? ` <b style="color:#fbbf24;">${etaMin}分</b>` : ''}`
-                        : (stopsAll.size && doneCnt >= stopsAll.size ? '<span style="color:#22c55e;">✓ 今日完成</span>' : '<span style="color:#64748b;">待出發</span>');
+                        ? `<span style="color:#38bdf8;">→ ${escapeHTML(nextRoad)}<\/span>${etaHtml}`
+                        : (stopsAll.size && doneCnt >= stopsAll.size ? '<span style="color:#22c55e;">✓ 今日完成<\/span>' : '<span style="color:#64748b;">待出發<\/span>');
                     const icon = L.divIcon({
                         className: 'car-icon',
                         html: `<div class="car-card${stale ? ' stale' : ''}" style="border-color:${carColor};">
-                                 <div class="car-card-name"><span class="car-card-dot" style="background:${carColor}; box-shadow:0 0 8px ${carColor};"></span>${escapeHTML(driverName)} <span class="car-card-prog" title="已完成站數 / 總站數 (同地點多單算一站)">${doneCnt}/${stopsAll.size}</span></div>
-                                 <div class="car-card-next">${nextLine}</div>
-                                 ${stale ? `<div class="car-card-age">最後回報 ${ageMin} 分前</div>` : ''}
-                               </div>
-                               <div class="glowing-dot${stale ? ' stale' : ''}" style="background:${carColor}; box-shadow:0 0 20px ${carColor}"></div>`,
+                                 <div class="car-card-name"><span class="car-card-dot" style="background:${carColor}; box-shadow:0 0 8px ${carColor};"><\/span>${escapeHTML(driverName)} <span class="car-card-prog" title="已完成站數 / 總站數 (同地點多單算一站)">${doneCnt}/${stopsAll.size}<\/span><\/div>
+                                 <div class="car-card-next">${nextLine}<\/div>
+                                 ${lost ? `<div class="car-card-age" style="color:#f87171;font-weight:900;">📵 ${ageMin} 分鐘沒定位<\/div>` : stale ? `<div class="car-card-age">最後回報 ${ageMin} 分前<\/div>` : ''}
+                               <\/div>
+                               <div class="glowing-dot${stale ? ' stale' : ''}" style="background:${carColor}; box-shadow:0 0 20px ${carColor}"><\/div>`,
                         iconSize: [14, 14], iconAnchor: [7, 7]
                     });
                     const m = L.marker([p.lat, p.lng], { icon: icon }).addTo(map).on('click', (e) => {
@@ -5429,7 +5785,7 @@
                         let etaInfo = "";
 
                         // V36.9: 增加最後更新時間與 ETA 對位邏輯
-                        const updateDesc = p.lastUpdate ? `<div style="margin-top:8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top:8px; color:#94a3b8; font-size:12px;">💡 訊號更新：${p.lastUpdate}</div>` : "";
+                        const updateDesc = p.lastUpdate ? `<div style="margin-top:8px; border-top: 1px solid rgba(255,255,255,0.1); padding-top:8px; color:#94a3b8; font-size:12px;">💡 訊號更新：${p.lastUpdate}<\/div>` : "";
 
                         if (p.targetAddr) {
                             targetActionDesc = `正前往：${formatRoad(p.targetAddr)}`;
@@ -5445,24 +5801,24 @@
                                 if (displayTime.includes('1899')) displayTime = "等待中";
 
                                 etaInfo = `<div style="margin-top:10px; padding:10px; background:rgba(34, 197, 94, 0.15); border:2px solid var(--green); border-radius:10px; text-align:center;">
-                                    <div style="color:var(--green); font-size:14px; font-weight:800;">⏱️ 發車打卡時間</div>
-                                    <div style="color:#fff; font-size:24px; font-weight:900; margin:4px 0;">🕰️ ${displayTime}</div>
-                                </div>`;
+                                    <div style="color:var(--green); font-size:14px; font-weight:800;">⏱️ 發車打卡時間<\/div>
+                                    <div style="color:#fff; font-size:24px; font-weight:900; margin:4px 0;">🕰️ ${displayTime}<\/div>
+                                <\/div>`;
                             } else {
                                 etaInfo = `<div style="margin-top:10px; padding:8px; background:rgba(255, 255, 255, 0.05); border:1px solid rgba(255,255,255,0.2); border-radius:10px; text-align:center; color:#94a3b8;">
                                     ⌛ 尚未看到發車打卡紀錄
-                                </div>`;
+                                <\/div>`;
                             }
                         } else if (nextTaskToday) {
                             targetActionDesc = `預計往：${formatRoad(nextTaskToday.address)}`;
                         } else {
-                            targetActionDesc = `<span style="color:var(--accent); font-weight:bold;">✨ 今日行程已結案</span>`;
+                            targetActionDesc = `<span style="color:var(--accent); font-weight:bold;">✨ 今日行程已結案<\/span>`;
                             if (firstTaskTmr) {
-                                targetActionDesc += `<br><small style="color:#94a3b8; font-size:11px;">📅 明日首站：${formatRoad(firstTaskTmr.address)} (${firstTaskTmr.timeSlot || "全天"})</small>`;
+                                targetActionDesc += `<br><small style="color:#94a3b8; font-size:11px;">📅 明日首站：${formatRoad(firstTaskTmr.address)} (${firstTaskTmr.timeSlot || "全天"})<\/small>`;
                             }
                         }
 
-                        showETABubble(`<div style="line-height:1.6;"><b>🚚 車輛：${p.vehicle}</b><br>司機：${driverName}<br>${targetActionDesc}${etaInfo}${updateDesc}</div>`);
+                        showETABubble(`<div style="line-height:1.6;"><b>🚚 車輛：${p.vehicle}<\/b><br>司機：${driverName}<br>${targetActionDesc}${etaInfo}${updateDesc}<\/div>`);
                     });
                     carMarkers.push(m);
                 });
@@ -5498,12 +5854,12 @@
 
             let overWeightWarning = "";
             if (maxWeight > 0 && currentLoad + taskWeight > maxWeight) {
-                overWeightWarning = `<div style="color:#ef4444; font-weight:bold; margin:10px 0; padding:8px; background:rgba(239,68,68,0.1); border-radius:8px;">⚠️ 警報：載重超過上限！<br><small>車輛耐重：${maxWeight} kg | 目前已載：${currentLoad.toFixed(0)} kg | 欲加：${taskWeight.toFixed(0)} kg</small></div>`;
+                overWeightWarning = `<div style="color:#ef4444; font-weight:bold; margin:10px 0; padding:8px; background:rgba(239,68,68,0.1); border-radius:8px;">⚠️ 警報：載重超過上限！<br><small>車輛耐重：${maxWeight} kg | 目前已載：${currentLoad.toFixed(0)} kg | 欲加：${taskWeight.toFixed(0)} kg<\/small><\/div>`;
             }
 
             const drvName = getDriverName(selectedCar);
             showActionBubble(
-                `${overWeightWarning}確定要將勾選的 <b>${checks.length}</b> 張訂單<br>批次指派給 <span style="color:var(--accent)">👤 ${escapeHTML(drvName)}</span> 嗎？`,
+                `${overWeightWarning}確定要將勾選的 <b>${checks.length}<\/b> 張訂單<br>批次指派給 <span style="color:var(--accent)">👤 ${escapeHTML(drvName)}<\/span> 嗎？`,
                 () => {
                     showToast(`批次指派中...`);
                     google.script.run
@@ -5538,13 +5894,13 @@
         function fillForceArrivePreset(selectId) {
             const sel = document.getElementById(selectId);
             if (!sel) return;
-            let opts = '<option value="">-- 選時間 --</option>';
+            let opts = '<option value="">-- 選時間 --<\/option>';
             for (let h = 9; h <= 18; h++) {
                 for (const m of [0, 30]) {
                     const hh = String(h).padStart(2, '0');
                     const mm = String(m).padStart(2, '0');
                     if (h === 18 && m === 30) continue;
-                    opts += `<option value="${hh}:${mm}">${hh}:${mm} 前</option>`;
+                    opts += `<option value="${hh}:${mm}">${hh}:${mm} 前<\/option>`;
                 }
             }
             sel.innerHTML = opts;
@@ -5649,7 +6005,7 @@
             const originalHTML = btn.innerHTML;
             const originalBg = btn.style.background;
             btn.disabled = true;
-            btn.innerHTML = '<span class="loading-spinner" style="width:14px; height:14px; border-width:2px; border-top-color:#fff; display:inline-block; vertical-align:middle; margin-right:8px;"></span> 發送中...';
+            btn.innerHTML = '<span class="loading-spinner" style="width:14px; height:14px; border-width:2px; border-top-color:#fff; display:inline-block; vertical-align:middle; margin-right:8px;"><\/span> 發送中...';
 
             google.script.run
                 .withFailureHandler(err => {
@@ -5663,7 +6019,7 @@
                     btn.style.background = "#22c55e";
                     btn.style.borderColor = "#22c55e";
                     btn.style.boxShadow = "0 0 15px rgba(34,197,94,0.5)";
-                    btn.innerHTML = '<span style="font-weight:bold;">✅ 發布成功</span>';
+                    btn.innerHTML = '<span style="font-weight:bold;">✅ 發布成功<\/span>';
 
                     // 僅在背景執行 Toast
                     showToast(res);
@@ -5698,7 +6054,7 @@
             resetTItems();
             const dlVehicles = document.getElementById('datalist-vehicles');
             if (dlVehicles) {
-                dlVehicles.innerHTML = vehicles.map(v => `<option value="${escapeHTML(v.name)}">${escapeHTML(v.driver)} (${escapeHTML(v.name)})</option>`).join('');
+                dlVehicles.innerHTML = vehicles.map(v => `<option value="${escapeHTML(v.name)}">${escapeHTML(v.driver)} (${escapeHTML(v.name)})<\/option>`).join('');
             }
             document.getElementById('tVehicle').value = ""; // 預設不指派司機
             document.getElementById('tVehicle').disabled = false;
@@ -5732,7 +6088,7 @@
             }
 
             list.forEach(name => {
-                dlSales.innerHTML += `<option value="${escapeHTML(name)}"></option>`;
+                dlSales.innerHTML += `<option value="${escapeHTML(name)}"><\/option>`;
             });
             // 預設不指派
             document.getElementById('tSalesAssign').value = "";
@@ -5774,7 +6130,7 @@
             const row = document.createElement('div');
             row.className = 't-item-row';
             row.style.cssText = 'display:flex; gap:6px; align-items:center;';
-            row.innerHTML = '<input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><span style="color:#64748b; font-size:12px;">片</span>';
+            row.innerHTML = '<input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><span style="color:#64748b; font-size:12px;">片<\/span>';
             container.appendChild(row);
             if (_tItemCount >= 10) document.getElementById('tItemsAddBtn').style.display = 'none';
         }
@@ -5786,7 +6142,7 @@
                 const row = document.createElement('div');
                 row.className = 't-item-row';
                 row.style.cssText = 'display:flex; gap:6px; align-items:center;';
-                row.innerHTML = '<input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><span style="color:#64748b; font-size:12px;">片</span>';
+                row.innerHTML = '<input type="text" class="t-item-code" placeholder="品項編號" style="flex:1; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><input type="text" class="t-item-qty" placeholder="片數" style="width:70px; padding:5px 8px; background:#0f172a; border:1px solid #334155; border-radius:6px; color:white; font-size:13px;"><span style="color:#64748b; font-size:12px;">片<\/span>';
                 container.appendChild(row);
             }
             document.getElementById('tItemsAddBtn').style.display = '';
@@ -5994,7 +6350,7 @@
                     el.classList.add('ai-suggest');
                     el.style.borderLeft = `4px solid ${color}`;
                     if (!el.querySelector('.ai-label')) {
-                        el.insertAdjacentHTML('beforeend', `<div class="ai-label" style="background:${color}" title="${m.f.score > 0 ? '路線熟悉度：' + m.f.topD + ' 近90天跑過 ' + m.f.topN + ' 趟' : '無歷史，依地理分群'}">AI: ${v.driver}${famLabel}</div>`);
+                        el.insertAdjacentHTML('beforeend', `<div class="ai-label" style="background:${color}" title="${m.f.score > 0 ? '路線熟悉度：' + m.f.topD + ' 近90天跑過 ' + m.f.topN + ' 趟' : '無歷史，依地理分群'}">AI: ${v.driver}${famLabel}<\/div>`);
                     }
                 });
             });
@@ -6006,7 +6362,7 @@
                 dispatchBar.insertAdjacentHTML('afterbegin', `
                     <button id="aiApplyBtn" class="btn" style="width:100%; background:var(--ai-accent); color:white; margin-bottom:10px; font-weight:bold;" onclick="applyAllAI()">
                         ✅ 採用 AI 建議 — 一鍵全部指派
-                    </button>`);
+                    <\/button>`);
             }
             showToast(`🤖 AI 規劃完成：${k} 位司機 / ${unassigned.length} 張訂單` + (habitHits ? `（${habitHits} 群依路線熟悉度配車）` : '（無排車歷史，純地理分群）'));
         }
@@ -6244,7 +6600,7 @@
             tr.id = rowId;
             tr.style.borderBottom = "1px solid #334155";
 
-            const errStr = data.error ? `<div style="color:#ef4444; font-size:11px; margin-top:4px;">⚠️ ${escapeHTML(data.error)}</div>` : '';
+            const errStr = data.error ? `<div style="color:#ef4444; font-size:11px; margin-top:4px;">⚠️ ${escapeHTML(data.error)}<\/div>` : '';
 
             tr.innerHTML = `
                 <td style="padding:10px; text-align:center;">
@@ -6252,109 +6608,94 @@
                       style="width:40px; height:40px; object-fit:cover; border-radius:4px; cursor:pointer; border:1px solid #7c3aed;" 
                       onclick="showImagePreview('${fullB64}')"
                       title="點擊預覽圖片">
-                </td>
+                <\/td>
                 <td style="padding:10px;">
                     <input type="text" id="${rowId}-branch" value="${escapeHTML(data.branch)}" style="width:100%; padding:6px; font-size:12px; border:1px solid #334155; background:transparent; margin-bottom:4px;" placeholder="分公司">
                     <input type="text" id="${rowId}-order" value="${escapeHTML(data.orderId)}" style="width:100%; padding:6px; font-size:12px; font-weight:bold; border-color:var(--primary);" placeholder="單號">
-                </td>
+                <\/td>
                 <td style="padding:10px;">
                     <input type="text" id="${rowId}-date" value="${escapeHTML(data.date)}" style="width:100%; padding:6px; font-size:12px; margin-bottom:4px;" placeholder="日期">
                     <input type="text" id="${rowId}-loc" value="${escapeHTML(data.location || '')}" style="width:100%; padding:6px; font-size:12px; color:#fbbf24; border:1px solid #334155; background:rgba(251,191,36,0.1);" placeholder="地點 (社區/加工廠)">
-                </td>
+                <\/td>
                 <td style="padding:10px;">
-                    <input type="text" id="${rowId}-cust" value="${escapeHTML(data.customerName)}" style="width:100%; padding:6px; font-size:13px; font-weight:bold; color:var(--accent); margin-bottom:4px;" placeholder="客戶名稱">
-                    <input type="text" id="${rowId}-addr" value="${escapeHTML(data.address)}" style="width:100%; padding:6px; font-size:12px;" placeholder="送貨地址">${errStr}
-                </td>
+                    <input type="text" id="${rowId}-cust" value="${escapeHTML(data.customerName)}" style="width:100%; padding:6px; font-size:13px; font-weight:bold; color:var(--accent); margin-bottom:4px;" placeholder="客戶名稱" oninput="updateOcrFreeBadgeUI('${rowId}')">
+                    <input type="text" id="${rowId}-addr" value="${escapeHTML(data.address)}" style="width:100%; padding:6px; font-size:12px;" placeholder="送貨地址" oninput="updateOcrFreeBadgeUI('${rowId}')">${errStr}
+                <\/td>
                 <td style="padding:10px;">
                     <input type="text" id="${rowId}-contact" value="${escapeHTML(data.contactName || '')}" style="width:100%; padding:6px; font-size:12px; margin-bottom:4px;" placeholder="聯絡人">
                     <input type="text" id="${rowId}-phone" value="${escapeHTML(data.phone)}" style="width:100%; padding:6px; font-size:12px; color:#94a3b8;" placeholder="電話">
-                </td>
+                <\/td>
                 <td style="padding:10px;">
                     <div style="display:flex; align-items:center;">
                         <input type="number" id="${rowId}-weight" value="${data.weight || 0}" style="width:70%; padding:6px; font-size:12px; margin-bottom:4px;"> 
-                        <span style="font-size:10px; margin-left:2px; color:#64748b;">KG</span>
-                    </div>
+                        <span style="font-size:10px; margin-left:2px; color:#64748b;">KG<\/span>
+                    <\/div>
                     <input type="text" id="${rowId}-eta" value="${escapeHTML(data.etaTime)}" style="width:100%; padding:6px; font-size:12px;" placeholder="時間">
                     <!-- V40：指定到貨時間-強制 -->
                     <div style="margin-top:6px; padding:6px 8px; border:1px solid rgba(239,68,68,0.4); border-radius:6px; background:rgba(239,68,68,0.06);">
                         <label title="指定到貨時間，加收300元" style="display:flex; align-items:center; gap:6px; cursor:pointer; color:#f87171; font-weight:900; font-size:12px; white-space:nowrap;">
                             <input type="checkbox" id="${rowId}-forceArrive" style="width:16px; height:16px; accent-color:#ef4444; cursor:pointer; flex-shrink:0;" onchange="toggleOcrForceArrive('${rowId}')">
                             指定費300
-                        </label>
+                        <\/label>
                         <div id="${rowId}-forceArriveWrap" style="display:none; margin-top:6px; flex-direction:column; gap:4px;">
-                            <select id="${rowId}-forcePick" style="width:100%; padding:4px 6px; background:#0f172a; border:1px solid #ef4444; border-radius:6px; color:#f87171; font-size:12px; font-weight:900;" onchange="syncForceArrivePreset('${rowId}-forcePick','${rowId}-forceCustom')"></select>
+                            <select id="${rowId}-forcePick" style="width:100%; padding:4px 6px; background:#0f172a; border:1px solid #ef4444; border-radius:6px; color:#f87171; font-size:12px; font-weight:900;" onchange="syncForceArrivePreset('${rowId}-forcePick','${rowId}-forceCustom')"><\/select>
                             <input type="text" id="${rowId}-forceCustom" placeholder="或手動 例：10:30~11:00" style="width:100%; padding:4px 6px; background:#0f172a; border:1px solid #ef4444; border-radius:6px; color:#f87171; font-size:12px;" oninput="clearForceArrivePreset('${rowId}-forcePick','${rowId}-forceCustom')">
-                        </div>
-                    </div>
-                </td>
+                        <\/div>
+                    <\/div>
+                <\/td>
                 <td style="padding:10px;">
                     <input type="text" id="${rowId}-size" value="${escapeHTML(data.size || '')}" 
                         style="width:100%; padding:6px; font-size:12px; margin-bottom:4px;" placeholder="尺寸">
                     <input type="text" id="${rowId}-boxes" value="${escapeHTML(data.boxes || '')}" 
                         style="width:100%; padding:6px; font-size:12px;" placeholder="箱數">
-                </td>
+                <\/td>
                 <td style="padding:10px;">
                     <div id="${rowId}-items" class="custom-scroll" style="max-height:80px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-right:5px;">
                         ${(data.items || []).map((item, itemIdx) => `
                             <div class="ocr-item-row" data-idx="${itemIdx}" style="display:flex; align-items:center; gap:6px; background:rgba(255,255,255,0.05); padding:4px 8px; border-radius:6px; border:1px solid rgba(14,165,233,0.2);">
-                                ${item.img ? `<img src="${item.img}" style="width:32px; height:32px; border-radius:4px; object-fit:cover; border:1px solid #38bdf8; cursor:zoom-in;" onclick="showImagePreview('${item.img}')">` : `<div style="width:32px; height:32px; background:#1e293b; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#475569;">無圖</div>`}
+                                ${item.img ? `<img src="${item.img}" style="width:32px; height:32px; border-radius:4px; object-fit:cover; border:1px solid #38bdf8; cursor:zoom-in;" onclick="showImagePreview('${item.img}')">` : `<div style="width:32px; height:32px; background:#1e293b; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:10px; color:#475569;">無圖<\/div>`}
                                 <div style="flex:1; display:flex; gap:4px;">
                                     <input type="text" class="ocr-item-code" value="${escapeHTML(item.code)}" placeholder="編號" 
                                         style="flex:2; padding:3px 6px; font-size:11px; border:1px solid #334155; background:#0f172a; color:#38bdf8; border-radius:4px; font-weight:bold;">
                                     <input type="number" class="ocr-item-qty" value="${parseInt(item.qty) || 0}" placeholder="片數" 
                                         style="flex:1; padding:3px 4px; font-size:11px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; border-radius:4px; text-align:center;">
-                                    <span style="font-size:11px; color:#64748b; align-self:center; white-space:nowrap;">片</span>
-                                </div>
-                            </div>
-                        `).join('') || '<div style="color:#475569; font-style:italic;">未偵測到明細表格</div>'}
-                    </div>
-                </td>
+                                    <span style="font-size:11px; color:#64748b; align-self:center; white-space:nowrap;">片<\/span>
+                                <\/div>
+                            <\/div>
+                        `).join('') || '<div style="color:#475569; font-style:italic;">未偵測到明細表格<\/div>'}
+                    <\/div>
+                <\/td>
                 <td style="padding:10px; min-width: 120px;">
-                    <textarea id="${rowId}-note" style="width:100%; height:80px; border-radius:4px; resize:horizontal; font-size:11px; min-width:100px; border:1px solid #334155; background:rgba(255,255,255,0.05); color:#fff;" placeholder="點擊輸入備註...">${escapeHTML(data.note)}</textarea>
+                    <textarea id="${rowId}-note" style="width:100%; height:80px; border-radius:4px; resize:horizontal; font-size:11px; min-width:100px; border:1px solid #334155; background:rgba(255,255,255,0.05); color:#fff;" placeholder="點擊輸入備註..." oninput="updateOcrFreeBadgeUI('${rowId}')">${escapeHTML(data.note)}<\/textarea>
                     <div style="display:none;">
                         <input id="${rowId}-wrapSeal" type="text" value="${escapeHTML(data.wrapSeal || '')}">
-                    </div>
-                </td>
-                <td style="padding:10px; text-align:right;" data-fullb64="${fullB64}">
-                    <div style="display:flex; flex-direction:column; gap:6px; width:112px; margin-left:auto;">
-                        <!-- 第一排：主要動作 -->
-                        <div style="display:flex; gap:4px; width:100%;">
-                            <button class="btn" id="${rowId}-submitBtn"
-                                style="flex:2; background:linear-gradient(135deg, #0ea5e9, #0284c7); color:white; padding:8px 0; font-size:13px; font-weight:bold; border-radius:6px; box-shadow:0 2px 6px rgba(14,165,233,0.2); transition: all 0.3s ease;"
-                                onclick="confirmRowAiOcr('${rowId}', this.closest('td').dataset.fullb64)">建立訂單</button>
-                            <button class="btn" id="${rowId}-wrapBtn"
-                                style="flex:1; background:transparent; border:1.5px solid #22c55e; color:#22c55e; padding:8px 0; font-size:12px; font-weight:bold; border-radius:6px; cursor:pointer; transition: all 0.2s;"
-                                onclick="toggleWrapModeUI('${rowId}')" data-active="false">膠膜</button>
-                        </div>
+                    <\/div>
+                <\/td>
+                <td style="padding:8px 10px; width:150px; vertical-align:middle;" data-fullb64="${fullB64 || ''}">
+                    <div style="display:flex; flex-direction:column; gap:5px; width:100%;">
+                        <!-- 第一排：建立訂單主按鈕 -->
+                        <button class="btn" style="width:100%; background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; padding:6px 0; font-size:12px; font-weight:800; border-radius:5px; border:none; cursor:pointer; box-shadow:0 2px 6px rgba(2,132,199,0.3);" onclick="createSingleOrderFromRow('${rowId}')">建立訂單<\/button>
 
-                        <!-- 第二排：次要動作 -->
-                        <div style="display:flex; gap:3px; width:100%;">
-                            <button class="btn" title="移除"
-                                style="flex:1; background:#475569; color:#f1f5f9; padding:6px 0; font-size:11px; border-radius:4px;"
-                                onclick="deleteRowAiOcr('${rowId}')">移除</button>
+                        <!-- 第二排：狀態切換標籤列 (膠膜 | 堆高機 | 內部) -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:3px; align-items:center;">
+                            <button class="btn" id="${rowId}-wrapBtn" title="封膠膜" style="background:rgba(255,255,255,0.03); border:1px solid rgba(16,185,129,0.5); color:#10b981; padding:3px 0; font-size:10px; font-weight:800; border-radius:4px; cursor:pointer; text-align:center; white-space:nowrap;" onclick="toggleWrapModeUI('${rowId}')" data-active="false">☐ 膠膜<\/button>
+                            <button class="btn" id="${rowId}-carrierBtn" title="堆高機下貨/貨運行：運費打5折" style="background:rgba(255,255,255,0.03); border:1px solid rgba(249,115,22,0.5); color:#f97316; padding:3px 0; font-size:10px; font-weight:800; border-radius:4px; cursor:pointer; text-align:center; white-space:nowrap;" onclick="toggleCarrierModeUI('${rowId}')" data-active="false">☐ 堆高機<\/button>
+                            <button class="btn" id="${rowId}-freeBtn" title="點擊切換：內部免費運輸 (免運費)" style="background:rgba(255,255,255,0.03); border:1px solid rgba(234,179,8,0.5); color:#eab308; padding:3px 0; font-size:10px; font-weight:800; border-radius:4px; cursor:pointer; text-align:center; white-space:nowrap;" onclick="toggleFreeModeUI('${rowId}')" data-active="false">☐ 內部<\/button>
+                        <\/div>
 
-                            <button class="btn" id="${rowId}-salesBtn" title="業務"
-                                style="flex:1; background:#334155; color:#94a3b8; padding:6px 0; font-size:11px; border-radius:4px; transition:all 0.2s; border:1px solid transparent;"
-                                onclick="toggleSalesModeUI('${rowId}')" data-active="false">業務</button>
-
-                            <button class="btn" title="原文"
-                                style="flex:1; background:#1e3a5f; color:#93c5fd; padding:6px 0; font-size:11px; border-radius:4px;"
-                                onclick="showRawOcrText('${rowId}')">原文</button>
-                        </div>
-
-                        <!-- V39.25: 第三排：貨運行集貨(堆高機下貨/加工廠倉庫)，運費會自動打5折，字樣拿掉改放title -->
-                        <div style="display:flex; width:100%; padding-top:2px; border-top:1px dashed rgba(249,115,22,0.25);">
-                            <button class="btn" id="${rowId}-carrierBtn" title="貨運行/倉庫集貨：全程堆高機下貨，司機不用搬，運費自動打5折"
-                                style="flex:1; background:transparent; border:1.5px solid #f97316; color:#f97316; padding:6px 0; font-size:11px; font-weight:bold; border-radius:4px; cursor:pointer; transition:all 0.2s; white-space:nowrap;"
-                                onclick="toggleCarrierModeUI('${rowId}')" data-active="false">☐ 貨運行</button>
-                        </div>
-                    </div>
-                </td>
+                        <!-- 第三排：輔助工具功能列 (業務 | 原文 | 移除) -->
+                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:3px;">
+                            <button class="btn" id="${rowId}-salesBtn" title="業務" style="background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); color:var(--text-tertiary); padding:3px 0; font-size:10px; border-radius:4px; cursor:pointer;" onclick="toggleSalesModeUI('${rowId}')" data-active="false">業務<\/button>
+                            <button class="btn" style="background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); color:var(--text-tertiary); padding:3px 0; font-size:10px; border-radius:4px; cursor:pointer;" onclick="showRawOcrText('${rowId}')">原文<\/button>
+                            <button class="btn" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#ef4444; padding:3px 0; font-size:10px; border-radius:4px; font-weight:700; cursor:pointer;" onclick="removeOcrRow('${rowId}')">移除<\/button>
+                        <\/div>
+                    <\/div>
+                <\/td>
             `;
             document.getElementById('aiOcrTbody').appendChild(tr);
             setWrapModeUI(rowId, String(data.wrapSeal || '').indexOf('封') !== -1);
-            // V39.28: 地址命中既有貨運行/加工廠清單時，「貨運行集貨」按鈕預設打勾，小姐不用每次手動勾
             setCarrierModeUI(rowId, !!data.suggestCarrier);
+            updateOcrFreeBadgeUI(rowId);
 
             // 🤖 V13.1 智慧輔助：若 OCR 偵測客戶名有「樣品」，自動預設啟用「業務」按鈕狀態
             if (data.customerName && String(data.customerName).indexOf("樣品") !== -1) {
@@ -6377,14 +6718,14 @@
                 overlay.innerHTML = `
                     <div style="background:#0f172a;border:1px solid #334155;border-radius:12px;width:90%;max-width:700px;max-height:80vh;display:flex;flex-direction:column;">
                         <div style="padding:16px 20px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;">
-                            <span style="color:#93c5fd;font-weight:bold;font-size:14px;">📄 Google Vision OCR 原始文字</span>
-                            <span id="rawOcrClose" style="cursor:pointer;color:#ef4444;font-size:20px;font-weight:bold;">✕</span>
-                        </div>
+                            <span style="color:#93c5fd;font-weight:bold;font-size:14px;">📄 Google Vision OCR 原始文字<\/span>
+                            <span id="rawOcrClose" style="cursor:pointer;color:#ef4444;font-size:20px;font-weight:bold;">✕<\/span>
+                        <\/div>
                         <div style="padding:0 20px 4px;">
-                            <span style="font-size:11px;color:#64748b;">⚠️ 以下為 OCR 原始輸出，供診斷使用。紅色=換行符號。</span>
-                        </div>
-                        <pre id="rawOcrContent" style="flex:1;overflow:auto;padding:16px 20px;font-size:12px;line-height:1.6;color:#e2e8f0;white-space:pre-wrap;word-break:break-all;margin:0;"></pre>
-                    </div>`;
+                            <span style="font-size:11px;color:#64748b;">⚠️ 以下為 OCR 原始輸出，供診斷使用。紅色=換行符號。<\/span>
+                        <\/div>
+                        <pre id="rawOcrContent" style="flex:1;overflow:auto;padding:16px 20px;font-size:12px;line-height:1.6;color:#e2e8f0;white-space:pre-wrap;word-break:break-all;margin:0;"><\/pre>
+                    <\/div>`;
                 document.body.appendChild(overlay);
                 document.getElementById('rawOcrClose').onclick = () => overlay.style.display = 'none';
                 overlay.onclick = (e) => { if (e.target === overlay) overlay.style.display = 'none'; };
@@ -6535,24 +6876,67 @@
         }
 
         // V39.23: 貨運行集貨(堆高機下貨) 切換 - 每天固定送貨、全程堆高機下貨的貨運行/倉庫，運費打5折
-        // V39.28: 拆成 set/toggle 兩個函式，讓「已知貨運行地址」可以在建立卡片時直接預設打勾
+        function setFreeModeUI(rowId, active) {
+            const btn = document.getElementById(rowId + '-freeBtn');
+            if (!btn) return;
+            if (active) {
+                btn.dataset.active = 'true';
+                btn.style.background = 'linear-gradient(135deg, #d97706, #f59e0b)';
+                btn.style.border = '1px solid #f59e0b';
+                btn.style.color = '#fff';
+                btn.style.boxShadow = '0 0 8px rgba(245,158,11,0.45)';
+                btn.textContent = '☑ 內部';
+            } else {
+                btn.dataset.active = 'false';
+                btn.style.background = 'transparent';
+                btn.style.border = '1px solid rgba(234,179,8,0.5)';
+                btn.style.color = '#eab308';
+                btn.style.boxShadow = 'none';
+                btn.textContent = '☐ 內部';
+            }
+        }
+        function toggleFreeModeUI(rowId) {
+            const btn = document.getElementById(rowId + '-freeBtn');
+            if (!btn) return;
+            setFreeModeUI(rowId, btn.dataset.active !== 'true');
+        }
+
+        function updateOcrFreeBadgeUI(rowId) {
+            const cust = document.getElementById(rowId + '-cust')?.value || '';
+            const addr = document.getElementById(rowId + '-addr')?.value || '';
+            const note = document.getElementById(rowId + '-note')?.value || '';
+            const text = (String(cust) + ' ' + String(addr) + ' ' + String(note)).replace(/\s/g, '');
+
+            let isFree = false;
+            if (text.indexOf('加工') === -1 && text.indexOf('噴砂') === -1 && text.indexOf('營造') === -1) {
+                if (text.indexOf('指送安帝嘉') !== -1 || text.indexOf('指送喜悅納') !== -1 || text.indexOf('指送高雅瓷') !== -1 || text.indexOf('指送漢樺') !== -1) isFree = true;
+                else if (text.indexOf('高職東街13號') !== -1 || text.indexOf('文化路三段535巷98號') !== -1) isFree = true;
+                else if (text.indexOf('載回公司') !== -1 || text.indexOf('回公司') !== -1 || text.indexOf('倉內調貨') !== -1 || text.indexOf('轉倉') !== -1) isFree = true;
+            }
+
+            if (isFree) {
+                setFreeModeUI(rowId, true);
+            }
+        }
+
+        // V39.23: 貨運行集貨(堆高機下貨) 切換
         function setCarrierModeUI(rowId, active) {
             const btn = document.getElementById(rowId + '-carrierBtn');
             if (!btn) return;
             if (active) {
                 btn.dataset.active = 'true';
                 btn.style.background = 'linear-gradient(135deg, #059669, #10b981)';
-                btn.style.border = '1.5px solid #10b981';
+                btn.style.border = '1px solid #10b981';
                 btn.style.color = '#fff';
-                btn.style.boxShadow = '0 0 10px rgba(16,185,129,0.45)';
-                btn.textContent = '✅ 貨運行'; // V39.34: 橘色打勾看不清楚，改用綠色勾選才夠明顯
+                btn.style.boxShadow = '0 0 8px rgba(16,185,129,0.45)';
+                btn.textContent = '☑ 堆高機';
             } else {
                 btn.dataset.active = 'false';
                 btn.style.background = 'transparent';
-                btn.style.border = '1.5px solid #f97316';
+                btn.style.border = '1px solid #f97316';
                 btn.style.color = '#f97316';
                 btn.style.boxShadow = 'none';
-                btn.textContent = '☐ 貨運行';
+                btn.textContent = '☐ 堆高機';
             }
         }
         function toggleCarrierModeUI(rowId) {
@@ -6568,6 +6952,222 @@
                 carrierFlag: active ? '貨運行集貨' : '',
                 carrierDiscount: active ? 0.5 : 1
             };
+        }
+
+        // ➕ 常用點 Modal 控制函式
+        function openAddLocationModal() {
+            document.getElementById('addLocationModal').style.display = 'flex';
+        }
+        function closeAddLocationModal() {
+            document.getElementById('addLocationModal').style.display = 'none';
+        }
+        function submitNewCommonLocation() {
+            const sName = (document.getElementById('loc-short')?.value || '').trim();
+            const fName = (document.getElementById('loc-fullname')?.value || '').trim();
+            const addr = (document.getElementById('loc-address')?.value || '').trim();
+
+            if (!sName || !addr) {
+                return alert('⚠️ 請填寫指送簡稱與完整地址！');
+            }
+
+            const btn = document.getElementById('saveLocBtn');
+            const origText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = '寫入後台《運費管理表》中...';
+
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                    if (res && res.success) {
+                        alert('✅ ' + res.message);
+                        document.getElementById('loc-short').value = '';
+                        document.getElementById('loc-fullname').value = '';
+                        document.getElementById('loc-address').value = '';
+                        closeAddLocationModal();
+                    } else {
+                        alert('⚠️ 寫入失敗：' + ((res && res.error) || '未知錯誤'));
+                    }
+                })
+                .withFailureHandler(function (err) {
+                    btn.disabled = false;
+                    btn.innerText = origText;
+                    alert('⚠️ 系統錯誤：' + err.message);
+                })
+                .addCommonLocation_V41(sName, fName, addr, ATOKEN());
+        }
+
+        // 💡 全新功能導覽 Modal 與模擬 UI 分頁切換控制
+        function switchGuideTab(tabId, btnEl) {
+            document.querySelectorAll('.guide-tab').forEach(b => {
+                b.classList.remove('active');
+                b.style.borderBottomColor = 'transparent';
+                b.style.color = '#94a3b8';
+            });
+            document.querySelectorAll('.guide-content').forEach(c => c.style.display = 'none');
+
+            btnEl.classList.add('active');
+            btnEl.style.borderBottomColor = '#38bdf8';
+            btnEl.style.color = '#38bdf8';
+            const target = document.getElementById('guide-' + tabId);
+            if (target) target.style.display = 'block';
+        }
+
+        function openNewFeatureGuideModal() {
+            document.getElementById('newFeatureGuideModal').style.display = 'flex';
+        }
+        function closeNewFeatureGuideModal() {
+            try { localStorage.setItem('tts_features_v42_seen', 'true'); } catch(e) {}
+            document.getElementById('newFeatureGuideModal').style.display = 'none';
+        }
+        function checkAutoShowNewFeatureGuideModal() {
+            try {
+                if (!localStorage.getItem('tts_features_v42_seen')) {
+                    setTimeout(openNewFeatureGuideModal, 800);
+                }
+            } catch(e) {}
+        }
+        window.addEventListener('DOMContentLoaded', checkAutoShowNewFeatureGuideModal);
+
+        // 🎯 互動式按鈕逐步導覽 Spotlight Tour 引擎
+        let currentTourStep = 0;
+        const TOUR_STEPS = [
+            {
+                title: "1. 【＋ 常用點】表頭按鈕",
+                diff: "✨ 差異：可直接將常用堆高機下貨點寫入後台《運費管理表》J/K/L欄！",
+                desc: "位於【送貨地址*】欄位右側。點擊可新增指送簡稱、全名與完整地址，後續 OCR 掃描自動辨識並打 5 折。",
+                target: () => document.querySelector("button[onclick*='openAddLocationModal']") || document.body
+            },
+            {
+                title: "2. 【☐ 堆高機】切換按鈕",
+                diff: "✨ 差異：原「貨運」更名為「堆高機」，點擊亮起 ☑ 堆高機 (運費打5折)！",
+                desc: "代表該地點備有堆高機下貨（司機免搬運）。點擊即可切換，結算運費自動打 5 折。",
+                target: () => document.querySelector("button[id$='-carrierBtn']") || document.body
+            },
+            {
+                title: "3. 【☐ 內部】切換按鈕",
+                diff: "✨ 差異：升級為【可手動點擊切換的互動按鈕】！",
+                desc: "代表載回公司/安帝嘉/喜悅納等內部轉運。點擊切換為 ☑ 內部 琥珀黃光，此單運費自動計算為 $0 (免運)。",
+                target: () => document.querySelector("button[id$='-freeBtn']") || document.body
+            },
+            {
+                title: "4. 【業務】工具按鈕",
+                diff: "✨ 差異：原「票務」已更名為「業務」！",
+                desc: "點擊可啟用業務樣品點收模式，便於分類紀錄。",
+                target: () => document.querySelector("button[id$='-salesBtn']") || document.body
+            },
+            {
+                title: "5. 🔴 批次退回分公司 按鈕",
+                diff: "✨ 差異：新增「退單轉業務自理」與「指派載回司機」雙重功能！",
+                desc: "在派車工作站點擊此按鈕，可開啟退單管理視窗將單據退回分公司。",
+                target: () => document.getElementById('batchReturnBtn') || document.body
+            },
+            {
+                title: "6. 退單原因：此單不接，載回鶯歌",
+                diff: "✨ 差異：通知業務自理、司機 App 隱藏不配送、但倉庫驗貨清單保留！",
+                desc: "退單時選擇此原因，LINE/Telegram 自動發送通知，司機端不會誤配送，倉管人員可實體點收。",
+                target: () => document.getElementById('globalReasonSelect') || document.body
+            },
+            {
+                title: "7. 載回司機 下拉選單",
+                diff: "✨ 差異：退單時可直接指派是由哪一位司機載回倉庫！",
+                desc: "選擇載回司機後，LINE 預覽與倉管驗貨清單會自動寫入該載回司機姓名。",
+                target: () => document.getElementById('returnDriverSelect') || document.body
+            },
+            {
+                title: "8. 司機卡片：[內部運輸 - 下鶯歌倉]",
+                diff: "✨ 差異：司機 App 卡片醒目標示黃色內部標籤，避免誤配送！",
+                desc: "司機在手機上一眼即可辨認這是要載回鶯歌倉庫卸貨的單據，不送給客戶。",
+                target: () => document.body
+            },
+            {
+                title: "9. 🚨 現場收退貨異常回報 (4大勾選)",
+                diff: "✨ 差異：司機結案時可勾選數量過多(運費x2)、距離過遠(運費x2)、等候超時、取消空跑！",
+                desc: "司機勾選後提交，系統會即時向 Telegram 發送警告通知，運費自動連動調整。",
+                target: () => document.body
+            },
+            {
+                title: "10. [ 樣品免費 ] / [ 銷貨 ] 標籤切換",
+                diff: "✨ 差異：在對帳中心前台，直接點擊標籤即可瞬間切換單據類型並重算運費！",
+                desc: "若歷史單據被誤判，在 Analytics.html 前台點一下標籤即可更換，後台試算表自動同步更新。",
+                target: () => document.body
+            },
+            {
+                title: "11. 「核定運費」 輸入框",
+                diff: "✨ 差異：直接在對帳表格最右側輸入指定金額 (如 $0)，即時連動更新！",
+                desc: "提供會計與管理者最高自由度，手動指定的金額將自動寫入後台與報表看板。",
+                target: () => document.body
+            }
+        ];
+
+        function startInteractiveTour() {
+            document.getElementById('newFeatureGuideModal').style.display = 'none';
+            document.getElementById('interactiveTourOverlay').style.display = 'block';
+            currentTourStep = 0;
+            renderTourStep();
+        }
+
+        function renderTourStep() {
+            const step = TOUR_STEPS[currentTourStep];
+            if (!step) return endInteractiveTour();
+
+            document.getElementById('tourStepBadge').innerText = `Step ${currentTourStep + 1} / ${TOUR_STEPS.length}`;
+            document.getElementById('tourTitle').innerText = step.title;
+            document.getElementById('tourDiffText').innerText = step.diff;
+            document.getElementById('tourDescText').innerText = step.desc;
+
+            const prevBtn = document.getElementById('tourPrevBtn');
+            const nextBtn = document.getElementById('tourNextBtn');
+            prevBtn.style.display = currentTourStep === 0 ? 'none' : 'inline-block';
+            nextBtn.innerText = currentTourStep === TOUR_STEPS.length - 1 ? '🎉 完成導覽' : '下一步 ▶';
+
+            const el = step.target ? step.target() : null;
+            const ring = document.getElementById('tourFocusRing');
+            const tooltip = document.getElementById('tourTooltipBox');
+
+            if (el && el !== document.body && el.getBoundingClientRect) {
+                const rect = el.getBoundingClientRect();
+                ring.style.display = 'block';
+                ring.style.top = Math.max(0, rect.top - 6) + 'px';
+                ring.style.left = Math.max(0, rect.left - 6) + 'px';
+                ring.style.width = (rect.width + 12) + 'px';
+                ring.style.height = (rect.height + 12) + 'px';
+
+                let top = rect.bottom + 14;
+                let left = rect.left;
+                if (top + 220 > window.innerHeight) top = Math.max(10, rect.top - 230);
+                if (left + 370 > window.innerWidth) left = Math.max(10, window.innerWidth - 380);
+
+                tooltip.style.top = top + 'px';
+                tooltip.style.left = left + 'px';
+                tooltip.style.transform = 'none';
+            } else {
+                ring.style.display = 'none';
+                tooltip.style.top = '50%';
+                tooltip.style.left = '50%';
+                tooltip.style.transform = 'translate(-50%, -50%)';
+            }
+        }
+
+        function nextTourStep() {
+            if (currentTourStep < TOUR_STEPS.length - 1) {
+                currentTourStep++;
+                renderTourStep();
+            } else {
+                endInteractiveTour();
+            }
+        }
+
+        function prevTourStep() {
+            if (currentTourStep > 0) {
+                currentTourStep--;
+                renderTourStep();
+            }
+        }
+
+        function endInteractiveTour() {
+            document.getElementById('interactiveTourOverlay').style.display = 'none';
+            try { localStorage.setItem('tts_features_v42_seen', 'true'); } catch(e) {}
         }
 
         function getRowItems(rowId) {
@@ -6644,13 +7244,13 @@
                 originalHTML = btn.innerHTML;
                 originalBg = btn.style.background;
                 btn.disabled = true;
-                btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff; display:inline-block; vertical-align:middle;"></span>';
+                btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff; display:inline-block; vertical-align:middle;"><\/span>';
                 btn.style.background = "#475569";
             }
 
             // V41 加速：縮圖改由後端在同一趟 upsert 內上傳 (省掉一次 GAS 往返)
             data.thumbnailB64 = fullB64 ? fullB64.split(',')[1] : "";
-            if (btn) btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff;"></span> 寫入中';
+            if (btn) btn.innerHTML = '<span class="loading-spinner" style="width:12px; height:12px; border-width:2px; border-top-color:#fff;"><\/span> 寫入中';
 
             {
                 {
@@ -6753,7 +7353,7 @@
 
                 try {
                     currentCount++;
-                    batchBtn.innerHTML = `<span class="loading-spinner"></span> 正在批次建立中 (${currentCount}/${total})`;
+                    batchBtn.innerHTML = `<span class="loading-spinner"><\/span> 正在批次建立中 (${currentCount}/${total})`;
 
                     // V36.6 / V41: 縮圖交給後端在同一趟 upsert 內上傳
                     const fCell = row.cells[row.cells.length - 1];
@@ -6847,10 +7447,10 @@
             mb.style.top = '';
 
             // 填充車號選單
-            const carOptions = '<option value="">（全部）</option>' +
-                vehicles.map(v => `<option value="${v.name}">${v.name} (${v.driver})</option>`).join('');
-            const driverOptions = '<option value="">（全部）</option>' +
-                [...new Set(vehicles.map(v => v.driver))].map(d => `<option value="${d}">${d}</option>`).join('');
+            const carOptions = '<option value="">（全部）<\/option>' +
+                vehicles.map(v => `<option value="${v.name}">${v.name} (${v.driver})<\/option>`).join('');
+            const driverOptions = '<option value="">（全部）<\/option>' +
+                [...new Set(vehicles.map(v => v.driver))].map(d => `<option value="${d}">${d}<\/option>`).join('');
 
             ['logsCarSelect', 'maintCarSelect', 'itinerary-car-select'].forEach(id => {
                 const el = document.getElementById(id);
@@ -6938,7 +7538,7 @@
                 if (fpBar && currentSettingTab !== 'itinerary') fpBar.style.display = 'none';
                 if (!res || !res.data || res.data.length === 0) {
                     document.getElementById('settingMsgArea').style.display = 'block';
-                    document.getElementById('settingMsgArea').innerHTML = '💭 沒有找到相關資料<br><small style="color:#64748b;">若是「車輛保養」尚未建立標題列，請先至 Google Sheet 新增欄位標题</small>';
+                    document.getElementById('settingMsgArea').innerHTML = '💭 沒有找到相關資料<br><small style="color:#64748b;">若是「車輛保養」尚未建立標題列，請先至 Google Sheet 新增欄位標题<\/small>';
                     return;
                 }
                 settingHeaders = res.headers;
@@ -6994,10 +7594,10 @@
                 if (tab === 'itinerary' && footprint && footprint.length > 0) {
                     fpBar.style.display = 'block';
                     fpContent.innerHTML = footprint.map((p, idx) =>
-                        (idx > 0 ? '<span style="color:#334155; padding:0 2px;">→</span>' : '') +
+                        (idx > 0 ? '<span style="color:#334155; padding:0 2px;">→<\/span>' : '') +
                         `<span style="background:rgba(14,165,233,0.15); border:1px solid #0ea5e9; border-radius:12px; padding:3px 10px; font-size:12px;">` +
-                        `<span style="color:#64748b; font-size:11px;">${escapeHTML(p.time)} </span>` +
-                        `<span style="color:#e2e8f0; font-weight:bold;">${escapeHTML(p.road)}</span></span>`
+                        `<span style="color:#64748b; font-size:11px;">${escapeHTML(p.time)} <\/span>` +
+                        `<span style="color:#e2e8f0; font-weight:bold;">${escapeHTML(p.road)}<\/span><\/span>`
                     ).join('');
                 } else {
                     fpBar.style.display = 'none';
@@ -7031,12 +7631,12 @@
             // 標題列（可拑移調寬）
             let thHtml = '<tr style="background:#0f172a;">';
             if (isEditable || isLogsEditable)
-                thHtml += '<th style="padding:8px; width:30px; position:relative;"><input type="checkbox" onchange="toggleAllSettingCheck(this)"></th>';
+                thHtml += '<th style="padding:8px; width:30px; position:relative;"><input type="checkbox" onchange="toggleAllSettingCheck(this)"><\/th>';
             thHtml += headers.map(h => {
                 const w = colWidthMap[h] || 'auto';
-                return `<th style="padding:8px 10px; color:#94a3b8; font-size:12px; white-space:normal; word-break:break-all; min-width:${w}; max-width:${w !== 'auto' ? w : '300px'}; border-bottom:2px solid #334155; position:relative; cursor:col-resize; user-select:none;">${escapeHTML(h)}</th>`;
+                return `<th style="padding:8px 10px; color:#94a3b8; font-size:12px; white-space:normal; word-break:break-all; min-width:${w}; max-width:${w !== 'auto' ? w : '300px'}; border-bottom:2px solid #334155; position:relative; cursor:col-resize; user-select:none;">${escapeHTML(h)}<\/th>`;
             }).join('');
-            thHtml += '</tr>';
+            thHtml += '<\/tr>';
             thead.innerHTML = thHtml;
 
             // 資料列
@@ -7044,7 +7644,7 @@
                 const bg = i % 2 === 0 ? '#1e293b' : '#0f172a';
                 let html = `<tr style="border-bottom:1px solid #334155; background:${bg};" data-rowidx="${i}">`;
                 if (isEditable || isLogsEditable)
-                    html += `<td style="padding:6px 8px;"><input type="checkbox" class="setting-row-check"></td>`;
+                    html += `<td style="padding:6px 8px;"><input type="checkbox" class="setting-row-check"><\/td>`;
 
                 html += row.map((cell, ci) => {
                     const val = String(cell);
@@ -7053,34 +7653,34 @@
 
                     // 照片連結 → 🎥 按鈕
                     if (val.startsWith('http') && (val.includes('drive.google') || val.includes('photos.google'))) {
-                        return `<td style="padding:4px 6px; text-align:center; width:${w};"><a href="${escapeHTML(val)}" target="_blank" style="text-decoration:none; font-size:18px;" title="點擊查看照片">🎥</a></td>`;
+                        return `<td style="padding:4px 6px; text-align:center; width:${w};"><a href="${escapeHTML(val)}" target="_blank" style="text-decoration:none; font-size:18px;" title="點擊查看照片">🎥<\/a><\/td>`;
                     }
 
                     // GPS 座標 → 截取到小數點後 3 位
                     if (/^-?\d+\.\d{4,}/.test(val) && val.includes(',')) {
                         const parts = val.split(',');
                         const gpsShort = parts.map(p => parseFloat(p).toFixed(3)).join(', ');
-                        return `<td style="padding:6px 8px; font-size:11px; color:#94a3b8; width:${w};" title="${escapeHTML(val)}">${escapeHTML(gpsShort)}</td>`;
+                        return `<td style="padding:6px 8px; font-size:11px; color:#94a3b8; width:${w};" title="${escapeHTML(val)}">${escapeHTML(gpsShort)}<\/td>`;
                     }
 
                     // 行程表：加油種類/公升數/金額 → 可編輯
                     const isItinEditCol = (tab === 'itinerary') && (colName.includes('加油') || colName.includes('公升') || colName.includes('金額'));
                     if (isItinEditCol) {
-                        return `<td style="padding:4px; width:${w};"><input type="text" value="${escapeHTML(val)}" data-row="${i}" data-col="${ci}" style="width:100%; min-width:70px; padding:4px 6px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid #f59e0b; color:white; border-radius:3px;" onchange="settingMarkDirty(this)"></td>`;
+                        return `<td style="padding:4px; width:${w};"><input type="text" value="${escapeHTML(val)}" data-row="${i}" data-col="${ci}" style="width:100%; min-width:70px; padding:4px 6px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid #f59e0b; color:white; border-radius:3px;" onchange="settingMarkDirty(this)"><\/td>`;
                     }
 
                     // 白名單/車輛管理/送貨日誌 → 可編輯格
                     if (isEditable || isLogsEditable) {
-                        return `<td style="padding:4px; min-width:${w};"><input type="text" value="${escapeHTML(val)}" data-row="${i}" data-col="${ci}" style="width:100%; min-width:60px; padding:4px 6px; font-size:12px; background:rgba(255,255,255,0.05); border:1px solid transparent; color:white; border-radius:3px;" onfocus="this.style.borderColor='#0ea5e9'" onblur="this.style.borderColor='transparent'" onchange="settingMarkDirty(this)"></td>`;
+                        return `<td style="padding:4px; min-width:${w};"><input type="text" value="${escapeHTML(val)}" data-row="${i}" data-col="${ci}" style="width:100%; min-width:60px; padding:4px 6px; font-size:12px; background:rgba(255,255,255,0.05); border:1px solid transparent; color:white; border-radius:3px;" onfocus="this.style.borderColor='#0ea5e9'" onblur="this.style.borderColor='transparent'" onchange="settingMarkDirty(this)"><\/td>`;
                     }
 
                     // 一般讀取欄位
                     const maxChars = 40;
                     const displayVal = val.length > maxChars ? val.substring(0, maxChars) + '…' : val;
-                    return `<td style="padding:6px 8px; white-space:normal; word-break:break-word; max-width:${w !== 'auto' ? w : '200px'};" title="${escapeHTML(val)}">${escapeHTML(displayVal)}</td>`;
+                    return `<td style="padding:6px 8px; white-space:normal; word-break:break-word; max-width:${w !== 'auto' ? w : '200px'};" title="${escapeHTML(val)}">${escapeHTML(displayVal)}<\/td>`;
                 }).join('');
 
-                html += '</tr>';
+                html += '<\/tr>';
                 return html;
             }).join('');
 
@@ -7148,11 +7748,11 @@
             const newIdx = settingRawData.length + tbody.querySelectorAll('.new-row').length;
             const cols = settingHeaders.length;
             let html = `<tr class="new-row" style="background:#1c2e1c; border-bottom:1px solid #22c55e;">`;
-            html += `<td style="padding:6px 8px;"><input type="checkbox" class="setting-row-check"></td>`;
+            html += `<td style="padding:6px 8px;"><input type="checkbox" class="setting-row-check"><\/td>`;
             html += Array.from({ length: cols }, (_, ci) =>
-                `<td style="padding:4px;"><input type="text" data-new="1" data-col="${ci}" style="width:100%; padding:5px 6px; font-size:12px; background:rgba(34,197,94,0.1); border:1px solid #22c55e; color:white; border-radius:3px;" placeholder="${escapeHTML(settingHeaders[ci] || '')}"></td>`
+                `<td style="padding:4px;"><input type="text" data-new="1" data-col="${ci}" style="width:100%; padding:5px 6px; font-size:12px; background:rgba(34,197,94,0.1); border:1px solid #22c55e; color:white; border-radius:3px;" placeholder="${escapeHTML(settingHeaders[ci] || '')}"><\/td>`
             ).join('');
-            html += '</tr>';
+            html += '<\/tr>';
             tbody.insertAdjacentHTML('afterbegin', html);
         }
 
@@ -7223,15 +7823,15 @@
             const grid = document.getElementById('maintPartsGrid');
             if (grid) {
                 grid.innerHTML = partsControls.map(p => {
-                    const lastD = lastDates[p] ? `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">上次: ${lastD}</div>` : `<div style="font-size:10px; color:#64748b; margin-top:2px;">無紀錄</div>`;
+                    const lastD = lastDates[p] ? `<div style="font-size:10px; color:#94a3b8; margin-top:2px;">上次: ${lastD}<\/div>` : `<div style="font-size:10px; color:#64748b; margin-top:2px;">無紀錄<\/div>`;
                     return `
                         <label style="display:flex; flex-direction:column; background:#0f172a; padding:8px; border-radius:6px; border:1px solid #334155; cursor:pointer;">
                             <div style="display:flex; align-items:center; gap:6px;">
                                 <input type="checkbox" class="maint-chk" value="${p}">
-                                <span style="font-size:13px; color:#e2e8f0;">${p}</span>
-                            </div>
+                                <span style="font-size:13px; color:#e2e8f0;">${p}<\/span>
+                            <\/div>
                             ${lastD}
-                        </label>
+                        <\/label>
                         `;
                 }).join('');
             }
@@ -7290,17 +7890,17 @@
             const hdrs = settingHeaders.slice(0, printUpTo);
             const rows = settingRawData.map(r => r.slice(0, printUpTo));
 
-            const tableHtml = `<table><thead><tr>${hdrs.map(h => `<th>${escapeHTML(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${escapeHTML(String(c))}</td>`).join('')}</tr>`).join('')
-                }</tbody></table>`;
+            const tableHtml = `<table><thead><tr>${hdrs.map(h => `<th>${escapeHTML(h)}<\/th>`).join('')}<\/tr><\/thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${escapeHTML(String(c))}<\/td>`).join('')}<\/tr>`).join('')
+                }<\/tbody><\/table>`;
 
             const printWin = window.open('', '', 'height=900,width=1100');
-            printWin.document.write(`<html><head><title>每日行程表報表</title>
-                <style>body{font-family:sans-serif; font-size:12px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #999;padding:6px;text-align:left;word-break:break-all;} th{background:#eee;}</style>
-                </head><body>
-                <h2 style="margin-bottom:4px;">📋 每日行程表（會計結帳用）</h2>
-                <p style="margin:0 0 10px; color:#555;">⊙ 司機：${escapeHTML(driverName)}　⊙ 車號：${escapeHTML(carName)}　⊙ 列印時間：${new Date().toLocaleString('zh-TW')}</p>
+            printWin.document.write(`<html><head><title>每日行程表報表<\/title>
+                <style>body{font-family:sans-serif; font-size:12px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #999;padding:6px;text-align:left;word-break:break-all;} th{background:#eee;}<\/style>
+                <\/head><body>
+                <h2 style="margin-bottom:4px;">📋 每日行程表（會計結帳用）<\/h2>
+                <p style="margin:0 0 10px; color:#555;">⊙ 司機：${escapeHTML(driverName)}　⊙ 車號：${escapeHTML(carName)}　⊙ 列印時間：${new Date().toLocaleString('zh-TW')}<\/p>
                 ${tableHtml}
-                </body></html>`);
+                <\/body><\/html>`);
             printWin.document.close();
             printWin.focus();
             setTimeout(() => { printWin.print(); printWin.close(); }, 800);
@@ -7341,6 +7941,13 @@
         <span class="preview-close">&times;</span>
         <img src="" onclick="event.stopPropagation()">
     </div>
+    <?!= include('GoogleLogin'); ?>
+    <script>
+        (function () {
+            var s = document.getElementById('gLoginSlot'); if (s && window.TTSGoogle) s.innerHTML = TTSGoogle.buttonHtml('loginWithGoogleAdmin()');
+            if (window.TTSGoogle) TTSGoogle.resume({ app: 'admin', onSuccess: function (res) { setAdminToken(res.token); showMeBar(res); hideLoginOverlayAndStart(); } });
+        })();
+    </script>
 </body>
 
 </html>

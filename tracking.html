@@ -1359,7 +1359,7 @@
           為了確保您的經銷商資安，請點選下方按鈕，跳轉至 LINE 安全授權中心：<br><br>
           <a href="https://liff.line.me/${CONFIG.LIFF_ID}" target="_top" style="display:inline-block; background:#06C755; color:#fff; padding:12px 28px; border-radius:30px; text-decoration:none; font-weight:bold; margin-top:10px; box-shadow:0 4px 15px rgba(6,199,85,0.4); font-size:16px; transition:all 0.3s ease;">
             🟢 點此登入 LINE 查貨
-          </a>
+          <\/a>
         `;
       }
     }
@@ -1437,10 +1437,10 @@
       if (!dateInput) return;
       
       const btn = document.getElementById("btnQueryDate");
-      const originalHTML = btn ? btn.innerHTML : '<i class="fa-solid fa-magnifying-glass"></i> 查詢';
+      const originalHTML = btn ? btn.innerHTML : '<i class="fa-solid fa-magnifying-glass"><\/i> 查詢';
       
       if (btn) {
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 查詢中...';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"><\/i> 查詢中...';
         btn.disabled = true;
         btn.style.opacity = "0.7";
       }
@@ -1526,20 +1526,20 @@
       
       mainContainer.innerHTML = `
         <div class="skeleton-card" style="border-left: 5px solid rgba(255,255,255,0.05);">
-          <div class="skeleton-line short"></div>
-          <div class="skeleton-line"></div>
-        </div>
+          <div class="skeleton-line short"><\/div>
+          <div class="skeleton-line"><\/div>
+        <\/div>
         <div class="skeleton-card" style="margin-top:1rem;">
-          <div class="skeleton-line short"></div>
-          <div class="skeleton-line medium" style="margin-top:0.5rem;"></div>
-          <div class="skeleton-line medium"></div>
-          <div class="skeleton-line medium"></div>
-        </div>
+          <div class="skeleton-line short"><\/div>
+          <div class="skeleton-line medium" style="margin-top:0.5rem;"><\/div>
+          <div class="skeleton-line medium"><\/div>
+          <div class="skeleton-line medium"><\/div>
+        <\/div>
         <div class="skeleton-card" style="margin-top:1rem;">
-          <div class="skeleton-line short"></div>
-          <div class="skeleton-line large" style="margin-top:0.5rem;"></div>
-          <div class="skeleton-line large"></div>
-        </div>
+          <div class="skeleton-line short"><\/div>
+          <div class="skeleton-line large" style="margin-top:0.5rem;"><\/div>
+          <div class="skeleton-line large"><\/div>
+        <\/div>
       `;
     }
 
@@ -1549,11 +1549,11 @@
       const eta = parseInt(targetPreciseMin);
       if (isNaN(eta) || eta <= 0) return '';
       if (eta < 60) {
-        return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"></i> 預計 ${eta} 分鐘送達</span>`;
+        return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"><\/i> 預計 ${eta} 分鐘送達<\/span>`;
       }
       const hrs = Math.floor(eta / 60);
       const mins = eta % 60;
-      return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"></i> 預計 ${hrs}小時${mins > 0 ? mins+'分' : ''}送達</span>`;
+      return `<span class="eta-badge"><i class="fa-solid fa-hourglass-half"><\/i> 預計 ${hrs}小時${mins > 0 ? mins+'分' : ''}送達<\/span>`;
     }
 
     // 下拉刷新手勢實作
@@ -1772,13 +1772,13 @@
         // 今日無派送單
         mainContainer.innerHTML = `
           <div class="card empty-card">
-            <i class="fa-solid fa-calendar-day"></i>
-            <h3>今日無配送安排</h3>
-            <p>今天沒有安排給您的貨物配送。如有急單需求，請聯絡業務窗口。</p>
+            <i class="fa-solid fa-calendar-day"><\/i>
+            <h3>今日無配送安排<\/h3>
+            <p>今天沒有安排給您的貨物配送。如有急單需求，請聯絡業務窗口。<\/p>
             <button class="btn-refresh" style="margin-top: 1rem; width: 100%;" onclick="handleRefresh()">
-              <i class="fa-solid fa-rotate"></i> 重新載入
-            </button>
-          </div>
+              <i class="fa-solid fa-rotate"><\/i> 重新載入
+            <\/button>
+          <\/div>
         `;
         return;
       }
@@ -1807,24 +1807,24 @@
       bannerCard.className = "card progress-ring-card";
       
       const strokeDashoffset = totalOurTasks > 0 ? 220 - (220 * finishedOurTasks / totalOurTasks) : 220;
-      let offlineLabel = isCached ? `<span class="offline-badge"><i class="fa-solid fa-wifi-slash"></i> 離線瀏覽</span>` : '';
+      let offlineLabel = isCached ? `<span class="offline-badge"><i class="fa-solid fa-wifi-slash"><\/i> 離線瀏覽<\/span>` : '';
       const progressPercentage = Math.round(totalOurTasks > 0 ? (finishedOurTasks / totalOurTasks) * 100 : 0);
       
       bannerCard.innerHTML = `
         <div class="status-info" style="flex: 1;">
           <h2 style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem;">
             ${bannerTitle} ${offlineLabel}
-          </h2>
-          <p style="margin-top:0.25rem;">${bannerDesc}</p>
-        </div>
+          <\/h2>
+          <p style="margin-top:0.25rem;">${bannerDesc}<\/p>
+        <\/div>
         <div class="progress-ring-wrapper">
           <svg class="progress-ring" width="80" height="80">
             <circle class="progress-ring__circle-bg" cx="40" cy="40" r="35" />
             <circle class="progress-ring__circle" id="progressRingIndicator" cx="40" cy="40" r="35" 
               style="stroke-dashoffset: 220;" />
-          </svg>
-          <div class="progress-ring-text">${progressPercentage}%</div>
-        </div>
+          <\/svg>
+          <div class="progress-ring-text">${progressPercentage}%<\/div>
+        <\/div>
       `;
       mainContainer.appendChild(bannerCard);
 
@@ -2010,29 +2010,29 @@
         let metroHTML = `
           <div class="vehicle-info" style="margin-bottom:0.85rem;">
             <div class="vehicle-icon" style="background: linear-gradient(135deg, #a855f7, #6366f1);">
-              <i class="fa-solid fa-truck-fast" style="color: white;"></i>
-            </div>
+              <i class="fa-solid fa-truck-fast" style="color: white;"><\/i>
+            <\/div>
             <div class="vehicle-details" style="flex: 1;">
-              <h3 style="font-size:1.05rem; font-weight:700;">${vehicleCode} 專車</h3>
-              <p><i class="fa-solid fa-user"></i> ${driverName} · ${lastUpdateText}</p>
-            </div>
-          </div>
+              <h3 style="font-size:1.05rem; font-weight:700;">${vehicleCode} 專車<\/h3>
+              <p><i class="fa-solid fa-user"><\/i> ${driverName} · ${lastUpdateText}<\/p>
+            <\/div>
+          <\/div>
 
           <!-- 獨立車次的捷運風格數據統計 -->
           <div class="progress-stats" style="margin-bottom: 1.25rem; background: rgba(0,0,0,0.12); padding: 0.6rem; border-radius: 0.75rem;">
             <div class="stat-item">
-              <div class="stat-number" style="font-size:1.35rem;">${totalStations}</div>
-              <div class="stat-label">此路線總站</div>
-            </div>
+              <div class="stat-number" style="font-size:1.35rem;">${totalStations}<\/div>
+              <div class="stat-label">此路線總站<\/div>
+            <\/div>
             <div class="stat-item">
-              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${completedStations}</div>
-              <div class="stat-label">已送達</div>
-            </div>
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${completedStations}<\/div>
+              <div class="stat-label">已送達<\/div>
+            <\/div>
             <div class="stat-item">
-              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${remainingStations}</div>
-              <div class="stat-label">剩餘站</div>
-            </div>
-          </div>
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${remainingStations}<\/div>
+              <div class="stat-label">剩餘站<\/div>
+            <\/div>
+          <\/div>
 
           <div class="metro-map">
             <div class="route-line" style="--progress: ${progressPercent}%;">
@@ -2040,15 +2040,15 @@
               <!-- 倉庫出發站 (站點 1，中立狀態，不列入已完成統計) -->
               <div class="station start-node">
                 <div class="station-marker" style="background: var(--bg-card); border-color: var(--text-secondary);">
-                  <i class="fa-solid fa-warehouse" style="color: var(--text-secondary); font-size: 0.8rem;"></i>
-                </div>
+                  <i class="fa-solid fa-warehouse" style="color: var(--text-secondary); font-size: 0.8rem;"><\/i>
+                <\/div>
                 <div class="station-content" style="padding-bottom: 0.6rem;">
                   <div class="station-name" style="margin-bottom: 0; color: var(--text-secondary);">
-                    <i class="fa-solid fa-warehouse" style="margin-right: 4px;"></i>
-                    倉庫發車 · <span style="font-weight: 500; font-size: 0.9rem;">08:30</span>
-                  </div>
-                </div>
-              </div>
+                    <i class="fa-solid fa-warehouse" style="margin-right: 4px;"><\/i>
+                    倉庫發車 · <span style="font-weight: 500; font-size: 0.9rem;">08:30<\/span>
+                  <\/div>
+                <\/div>
+              <\/div>
         `;
 
         // 迴圈渲染此車次底下的各個配送站點
@@ -2072,14 +2072,14 @@
 
           if (isCompleted) {
             stationClass = "completed";
-            markerHTML = `<i class="fa-solid fa-check"></i>`;
+            markerHTML = `<i class="fa-solid fa-check"><\/i>`;
           } else if (isCurrent) {
             stationClass = "current";
             const truckTop = (i === 0) ? "-36px" : "-48px";
             markerHTML = `
               <div class="floating-truck" style="top: ${truckTop};">
-                <i class="fa-solid fa-truck"></i>
-              </div>
+                <i class="fa-solid fa-truck"><\/i>
+              <\/div>
             `;
           } else {
             stationClass = "";
@@ -2141,18 +2141,18 @@
               <div class="station ${stationClass}">
                 <div class="station-marker">
                   ${markerHTML}
-                </div>
+                <\/div>
                 <div class="station-content" style="padding-bottom: 0.6rem;">
                   <div class="station-name" style="margin-bottom: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                    <i class="fa-solid fa-location-dot" style="color: ${grayColor}; margin-right: 2px;"></i>
+                    <i class="fa-solid fa-location-dot" style="color: ${grayColor}; margin-right: 2px;"><\/i>
                     <span style="color: ${grayColor}; font-weight: 700; font-size: 1.02rem;">
                       ${displayAddress}
-                      ${isReturnTask ? '<span style="color:#ef4444; font-weight:900; margin-left:4px; font-size:0.85rem;">(收退貨)</span>' : ''}
-                    </span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${grayBg}; color: ${grayColor}; border: 1px solid rgba(148, 163, 184, 0.15); margin-left: 0.2rem;">${finalArrivalInfo}</span>
-                  </div>
-                </div>
-              </div>
+                      ${isReturnTask ? '<span style="color:#ef4444; font-weight:900; margin-left:4px; font-size:0.85rem;">(收退貨)<\/span>' : ''}
+                    <\/span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${grayBg}; color: ${grayColor}; border: 1px solid rgba(148, 163, 184, 0.15); margin-left: 0.2rem;">${finalArrivalInfo}<\/span>
+                  <\/div>
+                <\/div>
+              <\/div>
             `;
             return;
           }
@@ -2175,7 +2175,7 @@
           // ETA 與簽收說明 badge
           let etaBadgeHTML = "";
           if (isCompleted) {
-            etaBadgeHTML = `<div class="completed-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-circle-check"></i> ${t.finishTime || '10:15'} 完成簽收</div>`;
+            etaBadgeHTML = `<div class="completed-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-circle-check"><\/i> ${t.finishTime || '10:15'} 完成簽收<\/div>`;
           } else if (isWarehouseDeparted && isCurrent) {
             // 下一個點的預估時間
             let etaMin = 10;
@@ -2185,7 +2185,7 @@
               const diffMs = estimatedArrivals[i].getTime() - new Date().getTime();
               etaMin = Math.max(1, Math.round(diffMs / (60 * 1000)));
             }
-            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-location-arrow"></i> 預計 ${etaMin} 分鐘後抵達</div>`;
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem;"><i class="fa-solid fa-location-arrow"><\/i> 預計 ${etaMin} 分鐘後抵達<\/div>`;
           } else if (isWarehouseDeparted && i === currentTaskIndex + 1 && estimatedArrivals[i]) {
             // 下下站：顯示精準估算之時鐘時間 (只估下二站，太遠無意義)
             const formatTimeStr = (d) => {
@@ -2193,7 +2193,7 @@
               const mm = String(d.getMinutes()).padStart(2, "0");
               return `${hh}:${mm}`;
             };
-            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.2);"><i class="fa-solid fa-clock"></i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達</div>`;
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.2);"><i class="fa-solid fa-clock"><\/i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達<\/div>`;
           }
 
           // 行動按鈕 (司機定位)
@@ -2207,9 +2207,9 @@
             actionsHTML = `
               <div class="task-actions" style="margin-top: 0.6rem;">
                 <a href="${mapUrl}" target="_blank" class="task-action-btn primary" style="width: 100%;">
-                  <i class="fa-solid fa-map-location-dot"></i> 司機定位
-                </a>
-              </div>
+                  <i class="fa-solid fa-map-location-dot"><\/i> 司機定位
+                <\/a>
+              <\/div>
             `;
           }
           
@@ -2219,15 +2219,15 @@
             if (t.thumbnails.length === 1) {
               photoButtonsHTML += `
                 <button class="task-action-btn" onclick="openPhotoModal('${t.thumbnails[0]}', '銷貨單預覽')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
-                  <i class="fa-solid fa-file-invoice"></i> 檢視銷貨單
-                </button>
+                  <i class="fa-solid fa-file-invoice"><\/i> 檢視銷貨單
+                <\/button>
               `;
             } else {
               t.thumbnails.forEach((thumb, idx) => {
                 photoButtonsHTML += `
                   <button class="task-action-btn" onclick="openPhotoModal('${thumb}', '銷貨單預覽 ${idx + 1}')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
-                    <i class="fa-solid fa-file-invoice"></i> 檢視銷貨單 ${idx + 1}
-                  </button>
+                    <i class="fa-solid fa-file-invoice"><\/i> 檢視銷貨單 ${idx + 1}
+                  <\/button>
                 `;
               });
             }
@@ -2241,16 +2241,16 @@
               return `
                 <div style="display:flex; flex-direction:column; gap:0.15rem; width:100%;">
                   <button class="task-action-btn success" onclick="triggerReceiptCard('${refIds[0]}')" style="width: 100%; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; cursor: pointer; border-radius: 0.35rem; text-align:left;">
-                    <i class="fa-solid fa-camera"></i> 檢視簽收照 ${t.signPhotos.length > 1 ? idx + 1 : ''}
-                  </button>
-                  <div style="font-size: 0.72rem; color: #cbd5e1; padding-left: 0.15rem; line-height: 1.3;">${refLabel}</div>
-                </div>
+                    <i class="fa-solid fa-camera"><\/i> 檢視簽收照 ${t.signPhotos.length > 1 ? idx + 1 : ''}
+                  <\/button>
+                  <div style="font-size: 0.72rem; color: #cbd5e1; padding-left: 0.15rem; line-height: 1.3;">${refLabel}<\/div>
+                <\/div>
               `;
             }).join('');
             photoButtonsHTML += `
               <div style="display:flex; flex-direction:column; gap:0.35rem; width:100%;">
                 ${signPhotoListHTML}
-              </div>
+              <\/div>
             `;
           }
           
@@ -2258,7 +2258,7 @@
             actionsHTML += `
               <div class="task-actions" style="margin-top: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                 ${photoButtonsHTML}
-              </div>
+              <\/div>
             `;
           }
 
@@ -2284,8 +2284,8 @@
           if (isUserFreeGrade && isOwnDealerTask) {
             ownTaskBadgeHTML = `
               <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; box-shadow: 0 0 6px rgba(168, 85, 247, 0.4); margin-left: 0.2rem; animation: pulse-glow 1.2s infinite alternate;">
-                <i class="fa-solid fa-star" style="font-size: 0.65rem;"></i> 您的專屬單
-              </span>
+                <i class="fa-solid fa-star" style="font-size: 0.65rem;"><\/i> 您的專屬單
+              <\/span>
             `;
           }
 
@@ -2293,38 +2293,38 @@
             <div class="station ${stationClass} clickable ${expandedClass} ${isOwnDealerTask ? 'is-ours' : ''}" onclick="toggleStationDetails(this, event)">
               <div class="station-marker">
                 ${markerHTML}
-              </div>
+              <\/div>
               <div class="station-content">
                 <div class="station-name-row" style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; width: 100%;">
                   <div class="station-name" style="margin-bottom: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                    <i class="fa-solid fa-location-dot" style="color: ${brInfo.color}; margin-right: 2px;"></i>
-                    <span style="color: ${brInfo.color}; font-weight: 800; font-size: 1.02rem;">${t.customer} <span style="font-size: 0.85rem; font-weight: 500; opacity: 0.85;">(${streetName})</span></span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${brInfo.bg}; color: ${brInfo.color}; border: 1px solid ${brInfo.color}22; margin-left: 0.2rem;">${finalArrivalInfo}</span>
+                    <i class="fa-solid fa-location-dot" style="color: ${brInfo.color}; margin-right: 2px;"><\/i>
+                    <span style="color: ${brInfo.color}; font-weight: 800; font-size: 1.02rem;">${t.customer} <span style="font-size: 0.85rem; font-weight: 500; opacity: 0.85;">(${streetName})<\/span><\/span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${brInfo.bg}; color: ${brInfo.color}; border: 1px solid ${brInfo.color}22; margin-left: 0.2rem;">${finalArrivalInfo}<\/span>
                     ${ownTaskBadgeHTML}
-                  </div>
-                  <i class="fa-solid fa-chevron-down toggle-icon" style="transition: transform 0.3s ease; color: var(--text-secondary); margin-left: 0.5rem; ${defaultExpanded ? 'transform: rotate(180deg);' : ''}"></i>
-                </div>
+                  <\/div>
+                  <i class="fa-solid fa-chevron-down toggle-icon" style="transition: transform 0.3s ease; color: var(--text-secondary); margin-left: 0.5rem; ${defaultExpanded ? 'transform: rotate(180deg);' : ''}"><\/i>
+                <\/div>
                 
                 <div class="station-details-drawer" style="${detailsStyle} transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);">
-                  <div class="station-address" style="margin-top: 0.5rem;">${displayAddress}</div>
+                  <div class="station-address" style="margin-top: 0.5rem;">${displayAddress}<\/div>
                   
                   <div class="station-meta" style="margin-top: 0.5rem;">
-                    <span><i class="fa-solid fa-box"></i> ${t.boxes || '--'} 箱</span>
-                    <span><i class="fa-solid fa-ruler"></i> 尺寸：${displaySize}</span>
-                    <span><i class="fa-solid fa-weight-hanging"></i> 重量：${displayWeight}</span>
-                  </div>
+                    <span><i class="fa-solid fa-box"><\/i> ${t.boxes || '--'} 箱<\/span>
+                    <span><i class="fa-solid fa-ruler"><\/i> 尺寸：${displaySize}<\/span>
+                    <span><i class="fa-solid fa-weight-hanging"><\/i> 重量：${displayWeight}<\/span>
+                  <\/div>
                   
                   ${etaBadgeHTML}
                   ${actionsHTML}
-                </div>
-              </div>
-            </div>
+                <\/div>
+              <\/div>
+            <\/div>
           `;
         });
 
         metroHTML += `
-            </div>
-          </div>
+            <\/div>
+          <\/div>
         `;
 
         vehicleCard.innerHTML = metroHTML;
@@ -2334,7 +2334,7 @@
       // 7. 建立一鍵重新整理按鈕
       const refreshBtn = document.createElement("button");
       refreshBtn.className = "btn-refresh";
-      refreshBtn.innerHTML = `<i class="fa-solid fa-rotate" id="refreshIcon"></i> 重新整理最新狀態`;
+      refreshBtn.innerHTML = `<i class="fa-solid fa-rotate" id="refreshIcon"><\/i> 重新整理最新狀態`;
       refreshBtn.onclick = handleRefresh;
       mainContainer.appendChild(refreshBtn);
       
@@ -2375,13 +2375,13 @@
       const mainContainer = document.getElementById("mainContent");
       mainContainer.innerHTML = `
         <div class="card error-card">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <h3>${title}</h3>
-          <p>${desc}</p>
+          <i class="fa-solid fa-triangle-exclamation"><\/i>
+          <h3>${title}<\/h3>
+          <p>${desc}<\/p>
           <button class="btn-refresh" style="margin-top: 1.5rem; width: 100%;" onclick="handleRefresh()">
-            <i class="fa-solid fa-rotate"></i> 嘗試重新連線
-          </button>
-        </div>
+            <i class="fa-solid fa-rotate"><\/i> 嘗試重新連線
+          <\/button>
+        <\/div>
       `;
     }
 
@@ -2616,8 +2616,8 @@
       stamp.style.borderColor = themeColor;
       stamp.style.color = themeColor;
       stamp.innerHTML = `
-        <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">${stampText}</span>
-        <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">${stampSub}</span>
+        <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">${stampText}<\/span>
+        <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">${stampSub}<\/span>
       `;
       
       // 顯示 Modal

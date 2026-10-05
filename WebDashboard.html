@@ -1,6 +1,74 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script>
+  /* V43.25 登入資料保管 (本檔內容直接寫在 Index/Dashboard/WebDashboard/Warehouse 的 <head>：<head> 裡的 include 會被 HtmlService 移除，改這段要四頁一起改)
+     iPhone 主畫面 App／LINE 會清掉這個 iframe (第三方) 的儲存，關掉 App 再開就要重登。
+     → 登入相關的 localStorage 一寫入就同步一份到 bigt.cc 外殼頁 (第一方，不會被清)；
+       打開時先向外殼頁拿回來，頁面的 window.onload 等拿到 (最多 0.4 秒) 才開始跑 → 只載入一次就是已登入。
+       萬一超過 0.4 秒才拿到，才蓋住畫面請外殼頁重新載入一次。注意：網址拆開寫 (GAS 會截斷兩個斜線)。 */
+  (function () {
+    var KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/;
+    var ORIGIN = 'https:' + '/' + '/bigt.cc';
+    var embedded = window.top !== window;
+    function post(m) { try { if (embedded) window.top.postMessage(m, ORIGIN); } catch (e) { } }
+
+    var ready = !embedded, waiters = [];
+    window.ttsVaultReady = function (cb) { if (ready) cb(); else waiters.push(cb); };
+    function markReady() {
+      if (ready) return;
+      ready = true;
+      var w = waiters; waiters = [];
+      w.forEach(function (f) { try { f(); } catch (e) { setTimeout(function () { throw e; }); } });
+    }
+    if (!ready) setTimeout(markReady, 400);
+
+    /* 頁面設定的 window.onload 改成「等登入資料拿回來」再執行 */
+    try {
+      var od = Object.getOwnPropertyDescriptor(window, 'onload') || Object.getOwnPropertyDescriptor(Window.prototype, 'onload');
+      if (embedded && od && od.set && od.get) {
+        Object.defineProperty(window, 'onload', {
+          configurable: true,
+          get: function () { return od.get.call(window); },
+          set: function (fn) { od.set.call(window, typeof fn === 'function' ? function (ev) { var self = this; window.ttsVaultReady(function () { fn.call(self, ev); }); } : fn); }
+        });
+      }
+    } catch (e) { }
+
+    var S, oset, odel;
+    try {
+      S = Storage.prototype; oset = S.setItem; odel = S.removeItem;
+      S.setItem = function (k, v) { oset.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-set', k: k, v: String(v) }); } catch (e) { } };
+      S.removeItem = function (k) { odel.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-del', k: k }); } catch (e) { } };
+    } catch (e) { markReady(); return; }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== ORIGIN) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-vault' || !d.data) return;
+      var restored = false;
+      Object.keys(d.data).forEach(function (k) {
+        if (!KEYS.test(k) || !d.data[k]) return;
+        var cur = null;
+        try { cur = window.localStorage.getItem(k); } catch (e) { return; }
+        if (!cur) { try { oset.call(window.localStorage, k, d.data[k]); restored = true; } catch (e) { } }
+      });
+      var late = ready;
+      markReady();
+      if (restored && late) {
+        /* 太晚拿到 (頁面已經開始跑)：蓋住畫面再請外殼頁重新載入一次，避免跳出「連線失敗 HTTP 0」 */
+        try {
+          var cv = document.createElement('div');
+          cv.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#020617';
+          (document.body || document.documentElement).appendChild(cv);
+        } catch (e) { }
+        window.alert = function () { };
+        post({ type: 'tts-vault-reload' });
+      }
+    });
+    post({ type: 'tts-vault-get' });
+  })();
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>鈦傳速｜智慧物流對帳與分析中心</title>
@@ -70,6 +138,14 @@
         .btn-branch.b-安帝嘉.active { background: #34d399; }
         .btn-branch.b-喜悅納.active { background: #60a5fa; }
         .btn-branch.b-漢樺.active { background: #fbbf24; }
+        /* V42.41: 運費類型按鈕(退貨/樣品收費/樣品免費) - 沒選到時只顯示同色系外框，選到才整個填色，
+           避免用寫死的 style="background:..." 導致按鈕永遠看起來像被選取 */
+        .btn-branch.type-return { border-color: rgba(239,68,68,0.5); color: #f87171; }
+        .btn-branch.type-return.active { background: #ef4444; color: #fff; }
+        .btn-branch.type-sample-paid { border-color: rgba(56,189,248,0.5); color: #38bdf8; }
+        .btn-branch.type-sample-paid.active { background: #38bdf8; color: #000; }
+        .btn-branch.type-sample-free { border-color: rgba(234,179,8,0.5); color: #eab308; }
+        .btn-branch.type-sample-free.active { background: #eab308; color: #000; }
 
         .tabs { display: flex; gap: 2px; padding: 8px 20px 0; border-bottom: 1px solid var(--glass-border); background: #0f172a; overflow-x: auto; }
         .tab-btn {
@@ -77,6 +153,15 @@
             font-weight: 600; border-radius: 8px 8px 0 0; font-size: 14px; transition: 0.2s; white-space: nowrap;
         }
         .tab-btn.active { background: var(--card-bg); color: var(--accent); border-bottom: 2px solid var(--accent); }
+
+        @media (max-width: 768px) {
+            #bonusControlCard { padding: 10px !important; }
+            #inlineDriverQuotasGrid { grid-template-columns: 1fr 1fr !important; }
+            .stats-grid { grid-template-columns: 1fr !important; }
+            .drill-panel { width: 100vw !important; max-width: 100vw !important; padding: 10px !important; border-radius: 0 !important; }
+            .table-scroll, #drillPanel { overflow-x: auto !important; -webkit-overflow-scrolling: touch !important; }
+            th, td { font-size: 11px !important; padding: 4px 6px !important; }
+        }
 
         .content-container { padding: 20px; max-width: 1400px; margin: 0 auto; }
         .tab-pane { display: none; }
@@ -229,6 +314,7 @@
     <header>
         <div class="logo"><i class="fas fa-chart-pie"></i><span>鈦傳速 | 對帳與數據分析中心</span></div>
         <div style="display:flex; align-items:center; gap:10px;">
+            <span id="meSlot"></span>
             <span id="updateTime" style="font-size:11px; color:var(--text-dim);"></span>
             <button class="btn-refresh" onclick="fetchData(true)">同步後端</button>
         </div>
@@ -303,18 +389,20 @@
                 <div class="chart-container span-4"><div class="chart-title"><i class="fas fa-road"></i> 油費支出與行駛里程</div><div class="chart-desc">比對每日油費報支與實際行駛里程。</div><canvas id="chart-fuel-km-trend"></canvas></div>
             </div>
 
-            <div class="section-title"><i class="fas fa-trophy"></i> 司機運能排行</div>
+            <div class="section-title"><i class="fas fa-trophy"></i> 司機運能排行與卸貨模式統計</div>
             <div class="stats-grid">
                 <div class="stat-card"><div class="stat-label">總運輸做功 (t·km)</div><div class="stat-value" id="stat-total-tonkm" style="color:var(--accent)">--</div><div class="stat-hint">總做功 = 總噸數 × 總行駛公里</div></div>
-                <div class="stat-card"><div class="stat-label">趟均運送重量 (kg)</div><div class="stat-value" id="stat-avg-load">--</div><div class="stat-hint">車輛平均單日出勤載重</div></div>
+                <div class="stat-card"><div class="stat-label">配送獎金計算總重</div><div class="stat-value" id="stat-bonus-weight" style="color:#22c55e">--</div><div class="stat-hint">公式：手動搬運總重 + (堆高機下貨總重 × 1/3)</div></div>
+                <div class="stat-card" style="cursor:pointer;" onclick="openDrill('forklift')" title="點擊查看全公司堆高機下貨訂單明細"><div class="stat-label">堆高機下貨總重</div><div class="stat-value" id="stat-forklift-weight" style="color:#f97316">--</div><div class="stat-hint">點擊查看全公司堆高機下貨單據明細</div></div>
+                <div class="stat-card" style="cursor:pointer;" onclick="openDrill('manual')" title="點擊查看全公司手動搬運下貨訂單明細"><div class="stat-label">手動搬運下貨總重</div><div class="stat-value" id="stat-manual-weight" style="color:#38bdf8">--</div><div class="stat-hint">點擊查看全公司手動搬運單據明細</div></div>
             </div>
             <div class="charts-grid">
-                <div class="chart-container span-4" style="height:350px"><div class="chart-title"><i class="fas fa-trophy"></i> 司機完成量排行</div><div class="chart-desc">各司機在區間內完成的訂單總數。</div><canvas id="chart-driver-orders"></canvas></div>
+                <div class="chart-container span-4" style="height:350px"><div class="chart-title"><i class="fas fa-dolly"></i> 各司機卸貨模式重量對比 (堆高機 vs 手動搬運)</div><div class="chart-desc">各司機堆高機下貨 (橘色) 與手動搬運下貨 (藍色) 的重量與佔比對比。</div><canvas id="chart-driver-orders"></canvas></div>
             </div>
             <div class="results-table-container">
                 <div class="table-scroll">
                 <table id="performance-table">
-                    <thead><tr><th>司機 車牌</th><th>訂單總數</th><th>完成率</th><th>總重量(kg)</th><th>行駛公里</th><th>油資支出</th><th>油耗 km/L</th></tr></thead>
+                    <thead><tr><th>司機 車牌</th><th>訂單總數</th><th>完成率</th><th>載貨總重(kg)</th><th>獎金重量(kg)</th><th>堆高機下貨(kg)</th><th>手動搬運(kg)</th><th>堆高機佔比 %</th><th>行駛公里</th><th>油資支出</th><th>油耗 km/L</th></tr></thead>
                     <tbody></tbody>
                 </table>
                 </div>
@@ -327,14 +415,64 @@
                 <span style="color:var(--text-dim); font-weight:600;">車輛</span>
                 <div id="itinPlateBtns" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
             </div>
+            
+            <!-- ===== 配送獎金與司機額度底限設定面板 (嵌入式一體化控制面板) ===== -->
+            <div id="bonusControlCard" style="background:rgba(15,23,42,0.7); border:1px solid rgba(34,197,94,0.35); border-radius:12px; padding:14px 16px; margin-bottom:16px; backdrop-filter:blur(10px);">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:14px; font-weight:800; color:#22c55e;">⚙️ 配送獎金計算與司機個人底限設定面板</span>
+                        <span style="font-size:11px; color:var(--text-dim);">(直接修改數字，下方司機卡片數值與獎金將即時試算連動)</span>
+                    </div>
+                    <button class="btn" onclick="toggleBonusCardBody()" id="btnToggleBonusCard" style="background:rgba(255,255,255,0.05); color:var(--text-main); border:1px solid var(--glass-border); font-size:11px; padding:4px 10px; border-radius:6px; cursor:pointer;">
+                        收合設定面板 ▲
+                    </button>
+                </div>
+
+                <div id="bonusCardBody" style="display:flex; flex-direction:column; gap:12px;">
+                    <!-- 費率與模式設定列 -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;">
+                        <div>
+                            <label style="font-size:11px; color:var(--text-dim); font-weight:700; display:block; margin-bottom:4px;">每單獎金 ($/單)</label>
+                            <input type="number" id="cfgPerOrderFee" onchange="onInlineBonusChange()" value="20" style="width:100%; background:rgba(0,0,0,0.4); color:#22c55e; border:1px solid var(--glass-border); padding:6px 10px; border-radius:6px; font-size:14px; font-weight:800;">
+                        </div>
+                        <div>
+                            <label style="font-size:11px; color:var(--text-dim); font-weight:700; display:block; margin-bottom:4px;">超額重量單價 ($/噸)</label>
+                            <input type="number" id="cfgPerTonFee" onchange="onInlineBonusChange()" value="200" style="width:100%; background:rgba(0,0,0,0.4); color:#38bdf8; border:1px solid var(--glass-border); padding:6px 10px; border-radius:6px; font-size:14px; font-weight:800;">
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <label style="font-size:11px; color:var(--text-dim); font-weight:700; display:block; margin-bottom:4px;">獎金計算模式</label>
+                            <select id="cfgBonusMode" onchange="onInlineBonusChange()" style="width:100%; background:rgba(0,0,0,0.4); color:var(--text-main); border:1px solid var(--glass-border); padding:6px 10px; border-radius:6px; font-size:13px; font-weight:700;">
+                                <option value="quota">單量獎金 + 超出個人底限噸數獎金 (推薦常用)</option>
+                                <option value="fullBonus">單量獎金 + 全額加權噸數獎金 (不扣底限)</option>
+                                <option value="fullWeight">單量獎金 + 全額總重量噸數獎金</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 司機個人額度底限網格列 -->
+                    <div>
+                        <div style="font-size:12px; font-weight:800; color:var(--text-main); margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                            <span>各司機個人月均額度底限 (噸/月)</span>
+                            <span style="font-size:11px; color:var(--text-dim); font-weight:500;">改動輸入框即自動實時連動試算</span>
+                        </div>
+                        <div id="inlineDriverQuotasGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 上方司機卡片：直立式呈現 (上半部為單量行程指標，下半部為重量噸數與加權獎金基準) -->
             <div id="driverCards" class="stats-grid"></div>
+
+            <!-- 下方：出勤與單量總計 -->
+            <div style="margin-top:20px; margin-bottom:8px; font-weight:700; color:var(--text-main); font-size:14px; border-left:3px solid var(--accent); padding-left:8px;">出勤與單量總計</div>
             <div class="stats-grid">
                 <div class="stat-card"><div class="stat-label">出勤天數</div><div class="stat-value" id="stat-itin-days">--</div><div class="stat-hint">區間內有行程的天數</div></div>
-                <div class="stat-card"><div class="stat-label">總送達點數</div><div class="stat-value" id="stat-itin-stops" style="color:var(--success)">--</div><div class="stat-hint">已完成的訂單數</div></div>
-                <div class="stat-card"><div class="stat-label">總重量 (kg)</div><div class="stat-value" id="stat-itin-weight" style="color:var(--warning)">--</div></div>
-                <div class="stat-card"><div class="stat-label">總里程 (km)</div><div class="stat-value" id="stat-itin-km" style="color:var(--accent)">--</div></div>
+                <div class="stat-card"><div class="stat-label">總送達單數</div><div class="stat-value" id="stat-itin-stops" style="color:var(--success)">--</div><div class="stat-hint">已完成配送的訂單總數</div></div>
+                <div class="stat-card"><div class="stat-label">總行程里程 (km)</div><div class="stat-value" id="stat-itin-km" style="color:var(--accent)">--</div><div class="stat-hint">區間內累積總公里數</div></div>
+                <div class="stat-card"><div class="stat-label">日均行程里程</div><div class="stat-value" id="stat-itin-avgkm">--</div><div class="stat-hint">平均出勤日行駛公里</div></div>
             </div>
-            <div style="font-size:11px; color:var(--text-dim); margin-bottom:8px;">資料來源：每日行程表的「當日行程足跡」；此頁只看車輛與日期，不受上方分公司 / 司機篩選影響。</div>
+
+            <div style="font-size:11px; color:var(--text-dim); margin-top:16px; margin-bottom:8px;">資料來源：每日行程表與派送清單；加權後公式 = 純手工噸數 + (堆高機噸數 × 1/3)；此頁全面以噸數顯示。</div>
             <div id="itineraryCards"></div>
         </div>
 
@@ -351,8 +489,9 @@
                 <div id="freightTypeBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
                     <button class="btn-branch active" data-type="全部" onclick="setFreightType('全部')">全部</button>
                     <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般銷貨</button>
-                    <button class="btn-branch" data-type="退貨" onclick="setFreightType('退貨')" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.5); font-weight:700;">📦 退貨單</button>
-                    <button class="btn-branch" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
+                    <button class="btn-branch type-return" data-type="退貨" onclick="setFreightType('退貨')">退貨單</button>
+                    <button class="btn-branch type-sample-paid" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
+                    <button class="btn-branch type-sample-free" data-type="樣品免費" onclick="setFreightType('樣品免費')">樣品免費</button>
                 </div>
                 <span style="flex:1"></span>
                 <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
@@ -376,10 +515,23 @@
                     </div>
                     <div style="font-size: 12px; color: var(--text-dim);">※ 點擊欄位標頭可切換排序項目；「核定運費」欄可直接修改儲存。</div>
                 </div>
+                <div id="mainTableBatchBar" style="display:none; background:rgba(30,41,59,0.95); border:1px solid #38bdf8; border-radius:8px; padding:8px 14px; margin:8px 15px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                    <div style="font-size:12px; color:#fff; font-weight:bold;">
+                        ☑ 已勾選 <span id="mainBatchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
+                    </div>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button onclick="submitMainBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🟡 批次「樣品免費」</button>
+                        <button onclick="submitMainBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔵 批次「樣品收費」</button>
+                        <button onclick="submitMainBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚪ 批次「一般銷貨」</button>
+                        <button onclick="submitMainBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔴 批次「退貨單據」</button>
+                        <button onclick="submitMainBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;">↺ 批次清除人工判定</button>
+                    </div>
+                </div>
                 <div class="table-scroll">
                 <table id="freight-table">
                     <thead>
                         <tr id="freightHead">
+                            <th style="width:32px; text-align:center;"><input type="checkbox" id="selectAllMainRows" onchange="toggleSelectAllMainRows(this)"><\/th>
                             <th data-k="date" onclick="freightSortBy('date')">日期</th>
                             <th data-k="id" onclick="freightSortBy('id')">單號</th>
                             <th data-k="branch" onclick="freightSortBy('branch')">分公司</th>
@@ -403,14 +555,57 @@
     <div id="drillPanel">
         <div class="drill-head">
             <div><h3 id="drillTitle">明細</h3><div class="sub" id="drillSub"></div></div>
-            <button class="mini-btn" onclick="drillCopy()" title="複製成表格，可直接貼到 Excel / Google 試算表">📋 複製表格</button>
+            <button class="mini-btn" onclick="drillCopy()" title="複製成表格，可直接貼到 Excel / Google 試算表">複製表格</button>
             <button class="mini-btn" onclick="drillCsv()">⬇ CSV</button>
             <button class="drill-close" onclick="closeDrill()">✕ 關閉</button>
         </div>
         <div class="drill-summary" id="drillSummary"></div>
+        <div id="drillBatchBar" style="display:none; background:rgba(30,41,59,0.95); border:1px solid #38bdf8; border-radius:8px; padding:8px 14px; margin:10px 0; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+            <div style="font-size:12px; color:#fff; font-weight:bold;">
+                ☑ 已勾選 <span id="batchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button onclick="submitBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🟡 批次「樣品免費」</button>
+                <button onclick="submitBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔵 批次「樣品收費」</button>
+                <button onclick="submitBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚪ 批次「一般銷貨」</button>
+                <button onclick="submitBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔴 批次「退貨單據」</button>
+                <button onclick="submitBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;">↺ 批次清除人工判定</button>
+            </div>
+        </div>
         <div class="drill-body"><table id="drillTable"><thead></thead><tbody></tbody></table></div>
     </div>
     <div id="lightbox" onclick="this.classList.remove('open')"><img id="lightboxImg" src=""></div>
+
+    <!-- ✏️ 單據類型選擇視窗 -->
+    <div id="docTypeMask" class="modal-mask" onclick="if (event.target === this) closeDocTypeModal()">
+        <div class="modal" style="max-width:420px; padding:22px; background:#0f172a; border:1px solid #38bdf8; border-radius:14px; box-shadow:0 20px 50px rgba(0,0,0,0.8);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #334155; padding-bottom:8px;">
+                <h4 style="margin:0; color:#38bdf8; font-size:16px; font-weight:800;">✏️ 選擇單據類型人工改判</h4>
+                <span style="color:#94a3b8; cursor:pointer; font-size:18px;" onclick="closeDocTypeModal()">✕</span>
+            </div>
+            <div style="font-size:12px; color:#cbd5e1; margin-bottom:15px;">單號：<b id="dtModalId" style="color:#fff; font-size:13px;"></b></div>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <button onclick="submitDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.15); border:1.5px solid #eab308; color:#eab308; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>🟡 樣品免費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送回公司/倉庫，免運 $0)</span>
+                </button>
+                <button onclick="submitDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.15); border:1.5px solid #38bdf8; color:#38bdf8; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>🔵 樣品收費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送到外場/客戶，照常計費)</span>
+                </button>
+                <button onclick="submitDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.06); border:1.5px solid #475569; color:#fff; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>⚪ 一般銷貨</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(一般銷貨單據)</span>
+                </button>
+                <button onclick="submitDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.15); border:1.5px solid #ef4444; color:#ef4444; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>🔴 退貨單據</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(退貨或載回倉庫)</span>
+                </button>
+                <button onclick="submitDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:8px; border-radius:8px; cursor:pointer; margin-top:4px; font-size:12px;">
+                    ↺ 清除人工判定 (回到系統自動規則)
+                </button>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                <button class="btn-ghost" onclick="closeDocTypeModal()">取消</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 運費設定視窗 -->
     <div id="cfgMask" class="modal-mask" onclick="if (event.target === this) closeFreightSettings()">
@@ -445,7 +640,8 @@
     </div>
 
     <script>
-        const userInfo = <?!= JSON.stringify(userInfo) ?>;
+        const userInfo = (<?!= JSON.stringify(userInfo || {}) ?>);
+        if (userInfo.pwdLogin === false) { const st = document.createElement('style'); st.textContent = '#whLoginPwd,#whLoginBtn{display:none!important}'; document.head.appendChild(st); } // V43.16
         let rawData = { orders: [], schedule: [] };
         const charts = {};
 
@@ -459,8 +655,8 @@
         };
         const BRANCHES = ['高雅瓷', '安帝嘉', '喜悅納', '漢樺'];
         const BRANCH_COLOR = { '高雅瓷': '#f472b6', '安帝嘉': '#34d399', '喜悅納': '#60a5fa', '漢樺': '#fbbf24' };
-        function branchTag(b) { const c = BRANCH_COLOR[b] || '#94a3b8'; return `<span style="color:${c}; font-weight:700;">${escapeHTML(b)}</span>`; }
-        // 車牌 → 「司機名 車牌」(司機名在前)；來源：車輛管理表，備援：行程表司機欄
+        function branchTag(b) { const c = BRANCH_COLOR[b] || '#94a3b8'; return `<span style="color:${c}; font-weight:700;">${escapeHTML(b)}<\/span>`; }
+        /*  車牌 → 「司機名 車牌」(司機名在前)；來源：車輛管理表，備援：行程表司機欄 */
         function driverOfPlate(p) {
             if (!p) return '';
             const vm = (rawData.vehicleMap && rawData.vehicleMap[p]) || '';
@@ -470,25 +666,45 @@
         }
         function plateLabel(p) { const d = driverOfPlate(p); return d ? d + ' ' + p : p; }
 
-        // ===== 管理員登入：token 存 localStorage (10 年)，開頁不再多一趟驗證，直接抓資料；失效才問密碼 =====
+        /*  ===== 管理員登入：token 存 localStorage (10 年)，開頁不再多一趟驗證，直接抓資料；失效才問密碼 ===== */
         const ADMIN_TOKEN_KEY = 'ttsAdminTokenV41';
         let __adminTokenMem = '';
         function ATOKEN() { if (__adminTokenMem) return __adminTokenMem; try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { } return __adminTokenMem; }
         function setAdminToken(t) { __adminTokenMem = t || ''; try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { } }
-        // V41.38: 這頁會被 bigt.cc/tts/Analytics.html 用 iframe 包住；Chrome 封鎖跨網域 iframe 的 prompt/alert/confirm，
-        // 一律改用頁內登入框 + 右下角訊息 + 頁內確認框，不可再呼叫原生對話框。
+        /*  V41.38: 這頁會被 bigt.cc/tts/Analytics.html 用 iframe 包住；Chrome 封鎖跨網域 iframe 的 prompt/alert/confirm， */
+        /*  一律改用頁內登入框 + 右下角訊息 + 頁內確認框，不可再呼叫原生對話框。 */
+        /*  V43.2: 上方列顯示登入者 (公司｜姓名、登入時間、本次停留) */
+        function loadMeBar() {
+            google.script.run.withSuccessHandler(r => { if (r && r.valid && window.TTSGoogle) TTSGoogle.showMe(document.getElementById('meSlot'), r); }).checkAdminSession(ATOKEN());
+        }
+        function whGoogleLogin() {
+            TTSGoogle.start({ app: 'analytics', onSuccess: function (res) {
+                setAdminToken(res.token);
+                TTSGoogle.showMe(document.getElementById('meSlot'), res);
+                const b = document.getElementById('whLoginBox'); if (b) b.remove();
+                if (window.__whAfterLogin) window.__whAfterLogin();
+            } });
+        }
         function promptAdminLogin(afterOk) {
+            window.__whAfterLogin = afterOk;
             hideLoading();
+            if (window.TTSGoogle) TTSGoogle.autoLine({ app: 'analytics', onSuccess: function (res) {
+                setAdminToken(res.token); TTSGoogle.showMe(document.getElementById('meSlot'), res);
+                const b = document.getElementById('whLoginBox'); if (b) b.remove();
+                afterOk();
+            } });
             let box = document.getElementById('whLoginBox');
             if (!box) {
                 box = document.createElement('div');
                 box.id = 'whLoginBox';
                 box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.92);display:flex;align-items:center;justify-content:center;padding:24px;';
                 box.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;width:100%;max-width:320px;color:#e2e8f0;font-family:inherit">'
-                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">分析中心登入</div>'
-                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"></div>'
+                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">分析中心登入<\/div>'
+                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"><\/div>'
                     + '<input id="whLoginPwd" type="password" placeholder="管理員密碼" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:16px;margin-bottom:12px">'
-                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700;cursor:pointer">登入</button></div>';
+                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700;cursor:pointer">登入<\/button>'
+                    + '<div style="margin:14px 0 10px;text-align:center;color:#64748b;font-size:12px">或<\/div>'
+                    + (window.TTSGoogle ? TTSGoogle.buttonHtml('whGoogleLogin()') : '') + '<\/div>';
                 document.body.appendChild(box);
                 const submit = () => {
                     const pwd = document.getElementById('whLoginPwd').value;
@@ -497,7 +713,7 @@
                     msg.textContent = '驗證中…';
                     google.script.run
                         .withSuccessHandler(res => {
-                            if (res && res.success && res.token) { setAdminToken(res.token); box.remove(); afterOk(); }
+                            if (res && res.success && res.token) { setAdminToken(res.token); box.remove(); loadMeBar(); afterOk(); }
                             else { msg.textContent = '密碼錯誤'; }
                         })
                         .withFailureHandler(err => { msg.textContent = '登入失敗：' + (err && err.message || err); })
@@ -524,21 +740,22 @@
             const m = document.createElement('div');
             m.style.cssText = 'position:fixed;inset:0;z-index:99997;background:rgba(2,6,23,.7);display:flex;align-items:center;justify-content:center;padding:20px;';
             m.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:14px;padding:22px;max-width:360px;width:100%;color:#e2e8f0">'
-                + '<div style="font-size:15px;line-height:1.6;margin-bottom:16px">' + msg + '</div>'
-                + '<div style="display:flex;gap:10px;justify-content:flex-end"><button data-r="0" style="padding:8px 16px;border-radius:8px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer">取消</button>'
-                + '<button data-r="1" style="padding:8px 16px;border-radius:8px;border:0;background:#0ea5e9;color:#fff;font-weight:700;cursor:pointer">確定</button></div></div>';
+                + '<div style="font-size:15px;line-height:1.6;margin-bottom:16px">' + msg + '<\/div>'
+                + '<div style="display:flex;gap:10px;justify-content:flex-end"><button data-r="0" style="padding:8px 16px;border-radius:8px;border:1px solid #475569;background:transparent;color:#cbd5e1;cursor:pointer">取消<\/button>'
+                + '<button data-r="1" style="padding:8px 16px;border-radius:8px;border:0;background:#0ea5e9;color:#fff;font-weight:700;cursor:pointer">確定<\/button><\/div><\/div>';
             m.querySelectorAll('button').forEach(b => b.onclick = () => { m.remove(); if (b.dataset.r === '1') onYes(); });
             document.body.appendChild(m);
         }
-        function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1 || m.indexOf('AUTH_FORBIDDEN') !== -1; }
+        /*  V43.0: 只有「登入失效」才回登入畫面；「沒權限」(業務只能看) 維持登入，由呼叫端顯示錯誤訊息 */
+        function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1; }
         function showLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 1; o.style.pointerEvents = 'all'; }
         function hideLoading() { const o = document.getElementById('loadingOverlay'); o.style.opacity = 0; o.style.pointerEvents = 'none'; }
 
         window.onload = function() {
             if (window.self !== window.top) document.body.classList.add('embedded-iframe');
-            setPreset('7d', true);   // 預設：近一週 (使用者要求)；表格預設日期新→舊
+            setPreset('7d', true);   /*  預設：近一週 (使用者要求)；表格預設日期新→舊 */
             if (!ATOKEN()) promptAdminLogin(() => fetchData(false));
-            else fetchData(false);
+            else { fetchData(false); loadMeBar(); }
         };
 
         function fetchData(force) {
@@ -551,7 +768,7 @@
                     const plates = [...new Set(rawData.orders.map(o => o.plate))].filter(Boolean).sort();
                     const dSel = document.getElementById('driverFilter');
                     const cur = dSel.value;
-                    dSel.innerHTML = '<option value="全部">全部 (車隊合併)</option>';
+                    dSel.innerHTML = '<option value="全部">全部 (車隊合併)<\/option>';
                     plates.forEach(p => { const op = document.createElement('option'); op.value = p; op.textContent = plateLabel(p); dSel.appendChild(op); });
                     if (plates.includes(cur)) dSel.value = cur;
                     buildItinPlateButtons();
@@ -567,7 +784,7 @@
             }).getDashboardData(force, ATOKEN());
         }
 
-        // ===== 日期區間 =====
+        /*  ===== 日期區間 ===== */
         function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
         function markPreset(key) {
             document.querySelectorAll('.btn-preset').forEach(b => b.classList.toggle('active', b.dataset.key === key));
@@ -587,7 +804,7 @@
         }
         function manualDateChange() { markPreset(''); updateDashboard(); }
 
-        // ===== 分公司按鈕 (運費統計頁) 與上方下拉同步 =====
+        /*  ===== 分公司按鈕 (運費統計頁) 與上方下拉同步 ===== */
         function setBranch(b) { document.getElementById('branchFilter').value = b; syncBranchButtons(); updateDashboard(); }
         function syncBranchButtons() {
             const b = document.getElementById('branchFilter').value;
@@ -618,7 +835,7 @@
         function updateDashboard() {
             const f = currentFilters();
             const inc = includeSamples();
-            // V41.28: 樣品單 (銷售報表判定：客戶編號 -S、含樣品關鍵字、金額 0；退貨不算) 預設不列入統計
+            /*  V41.28: 樣品單 (銷售報表判定：客戶編號 -S、含樣品關鍵字、金額 0；退貨不算) 預設不列入統計 */
             const fo = rawData.orders.filter(o =>
                 o.date >= f.sd && o.date <= f.ed &&
                 (f.branch === '全部' || o.branch === f.branch) &&
@@ -630,57 +847,57 @@
                 (f.driver === '全部' || s.plate === f.driver)
             );
 
-            // 營運分析的分公司圖表一律看四家：只套日期與司機篩選
+            /*  營運分析的分公司圖表一律看四家：只套日期與司機篩選 */
             const foAllBranch = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && (inc || !o.isSample));
             const sampleAll = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && o.isSample);
+            // V42.44: 日期/分公司/司機都篩過、但「不排除樣品單」的完整清單，
+            // 供「司機行程記錄」(內部/免費樣品要單獨計筆) 跟「運費統計」選樣品類型時使用，
+            // 不能再套用上面「含免費樣品」勾選框(預設不勾=排除樣品)的排除規則
+            const foFull = rawData.orders.filter(o =>
+                o.date >= f.sd && o.date <= f.ed &&
+                (f.branch === '全部' || o.branch === f.branch) &&
+                (f.driver === '全部' || o.plate === f.driver));
             renderOverview(fo, foAllBranch, sampleAll);
             renderFuel(fs);
-            renderPerformance(fo, fs);
+            renderPerformance(foFull, fs);
             renderItinerary();
-            renderFreight(fo, fs);
+            // V42.42: 運費統計選了「樣品免費/樣品收費」類型按鈕時，這是使用者明確要看樣品單，
+            // 不該再被上面「含免費樣品」勾選框擋掉
+            const foForFreight = (freightType === '樣品免費' || freightType === '樣品收費') ? foFull : fo;
+            renderFreight(foForFreight, fs);
         }
 
-        // ===== 營運分析 =====
+        /*  ===== 營運分析 ===== */
         const CARD_BRANCHES = ['安帝嘉', '高雅瓷', '喜悅納', '漢樺'];
         const feeOfOrder = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
         function fmtWanPlain(v) { if (!v) return '0萬'; const w = v / 10000; return w < 1 ? '<1萬' : Math.round(w) + '萬'; }
-        function fmtWan(v) { // 以「萬」為單位四捨五入
-            if (!v) return '0<small>萬</small>';
+        function fmtWan(v) { /*  以「萬」為單位四捨五入 */
+            if (!v) return '0<small>萬<\/small>';
             const w = v / 10000;
-            if (w < 1) return '<1<small>萬</small>';
-            return Math.round(w) + '<small>萬</small>';
+            if (w < 1) return '<1<small>萬<\/small>';
+            return Math.round(w) + '<small>萬<\/small>';
         }
         function renderOverview(orders, ordersAll, sampleAll) {
             const all = ordersAll || orders;
             const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
             const samples = sampleAll || [];
 
-            // 四家分公司卡片：單量 / 運費 / 貢獻度 (以運費佔比計)，不受分公司篩選影響
+            /*  四家分公司卡片：單量 / 運費 / 貢獻度 (以運費佔比計)，不受分公司篩選影響 */
             const totalFee = all.reduce((s, o) => s + feeOfOrder(o), 0);
             document.getElementById('branchCards').innerHTML = CARD_BRANCHES.map(b => {
                 const bo = all.filter(o => brOf(o) === b);
                 const fee = bo.reduce((s, o) => s + feeOfOrder(o), 0);
                 const pct = totalFee ? (fee / totalFee * 100) : 0;
                 const c = BRANCH_COLOR[b] || '#94a3b8';
-                // 樣品另外統計 (只算鈦傳速派送清單裡有的單)：收費 = 送到外面照常計費；免費 = 送回公司
+                /*  樣品另外統計 (只算鈦傳速派送清單裡有的單)：收費 = 送到外面照常計費；免費 = 送回公司 */
                 const sampleFree = samples.filter(o => brOf(o) === b).length;
                 const samplePaid = bo.filter(o => o.docType === '樣品' && o.sampleTo === 'out');
                 const samplePaidFee = samplePaid.reduce((s, o) => s + feeOfOrder(o), 0);
                 const retCnt = bo.filter(o => o.docType === '退貨').length;
-                return `<div class="stat-card branch-card" style="border-top-color:${c};">
-                    <div class="stat-label" style="color:${c};">${b}</div>
-                    <div class="bc-row"><span class="bc-k">單量</span><span class="bc-v clickable" onclick="openDrill('orders','${b}')" title="點擊看明細">${bo.length}<small>單</small></span></div>
-                    <div class="bc-row"><span class="bc-k">運費</span><span class="bc-v clickable" onclick="openDrill('fee','${b}')" title="點擊看運費明細">${fmtWan(fee)}</span></div>
-                    <div class="bc-row"><span class="bc-k">貢獻度</span><span class="bc-v clickable" onclick="openDrill('compare','${b}')" title="點擊看四家比較">${pct.toFixed(0)}<small>%</small></span></div>
-                    <div style="border-top:1px dashed var(--glass-border); margin-top:6px; padding-top:6px;">
-                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#38bdf8;">樣品收費</span><span class="bc-click" style="color:#38bdf8; font-weight:800;" onclick="openDrill('samplePaid','${b}')">${samplePaid.length}<small style="color:#7dd3fc;">單 · $${Math.round(samplePaidFee).toLocaleString()}</small></span></div>
-                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#fbbf24;">樣品免費</span><span class="bc-click" style="color:#fbbf24; font-weight:800;" onclick="openDrill('sampleFree','${b}')">${sampleFree}<small style="color:#fde68a;">單${includeSamples() ? ' · 已計入' : ' · 未計入'}</small></span></div>
-                        <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#f87171;">退貨</span><span class="bc-click" style="color:#f87171; font-weight:800;" onclick="openDrill('returns','${b}')">${retCnt}<small style="color:#fca5a5;">單</small></span></div>
-                    </div>
-                </div>`;
+                return `<div class="stat-card branch-card" style="border-top-color:${c};"> <div class="stat-label" style="color:${c};">${b}<\/div> <div class="bc-row"><span class="bc-k">單量<\/span><span class="bc-v clickable" onclick="openDrill('orders','${b}')" title="點擊看明細">${bo.length}<small>單<\/small><\/span><\/div> <div class="bc-row"><span class="bc-k">運費<\/span><span class="bc-v clickable" onclick="openDrill('fee','${b}')" title="點擊看運費明細">${fmtWan(fee)}<\/span><\/div> <div class="bc-row"><span class="bc-k">貢獻度<\/span><span class="bc-v clickable" onclick="openDrill('compare','${b}')" title="點擊看四家比較">${pct.toFixed(0)}<small>%<\/small><\/span><\/div> <div style="border-top:1px dashed var(--glass-border); margin-top:6px; padding-top:6px;"> <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#38bdf8;">樣品收費<\/span><span class="bc-click" style="color:#38bdf8; font-weight:800;" onclick="openDrill('samplePaid','${b}')">${samplePaid.length}<small style="color:#7dd3fc;">單 · $${Math.round(samplePaidFee).toLocaleString()}<\/small><\/span><\/div> <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#fbbf24;">樣品免費<\/span><span class="bc-click" style="color:#fbbf24; font-weight:800;" onclick="openDrill('sampleFree','${b}')">${sampleFree}<small style="color:#fde68a;">單${includeSamples() ? ' · 已計入' : ' · 未計入'}<\/small><\/span><\/div> <div class="bc-row" style="padding:2px 6px;"><span class="bc-k" style="color:#f87171;">退貨<\/span><span class="bc-click" style="color:#f87171; font-weight:800;" onclick="openDrill('returns','${b}')">${retCnt}<small style="color:#fca5a5;">單<\/small><\/span><\/div> <\/div> <\/div>`;
             }).join('');
 
-            // 每日各分公司運費 (堆疊) + 運費佔比
+            /*  每日各分公司運費 (堆疊) + 運費佔比 */
             const feeDates = [...new Set(all.map(o=>o.date))].sort();
             createChart('chart-daily-fee', 'bar', feeDates, BRANCHES.map((b, i) => ({
                 label: b, data: feeDates.map(d => Math.round(all.filter(o => o.date === d && brOf(o) === b).reduce((s, o) => s + feeOfOrder(o), 0))), backgroundColor: Color.branch[i], stack: 's'
@@ -718,42 +935,108 @@
             ], { scales: { y1: { position: 'right', grid: { display : false } } } });
         }
 
-        // ===== 司機運能排行 =====
+        /*  ===== 司機運能排行 ===== */
         function renderPerformance(orders, schedule) {
-            const plates = [...new Set(orders.map(o=>o.plate))].filter(Boolean);
+            const plates = fleetPlates();
             let totalTonKm = 0;
+            let totalForkliftKg = 0;
+            let totalManualKg = 0;
+
             const stats = plates.map(p => {
-                const po=orders.filter(o=>o.plate===p); const pc=po.filter(o=>o.status==='已完成');
-                const ps=schedule.filter(s=>s.plate===p); const km=ps.reduce((s,x)=>s+(x.totalKm||0),0); const amt=ps.reduce((s,x)=>s+(x.fuelAmt||0),0); const lit=ps.reduce((s,x)=>s+(x.fuelLit||0),0);
-                const hArr = pc.map(o=>{ if(!o.finishTime) return null; const e=new Date(o.finishTime.replace(/\//g, '-').replace(' ', 'T')); const s=new Date(o.date.replace(/\//g,'-')+'T08:00:00'); const h=(e-s)/3600000; return (h>0&&h<20)?h:null; }).filter(h=>h!==null);
-                const wKg = po.reduce((s,o)=>s+(o.weight||0),0);
-                const tonKm = (wKg/1000) * km;
+                const po = orders.filter(o => o.plate === p);
+                const pc = po.filter(o => o.status === '已完成');
+                const ps = schedule.filter(s => s.plate === p);
+                const km = ps.reduce((s, x) => s + (x.totalKm || 0), 0);
+                const amt = ps.reduce((s, x) => s + (x.fuelAmt || 0), 0);
+                const lit = ps.reduce((s, x) => s + (x.fuelLit || 0), 0);
+
+                const hArr = pc.map(o => {
+                    if (!o.finishTime) return null;
+                    const e = new Date(o.finishTime.replace(/\//g, '-').replace(' ', 'T'));
+                    const s = new Date(o.date.replace(/\//g, '-') + 'T08:00:00');
+                    const h = (e - s) / 3600000;
+                    return (h > 0 && h < 20) ? h : null;
+                }).filter(h => h !== null);
+
+                // 堆高機下貨 (o.carrierFlag 有值/勾選貨運行) vs 手動搬運下貨 (o.carrierFlag 為空)
+                const forkliftOrders = po.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "");
+                const manualOrders = po.filter(o => !o.carrierFlag || String(o.carrierFlag).trim() === "");
+
+                const forkliftW = forkliftOrders.reduce((s, o) => s + (o.weight || 0), 0);
+                const manualW = manualOrders.reduce((s, o) => s + (o.weight || 0), 0);
+                const wKg = forkliftW + manualW;
+                // 配送獎金計算重量 = 手動搬運重量 + (堆高機下貨重量 / 3)
+                const bonusW = manualW + (forkliftW / 3);
+
+                totalForkliftKg += forkliftW;
+                totalManualKg += manualW;
+
+                const forkliftPct = wKg ? (forkliftW / wKg * 100).toFixed(1) : '0.0';
+                const manualPct = wKg ? (manualW / wKg * 100).toFixed(1) : '0.0';
+
+                const tonKm = (wKg / 1000) * km;
                 totalTonKm += tonKm;
-                return {p, total:po.length, comp:pc.length, weight: wKg, avgH:hArr.length?(hArr.reduce((a,b)=>a+b)/hArr.length).toFixed(1):'--', km, amt, eff:lit?(km/lit).toFixed(1):'--', tonKm};
-            }).sort((a,b)=>b.comp-a.comp);
+                return {
+                    p, total: po.length, comp: pc.length, weight: wKg, bonusW,
+                    forkliftW, manualW, forkliftPct, manualPct,
+                    avgH: hArr.length ? (hArr.reduce((a, b) => a + b) / hArr.length).toFixed(1) : '--',
+                    km, amt, eff: lit ? (km / lit).toFixed(1) : '--', tonKm
+                };
+            }).sort((a, b) => b.comp - a.comp);
 
             setText('stat-total-tonkm', Math.round(totalTonKm).toLocaleString() + ' t·km');
             const totalTrips = schedule.length;
-            const totalLoad = orders.reduce((s,o)=>s+(o.weight||0),0);
-            setText('stat-avg-load', totalTrips ? Math.round(totalLoad/totalTrips).toLocaleString() + ' kg' : '-- kg');
+            const totalLoad = orders.reduce((s, o) => s + (o.weight || 0), 0);
+            const totalBonusKg = totalManualKg + (totalForkliftKg / 3);
 
-            document.querySelector('#performance-table tbody').innerHTML = stats.map(s => `<tr><td style="font-weight:700;color:var(--accent)">${escapeHTML(plateLabel(s.p))}</td><td>${s.total}</td><td>${s.total ? (s.comp/s.total*100).toFixed(0) : 0}%</td><td style="color:var(--warning)">${Math.round(s.weight).toLocaleString()}</td><td>${Math.round(s.km)}</td><td>$${Math.round(s.amt).toLocaleString()}</td><td style="color:var(--success)">${s.eff}</td></tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#64748b;">區間內無資料</td></tr>';
-            createChart('chart-driver-orders', 'bar', stats.map(s=>plateLabel(s.p)), [{ label: '累計完成單數', data: stats.map(s=>s.comp), backgroundColor: Color.success }], { indexAxis: 'y' });
+            // 總體卸貨模式全隊統計
+            const allW = totalForkliftKg + totalManualKg;
+            const forkliftTotPct = allW ? (totalForkliftKg / allW * 100).toFixed(1) : '0.0';
+            const manualTotPct = allW ? (totalManualKg / allW * 100).toFixed(1) : '0.0';
+
+            const bonusEl = document.getElementById('stat-bonus-weight');
+            if (bonusEl) bonusEl.innerHTML = `${Math.round(totalBonusKg).toLocaleString()} <small>kg<\/small> <span style="font-size:12px;color:#22c55e;font-weight:700;">(${(totalBonusKg / 1000).toFixed(1)} 噸)<\/span>`;
+
+            const forkliftEl = document.getElementById('stat-forklift-weight');
+            if (forkliftEl) forkliftEl.innerHTML = `${Math.round(totalForkliftKg).toLocaleString()} <small>kg<\/small> <span style="font-size:12px;color:#f97316;font-weight:700;">(${forkliftTotPct}%)<\/span>`;
+            const manualEl = document.getElementById('stat-manual-weight');
+            if (manualEl) manualEl.innerHTML = `${Math.round(totalManualKg).toLocaleString()} <small>kg<\/small> <span style="font-size:12px;color:#38bdf8;font-weight:700;">(${manualTotPct}%)<\/span>`;
+
+            document.querySelector('#performance-table tbody').innerHTML = stats.map(s => `
+                <tr class="row-click" onclick="openDrill('driverAll','${escapeHTML(plateLabel(s.p))}')" title="點擊檢視該司機所有訂單明細">
+                    <td style="font-weight:700;color:var(--accent)">${escapeHTML(plateLabel(s.p))}<\/td>
+                    <td>${s.total}<\/td>
+                    <td>${s.total ? (s.comp / s.total * 100).toFixed(0) : 0}%<\/td>
+                    <td style="color:var(--text-main);font-weight:700;">${Math.round(s.weight).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span><\/td>
+                    <td style="color:#22c55e;font-weight:700;">${Math.round(s.bonusW).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span><\/td>
+                    <td style="color:#f97316;font-weight:700;">${Math.round(s.forkliftW).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span><\/td>
+                    <td style="color:#38bdf8;font-weight:700;">${Math.round(s.manualW).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span><\/td>
+                    <td><span class="badge" style="background:rgba(249,115,22,0.15);color:#f97316;font-weight:700;">${s.forkliftPct}%<\/span><\/td>
+                    <td>${Math.round(s.km)}<\/td>
+                    <td>$${Math.round(s.amt).toLocaleString()}<\/td>
+                    <td style="color:var(--success)">${s.eff}<\/td>
+                <\/tr>
+            `).join('') || '<tr><td colspan="11" style="text-align:center;color:#64748b;">區間內無資料<\/td><\/tr>';
+
+            createChart('chart-driver-orders', 'bar', stats.map(s => plateLabel(s.p)), [
+                { label: '堆高機下貨重量 (kg)', data: stats.map(s => Math.round(s.forkliftW)), backgroundColor: '#f97316' },
+                { label: '手動搬運下貨重量 (kg)', data: stats.map(s => Math.round(s.manualW)), backgroundColor: '#38bdf8' }
+            ], { indexAxis: 'y', stacked: true });
         }
 
-        // ===== 司機行程記錄 =====
+        /*  ===== 司機行程記錄 ===== */
         let itinPlate = '全部';
-        // V41.39: 只列車輛管理表登記的自家車 (外車 / 派送清單車牌欄的雜值一律不列)
+        /*  V41.39: 只列車輛管理表登記的自家車 (外車 / 派送清單車牌欄的雜值一律不列) */
         function fleetPlates() {
             const vm = rawData.vehicleMap || {};
             const fleet = Object.keys(vm).filter(p => p && vm[p]).sort();
-            // 車輛管理表讀不到時退回行程表出現過的車牌，至少不會整頁空白
+            /*  車輛管理表讀不到時退回行程表出現過的車牌，至少不會整頁空白 */
             return fleet.length ? fleet : [...new Set(rawData.schedule.map(s => s.plate))].filter(Boolean).sort();
         }
         function buildItinPlateButtons() {
             const plates = fleetPlates();
             const wrap = document.getElementById('itinPlateBtns');
-            wrap.innerHTML = ['全部', ...plates].map(p => `<button class="btn-branch ${itinPlate === p ? 'active' : ''}" data-plate="${escapeHTML(p)}" onclick="setItinPlate('${escapeHTML(p)}')">${escapeHTML(p === '全部' ? p : plateLabel(p))}</button>`).join('');
+            wrap.innerHTML = ['全部', ...plates].map(p => `<button class="btn-branch ${itinPlate === p ? 'active' : ''}" data-plate="${escapeHTML(p)}" onclick="setItinPlate('${escapeHTML(p)}')">${escapeHTML(p === '全部' ? p : plateLabel(p))}<\/button>`).join('');
         }
         function setItinPlate(p) {
             itinPlate = p;
@@ -765,7 +1048,7 @@
             const m = s.match(/([一-鿿]{1,3}(市|縣))?([一-鿿]{1,3}(區|鄉|鎮|市))/);
             return m ? m[3] : (s.substring(0, 3) || '');
         }
-        // 解析「08:50 公司出發 → 10:36 三民路 → ...」成 [{t, r, depot}]
+        /*  解析「08:50 公司出發 → 10:36 三民路 → ...」成 [{t, r, depot}] */
         function parseTrace(trace) {
             return String(trace || '').split(/\s*→\s*/).map(seg => {
                 const m = seg.trim().match(/^(\d{1,2}:\d{2})\s*(.*)$/);
@@ -775,46 +1058,283 @@
                 return { t, r, depot: /公司出發|返抵公司|公司/.test(r) };
             }).filter(Boolean);
         }
-        // 「HH:MM」→ 分鐘；抓不到回 -1
+        /*  「HH:MM」→ 分鐘；抓不到回 -1 */
         function hhmm(s) { const m = String(s || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : -1; }
-        // 指定到貨時間的截止點：時段「10:30~11:00」取 11:00，單一時間取本身
+        /*  指定到貨時間的截止點：時段「10:30~11:00」取 11:00，單一時間取本身 */
         function deadlineOf(spec) { const parts = String(spec || '').split(/[~至\-到]/); return hhmm(parts[parts.length - 1]); }
 
-        // V41.39: 司機卡片 (自家車，依司機名分卡)
+        let currentWeightPeriod = '6m'; // 預設: 近半年月均
+
+        function checkIsSample(o) {
+            if (!o) return false;
+            const text = (String(o.customer || '') + ' ' + String(o.address || '') + ' ' + String(o.note || '')).replace(/\s/g, '');
+            // V41.94: 1. 送去加工廠(棨新加工/噴砂)、營造工地(國原營造)一律屬客戶正常銷貨單據，絕非免費內部
+            if (text.indexOf('加工') !== -1 || text.indexOf('噴砂') !== -1 || text.indexOf('營造') !== -1) return false;
+            if (o.isSample || o.sampleTo === 'home') return true;
+
+            // 2. 指送安帝嘉、指送喜悅納 才是內部免費
+            if (text.indexOf('指送安帝嘉') !== -1 || text.indexOf('指送喜悅納') !== -1 || text.indexOf('指送高雅瓷') !== -1 || text.indexOf('指送漢樺') !== -1) return true;
+
+            // 3. 官方總部完全吻合地址：高職東街13號 或 文化路三段535巷98號
+            if (text.indexOf('高職東街13號') !== -1 || text.indexOf('文化路三段535巷98號') !== -1) return true;
+
+            // 4. 明確標示「載回公司」、「回公司」、「倉內調貨」、「轉倉」
+            if (text.indexOf('載回公司') !== -1 || text.indexOf('回公司') !== -1 || text.indexOf('倉內調貨') !== -1 || text.indexOf('轉倉') !== -1) return true;
+
+            return false;
+        }
+
+        function getBonusConfig() {
+            try {
+                const raw = localStorage.getItem('titan_bonus_config');
+                if (raw) return JSON.parse(raw);
+            } catch(e) {}
+            return {
+                perOrderFee: 20,
+                perTonFee: 200,
+                mode: 'quota',
+                quotas: {}
+            };
+        }
+
+        function saveBonusConfig(cfg) {
+            try {
+                localStorage.setItem('titan_bonus_config', JSON.stringify(cfg));
+            } catch(e) {}
+            updateDashboard();
+        }
+
+        function calcDriverBonus(drvName, custOrdersCount, bonusTons, totalTons) {
+            const cfg = getBonusConfig();
+            const drvQuota = (cfg.quotas && cfg.quotas[drvName] !== undefined && cfg.quotas[drvName] !== null) ? Number(cfg.quotas[drvName]) : 20;
+            const orderBonus = custOrdersCount * (cfg.perOrderFee || 0);
+
+            let bonusWeightTons = 0;
+            if (cfg.mode === 'fullBonus') {
+                bonusWeightTons = bonusTons;
+            } else if (cfg.mode === 'fullWeight') {
+                bonusWeightTons = totalTons;
+            } else {
+                // quota mode (超出額度底限部分)
+                bonusWeightTons = Math.max(0, bonusTons - drvQuota);
+            }
+
+            const weightBonus = bonusWeightTons * (cfg.perTonFee || 0);
+            const totalBonus = orderBonus + weightBonus;
+            return {
+                cfg, drvQuota, orderBonus, weightBonus, totalBonus, bonusWeightTons
+            };
+        }
+
+        function renderInlineQuotasGrid() {
+            const cfg = getBonusConfig();
+            const vm = rawData.vehicleMap || {};
+            const fleetS = rawData.schedule || [];
+            const drvList = [...new Set(fleetS.map(s => vm[s.plate] || s.driver || '').filter(Boolean))].sort();
+
+            const pFee = document.getElementById('cfgPerOrderFee');
+            if (pFee && document.activeElement !== pFee) pFee.value = cfg.perOrderFee || 20;
+            const tFee = document.getElementById('cfgPerTonFee');
+            if (tFee && document.activeElement !== tFee) tFee.value = cfg.perTonFee || 200;
+            const bMode = document.getElementById('cfgBonusMode');
+            if (bMode && document.activeElement !== bMode) bMode.value = cfg.mode || 'quota';
+
+            const el = document.getElementById('inlineDriverQuotasGrid');
+            if (!el) return;
+
+            el.innerHTML = drvList.map(drv => {
+                const q = (cfg.quotas && cfg.quotas[drv] !== undefined) ? cfg.quotas[drv] : 20;
+                return `<div style="background:rgba(255,255,255,0.03); border:1px solid var(--glass-border); padding:8px 10px; border-radius:8px; display:flex; align-items:center; justify-content:space-between;">
+                    <span style="font-weight:700; color:var(--accent); font-size:13px;">${escapeHTML(drv)}<\/span>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <input type="number" class="inline-quota-inp" data-drv="${escapeHTML(drv)}" value="${q}" onchange="onInlineBonusChange()" style="width:65px; background:rgba(0,0,0,0.4); color:#38bdf8; border:1px solid var(--glass-border); padding:4px 6px; border-radius:4px; text-align:right; font-weight:800; font-size:12px;">
+                        <span style="font-size:11px; color:var(--text-dim); font-weight:700;">噸/月<\/span>
+                    <\/div>
+                <\/div>`;
+            }).join('') || '<div style="color:var(--text-dim);">無自家車司機資料<\/div>';
+        }
+
+        function toggleBonusCardBody() {
+            const body = document.getElementById('bonusCardBody');
+            const btn = document.getElementById('btnToggleBonusCard');
+            if (!body) return;
+            if (body.style.display === 'none') {
+                body.style.display = 'flex';
+                if (btn) btn.innerText = '收合設定面板 ▲';
+            } else {
+                body.style.display = 'none';
+                if (btn) btn.innerText = '展開設定面板 ▼';
+            }
+        }
+
+        function onInlineBonusChange() {
+            const cfg = {
+                perOrderFee: Number(document.getElementById('cfgPerOrderFee').value) || 0,
+                perTonFee: Number(document.getElementById('cfgPerTonFee').value) || 0,
+                mode: document.getElementById('cfgBonusMode').value,
+                quotas: {}
+            };
+            document.querySelectorAll('.inline-quota-inp').forEach(inp => {
+                const drv = inp.dataset.drv;
+                if (drv) cfg.quotas[drv] = Number(inp.value) || 0;
+            });
+            saveBonusConfig(cfg);
+        }
+
+        function setDriverQuota(drvName, val) {
+            const cfg = getBonusConfig();
+            if (!cfg.quotas) cfg.quotas = {};
+            cfg.quotas[drvName] = Number(val) || 0;
+            saveBonusConfig(cfg);
+        }
+
+        /*  V41.39: 司機卡片 (直立呈現：上半部單量行程指標，下半部重量與加權獎金指標) */
         function renderDriverCards(sched, ordersFor) {
+            renderInlineQuotasGrid();
             const vm = rawData.vehicleMap || {};
             const byDrv = {};
+            const f = currentFilters();
+
+            const nowTime = new Date().getTime();
+            const d3mCut = new Date(nowTime - 90 * 86400000);
+            const d6mCut = new Date(nowTime - 180 * 86400000);
+
             sched.forEach(s => {
                 const drv = vm[s.plate] || s.driver || '';
                 if (!drv) return;
-                const d = byDrv[drv] || (byDrv[drv] = { name: drv, plates: new Set(), days: new Set(), km: 0, fuelAmt: 0, fuelLit: 0, orders: 0, timed: 0, onTime: 0 });
+                const d = byDrv[drv] || (byDrv[drv] = { name: drv, plates: new Set(), days: new Set(), km: 0, fuelAmt: 0, fuelLit: 0, orders: 0, internalOrders: 0, internalWeight: 0, timed: 0, onTime: 0 });
                 d.plates.add(s.plate); d.days.add(s.date); d.km += s.totalKm || 0; d.fuelAmt += s.fuelAmt || 0; d.fuelLit += s.fuelLit || 0;
                 ordersFor(s.date, s.plate).forEach(o => {
-                    if (o.isSample) return;                       // 樣品免費不算單量
+                    if (checkIsSample(o)) {
+                        d.internalOrders++;
+                        d.internalWeight += (o.weight || 0);
+                        return;                       /* 內部運輸/免費樣品單獨計筆，不計入客戶配送單量與獎金 */
+                    }
                     d.orders++;
+
                     if (o.specifiedArrive) {
                         const dl = deadlineOf(o.specifiedArrive), ft = hhmm(o.finishTime);
                         if (dl >= 0 && ft >= 0) { d.timed++; if (ft <= dl) d.onTime++; }
                     }
                 });
             });
+
             const list = Object.values(byDrv).sort((a, b) => b.orders - a.orders);
-            const row = (k, v, hint) => `<div class="bc-row"><span class="bc-k">${k}</span><span class="bc-v">${v}</span></div>${hint ? `<div class="stat-hint" style="text-align:right;margin-top:-4px;">${hint}</div>` : ''}`;
+            const row = (k, v, hint, onclick) => `<div class="bc-row"${onclick ? ` style="cursor:pointer;" onclick="${onclick}" title="點擊檢視單據明細"` : ''}><span class="bc-k">${k}<\/span><span class="bc-v">${v}<\/span><\/div>${hint ? `<div class="stat-hint" style="text-align:right;margin-top:-4px;">${hint}<\/div>` : ''}`;
+
             document.getElementById('driverCards').innerHTML = list.map((d, i) => {
                 const days = d.days.size || 1;
                 const c = Color.branch[i % Color.branch.length];
                 const perKm = d.km > 0 && d.fuelAmt > 0 ? '$' + (d.fuelAmt / d.km).toFixed(1) : '—';
                 const kmPerL = d.km > 0 && d.fuelLit > 0 ? (d.km / d.fuelLit).toFixed(1) + ' km/L' : '';
-                const punct = d.timed ? Math.round(d.onTime / d.timed * 100) + '<span style="font-size:12px">%</span>' : '—';
+                const punct = d.timed ? Math.round(d.onTime / d.timed * 100) + '<span style="font-size:12px">%<\/span>' : '—';
+                const drvEsc = escapeHTML(d.name);
+
+                // 計算該司機在 3 種區間 (選取區間, 近3個月月均, 近半年月均) 下的單量與重量 (100% 扣除內部運輸)
+                const drvOrdersAll = rawData.orders.filter(o => (o.plate === d.name || (vm[o.plate] === d.name) || (o.driver === d.name)));
+                const drvCustOrdersAll = drvOrdersAll.filter(o => !checkIsSample(o));
+                const drvInternalOrdersAll = drvOrdersAll.filter(o => checkIsSample(o));
+
+                // 1. 選取區間
+                const selCustOrders = drvCustOrdersAll.filter(o => o.date >= f.sd && o.date <= f.ed);
+                const selInternalOrders = drvInternalOrdersAll.filter(o => o.date >= f.sd && o.date <= f.ed);
+                const selInternalW = selInternalOrders.reduce((s, o) => s + (o.weight || 0), 0);
+
+                const selW = selCustOrders.reduce((s, o) => s + (o.weight || 0), 0);
+                const selForkW = selCustOrders.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const selManW = selW - selForkW;
+                const selBonusW = selManW + (selForkW / 3);
+
+                // 2. 近3個月 (90天)
+                const orders3mCust = drvCustOrdersAll.filter(o => new Date(o.date) >= d3mCut);
+                const orders3mInternal = drvInternalOrdersAll.filter(o => new Date(o.date) >= d3mCut);
+                const w3mInternal = orders3mInternal.reduce((s, o) => s + (o.weight || 0), 0);
+
+                const w3m = orders3mCust.reduce((s, o) => s + (o.weight || 0), 0);
+                const forkW3m = orders3mCust.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const manW3m = w3m - forkW3m;
+                const bonusW3m = manW3m + (forkW3m / 3);
+
+                // 3. 近半年 (180天)
+                const orders6mCust = drvCustOrdersAll.filter(o => new Date(o.date) >= d6mCut);
+                const orders6mInternal = drvInternalOrdersAll.filter(o => new Date(o.date) >= d6mCut);
+                const w6mInternal = orders6mInternal.reduce((s, o) => s + (o.weight || 0), 0);
+
+                const w6m = orders6mCust.reduce((s, o) => s + (o.weight || 0), 0);
+                const forkW6m = orders6mCust.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const manW6m = w6m - forkW6m;
+                const bonusW6m = manW6m + (forkW6m / 3);
+
+                let manTons, forkTons, totalTons, bonusTons, unitLabel;
+                let dispAllOrders, dispCustOrders;
+                if (currentWeightPeriod === 'sel') {
+                    unitLabel = ' 噸';
+                    dispAllOrders = Math.round(selCustOrders.length + selInternalOrders.length) + '<span style="font-size:12px"> 單<\/span>';
+                    dispCustOrders = Math.round(selCustOrders.length) + '<span style="font-size:12px"> 單<\/span>';
+
+                    manTons = Math.round(selManW / 1000);
+                    forkTons = Math.round(selForkW / 1000);
+                    totalTons = Math.round(selW / 1000);
+                    bonusTons = Math.round(selBonusW / 1000);
+                } else if (currentWeightPeriod === '3m') {
+                    unitLabel = ' 噸/月';
+                    dispAllOrders = Math.round((orders3mCust.length + orders3mInternal.length) / 3) + '<span style="font-size:12px"> 單/月<\/span>';
+                    dispCustOrders = Math.round(orders3mCust.length / 3) + '<span style="font-size:12px"> 單/月<\/span>';
+
+                    manTons = Math.round(manW3m / 1000 / 3);
+                    forkTons = Math.round(forkW3m / 1000 / 3);
+                    totalTons = Math.round(w3m / 1000 / 3);
+                    bonusTons = Math.round(bonusW3m / 1000 / 3);
+                } else {
+                    // default 6m (近半年月均)
+                    unitLabel = ' 噸/月';
+                    dispAllOrders = Math.round((orders6mCust.length + orders6mInternal.length) / 6) + '<span style="font-size:12px"> 單/月<\/span>';
+                    dispCustOrders = Math.round(orders6mCust.length / 6) + '<span style="font-size:12px"> 單/月<\/span>';
+
+                    manTons = Math.round(manW6m / 1000 / 6);
+                    forkTons = Math.round(forkW6m / 1000 / 6);
+                    totalTons = Math.round(w6m / 1000 / 6);
+                    bonusTons = Math.round(bonusW6m / 1000 / 6);
+                }
+
+                // 計算獎金
+                const bResSel = calcDriverBonus(d.name, selCustOrders.length, (selBonusW / 1000), (selW / 1000));
+                const bRes3m = calcDriverBonus(d.name, Math.round(orders3mCust.length / 3), (bonusW3m / 1000 / 3), (w3m / 1000 / 3));
+                const bRes6m = calcDriverBonus(d.name, Math.round(orders6mCust.length / 6), (bonusW6m / 1000 / 6), (w6m / 1000 / 6));
+
+                const activeB = (currentWeightPeriod === 'sel') ? bResSel : (currentWeightPeriod === '3m' ? bRes3m : bRes6m);
+                const bonusLabelText = (currentWeightPeriod === 'sel') ? '預估配送獎金' : '月均試算獎金';
+                const bonusHintText = `單量 $${Math.round(activeB.orderBonus)} + 超額 $${Math.round(activeB.weightBonus)} (底限 ${activeB.drvQuota} 噸)`;
+
                 return `<div class="stat-card branch-card" style="border-top-color:${c}">
-                    <div class="stat-label" style="color:${c}">${escapeHTML(d.name)} <span style="font-size:11px;color:var(--text-dim);font-weight:500">${escapeHTML([...d.plates].join('/'))}</span></div>
-                    ${row('合計總單量', d.orders + '<span style="font-size:12px"> 單</span>', '不含樣品免費')}
-                    ${row('平均日單量', (d.orders / days).toFixed(1) + '<span style="font-size:12px"> 單/日</span>', '出勤 ' + d.days.size + ' 天')}
-                    ${row('每日里程數', Math.round(d.km / days) + '<span style="font-size:12px"> km/日</span>', '總里程 ' + Math.round(d.km).toLocaleString() + ' km')}
-                    ${row('每公里油耗', perKm + (perKm !== '—' ? '<span style="font-size:12px"> /km</span>' : ''), kmPerL || '區間內無加油記錄')}
-                    ${row('指定準點率', punct, d.timed ? '指定時間單 ' + d.onTime + '/' + d.timed + ' 準時' : '區間內無指定時間單')}
-                </div>`;
-            }).join('') || '<div style="color:#64748b; padding:12px;">區間內無自家車行程</div>';
+                    <div class="stat-label" style="color:${c}; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                        <span>${drvEsc} <span style="font-size:11px;color:var(--text-dim);font-weight:500">${escapeHTML([...d.plates].join('/'))}<\/span><\/span>
+                        <select class="weight-period-select" onchange="changeWeightPeriod(this.value)" style="background:rgba(0,0,0,0.4); color:var(--text-main); border:1px solid var(--glass-border); font-size:11px; border-radius:4px; padding:2px 4px;">
+                            <option value="sel" ${currentWeightPeriod === 'sel' ? 'selected' : ''}>選取區間<\/option>
+                            <option value="3m" ${currentWeightPeriod === '3m' ? 'selected' : ''}>近3個月月均<\/option>
+                            <option value="6m" ${currentWeightPeriod === '6m' ? 'selected' : ''}>近半年月均<\/option>
+                        <\/select>
+                    <\/div>
+                    
+                    <!-- ===== 上半部（數據統計） ===== -->
+                    <div style="font-size:11px; font-weight:800; color:var(--text-dim); margin-top:6px; margin-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:3px;">
+                        📊 數據統計
+                    <\/div>
+                    ${row('總單量', dispAllOrders, '含客戶配送 ' + selCustOrders.length + ' 單 + 內部 ' + selInternalOrders.length + ' 筆 (點擊看明細)', `openDrill('driverAll','${drvEsc}')`)}
+                    ${row('總重量', totalTons + '<span style="font-size:12px;color:var(--text-main);font-weight:700;">' + unitLabel + '<\/span>', '點擊檢視純手工 ' + manTons + unitLabel + ' vs 堆高機 ' + forkTons + unitLabel + ' 拆解', `openDrill('driverAll','${drvEsc}')`)}
+                    ${row('平均每日單量', Math.round(d.orders / days) + '<span style="font-size:12px"> 單/日<\/span>', '出勤 ' + d.days.size + ' 天')}
+                    ${row('每日里程數', Math.round(d.km / days) + '<span style="font-size:12px"> km/日<\/span>', '總里程 ' + Math.round(d.km).toLocaleString() + ' km')}
+                    ${row('每公里油耗', perKm + (perKm !== '—' ? '<span style="font-size:12px"> /km<\/span>' : ''), kmPerL || '區間內無加油記錄')}
+
+                    <!-- ===== 下半部（獎金計算） ===== -->
+                    <div style="border-top:1px solid rgba(255,255,255,0.1); margin:10px 0 6px 0; padding-top:8px; font-size:11px; font-weight:800; color:#22c55e;">
+                        💰 獎金計算
+                    <\/div>
+                    ${row('客戶配送單量', dispCustOrders, '已扣除內部運輸/免費樣品 (計入獎金)', `openDrill('driverCustOnly','${drvEsc}')`)}
+                    ${row('加權後重量', bonusTons + '<span style="font-size:12px;color:#22c55e;font-weight:700;">' + unitLabel + '<\/span>', '純手工 + 堆高機x1/3 噸數', `openDrill('driverAll','${drvEsc}')`)}
+                    ${row(bonusLabelText, '$' + Math.round(activeB.totalBonus).toLocaleString() + '<span style="font-size:12px;color:#22c55e;font-weight:700;"> 元<\/span>', bonusHintText, `openDrill('driverBonus','${drvEsc}')`)}
+                <\/div>`;
+            }).join('') || '<div style="color:#64748b; padding:12px;">區間內無自家車行程<\/div>';
         }
 
         function renderItinerary() {
@@ -823,7 +1343,7 @@
             const fleet = new Set(fleetPlates());
             const fleetS = rawData.schedule.filter(s => s.date >= f.sd && s.date <= f.ed && s.plate && fleet.has(s.plate));
             const allS = fleetS.filter(s => itinPlate === '全部' || s.plate === itinPlate);
-            // 派送清單的「車牌」欄有時填司機名，兩種都認
+            /*  派送清單的「車牌」欄有時填司機名，兩種都認 */
             const ordersFor = (date, plate) => rawData.orders.filter(o => o.date === date && (o.plate === plate || (vm[plate] && o.plate === vm[plate])));
             renderDriverCards(fleetS, ordersFor);
 
@@ -835,43 +1355,108 @@
                          weight: os.reduce((a, o) => a + (o.weight || 0), 0) };
             }).sort((a, b) => b.s.date.localeCompare(a.s.date) || a.s.plate.localeCompare(b.s.plate));
 
-            setText('stat-itin-days', new Set(rows.map(r => r.s.date)).size);
-            setText('stat-itin-stops', rows.reduce((a, r) => a + r.stopCount, 0));
-            setText('stat-itin-weight', Math.round(rows.reduce((a, r) => a + r.weight, 0)).toLocaleString());
-            setText('stat-itin-km', Math.round(rows.reduce((a, r) => a + (r.s.totalKm || 0), 0)).toLocaleString());
+            const totalDays = new Set(rows.map(r => r.s.date)).size || 1;
+            const totalStops = rows.reduce((a, r) => a + r.stopCount, 0);
+            const totalKm = Math.round(rows.reduce((a, r) => a + (r.s.totalKm || 0), 0));
+            setText('stat-itin-days', totalDays);
+            setText('stat-itin-stops', totalStops);
+            setText('stat-itin-km', totalKm.toLocaleString());
+            setText('stat-itin-avgkm', Math.round(totalKm / totalDays).toLocaleString() + ' km/日');
+
+            // 計算近 3 個月 (90天) 與近 6 個月 (180天) 月均噸數
+            const nowTime = new Date().getTime();
+            const d3mCut = new Date(nowTime - 90 * 86400000);
+            const d6mCut = new Date(nowTime - 180 * 86400000);
+
+            const drvList = [...new Set(fleetS.map(s => vm[s.plate] || s.driver || '').filter(Boolean))].sort();
+
+            let totSelW = 0, totSelBonusW = 0;
+            let tot3mW = 0, tot3mBonusW = 0;
+            let tot6mW = 0, tot6mBonusW = 0;
+
+            const drvBenchmarkStats = drvList.map(drvName => {
+                const drvOrdersAll = rawData.orders.filter(o => !o.isSample && (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName)));
+                
+                // 選取區間內
+                const selOrders = drvOrdersAll.filter(o => o.date >= f.sd && o.date <= f.ed);
+                const selW = selOrders.reduce((s, o) => s + (o.weight || 0), 0);
+                const selForkW = selOrders.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const selManW = selW - selForkW;
+                const selBonusW = selManW + (selForkW / 3);
+
+                // 近 3 個月 (90天)
+                const orders3m = drvOrdersAll.filter(o => new Date(o.date) >= d3mCut);
+                const w3m = orders3m.reduce((s, o) => s + (o.weight || 0), 0);
+                const forkW3m = orders3m.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const bonusW3m = (w3m - forkW3m) + (forkW3m / 3);
+
+                // 近 6 個月 (180天)
+                const orders6m = drvOrdersAll.filter(o => new Date(o.date) >= d6mCut);
+                const w6m = orders6m.reduce((s, o) => s + (o.weight || 0), 0);
+                const forkW6m = orders6m.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== "").reduce((s, o) => s + (o.weight || 0), 0);
+                const bonusW6m = (w6m - forkW6m) + (forkW6m / 3);
+
+                totSelW += selW; totSelBonusW += selBonusW;
+                tot3mW += w3m; tot3mBonusW += bonusW3m;
+                tot6mW += w6m; tot6mBonusW += bonusW6m;
+
+                return {
+                    drvName, selW, selBonusW, selForkW, selManW,
+                    avg3mW: (w3m / 1000 / 3).toFixed(1),
+                    avg3mBonusW: (bonusW3m / 1000 / 3).toFixed(1),
+                    avg6mW: (w6m / 1000 / 6).toFixed(1),
+                    avg6mBonusW: (bonusW6m / 1000 / 6).toFixed(1)
+                };
+            }).sort((a, b) => b.selW - a.selW);
+
+            // 渲染第二區 重量與獎金基準統計卡片
+            const gridEl = document.getElementById('driverWeightStatsGrid');
+            if (gridEl) {
+                gridEl.innerHTML = `
+                    <div class="stat-card"><div class="stat-label">選取區間載貨總重<\/div><div class="stat-value" style="color:var(--text-main);">${Math.round(totSelW).toLocaleString()} <small>kg<\/small><\/div><div class="stat-hint">${(totSelW/1000).toFixed(1)} 噸 (選取區間)<\/div><\/div>
+                    <div class="stat-card"><div class="stat-label">選取區間獎金總重<\/div><div class="stat-value" style="color:#22c55e;">${Math.round(totSelBonusW).toLocaleString()} <small>kg<\/small><\/div><div class="stat-hint">${(totSelBonusW/1000).toFixed(1)} 噸 (手動 + 堆高機x1/3)<\/div><\/div>
+                    <div class="stat-card"><div class="stat-label">近3個月月均總載重<\/div><div class="stat-value" style="color:var(--accent);">${(tot3mW/1000/3).toFixed(1)} <small>噸/月<\/small><\/div><div class="stat-hint">過去90天全隊每月平均載重<\/div><\/div>
+                    <div class="stat-card"><div class="stat-label">近3個月月均獎金重<\/div><div class="stat-value" style="color:#22c55e;">${(tot3mBonusW/1000/3).toFixed(1)} <small>噸/月<\/small><\/div><div class="stat-hint">過去90天全隊每月平均獎金重<\/div><\/div>
+                    <div class="stat-card"><div class="stat-label">近半年月均總載重<\/div><div class="stat-value" style="color:var(--warning);">${(tot6mW/1000/6).toFixed(1)} <small>噸/月<\/small><\/div><div class="stat-hint">過去180天全隊每月平均載重<\/div><\/div>
+                    <div class="stat-card"><div class="stat-label">近半年月均獎金重<\/div><div class="stat-value" style="color:#22c55e;">${(tot6mBonusW/1000/6).toFixed(1)} <small>噸/月<\/small><\/div><div class="stat-hint">過去180天全隊每月平均獎金重<\/div><\/div>
+                `;
+            }
+
+            // 渲染各司機獎金基準比較表
+            const tableBody = document.querySelector('#driver-bonus-benchmark-table tbody');
+            if (tableBody) {
+                tableBody.innerHTML = drvBenchmarkStats.map(d => `
+                    <tr class="row-click" onclick="openDrill('driverAll','${escapeHTML(d.drvName)}')" title="點擊檢視 ${escapeHTML(d.drvName)} 所有訂單明細">
+                        <td style="font-weight:700;color:var(--accent)">${escapeHTML(d.drvName)}<\/td>
+                        <td style="font-weight:700;">${Math.round(d.selW).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span> (${(d.selW/1000).toFixed(1)} 噸)<\/td>
+                        <td style="color:#22c55e;font-weight:700;">${Math.round(d.selBonusW).toLocaleString()} <span style="font-size:10px;color:var(--text-dim)">kg<\/span> (${(d.selBonusW/1000).toFixed(1)} 噸)<\/td>
+                        <td style="color:var(--accent);font-weight:700;">${d.avg3mW} 噸/月<\/td>
+                        <td style="color:#22c55e;font-weight:700;">${d.avg3mBonusW} 噸/月<\/td>
+                        <td style="color:var(--warning);font-weight:700;">${d.avg6mW} 噸/月<\/td>
+                        <td style="color:#22c55e;font-weight:700;">${d.avg6mBonusW} 噸/月<\/td>
+                        <td style="color:#f97316;">${Math.round(d.selForkW).toLocaleString()} kg<\/td>
+                        <td style="color:#38bdf8;">${Math.round(d.selManW).toLocaleString()} kg<\/td>
+                    <\/tr>
+                `).join('') || '<tr><td colspan="9" style="text-align:center;color:#64748b;">區間內無司機資料<\/td><\/tr>';
+            }
 
             const photoLinks = (s) => [
-                s.photoExt ? `<a class="photo-link" href="${escapeHTML(s.photoExt)}" target="_blank">外觀</a>` : '',
-                s.photoInt ? `<a class="photo-link" href="${escapeHTML(s.photoInt)}" target="_blank">內裝</a>` : '',
-                s.photoFuel ? `<a class="photo-link" href="${escapeHTML(s.photoFuel)}" target="_blank">加油單</a>` : ''
+                s.photoExt ? `<a class="photo-link" href="${escapeHTML(s.photoExt)}" target="_blank">外觀<\/a>` : '',
+                s.photoInt ? `<a class="photo-link" href="${escapeHTML(s.photoInt)}" target="_blank">內裝<\/a>` : '',
+                s.photoFuel ? `<a class="photo-link" href="${escapeHTML(s.photoFuel)}" target="_blank">加油單<\/a>` : ''
             ].join('');
 
             document.getElementById('itineraryCards').innerHTML = rows.map(r => {
                 const s = r.s;
                 const drv = s.driver || vm[s.plate] || '';
                 const line = r.stops.length
-                    ? r.stops.map((x, i) => `${i ? '<span class="itin-arrow">→</span>' : ''}<span class="itin-stop${x.depot ? ' depot' : ''}"><span class="t">${escapeHTML(x.t || '--:--')}</span><span class="r">${escapeHTML(x.r)}</span></span>`).join('')
-                    : '<span style="color:#475569; font-size:12px;">（當日無行程足跡）</span>';
-                return `<div class="itin-card">
-                    <div class="itin-head">
-                        <span class="d">${s.date}</span>
-                        <span><span class="drv">${escapeHTML(drv)}</span> <span class="plate">${escapeHTML(s.plate)}</span></span>
-                        <div class="itin-meta">
-                            <span>上班 <b>${s.timeIn || '—'}</b></span>
-                            <span>下班 <b>${s.timeOut || '—'}</b></span>
-                            <span>站數 <b>${r.stopCount}</b></span>
-                            <span>重量 <b>${Math.round(r.weight).toLocaleString()}</b> kg</span>
-                            <span>里程 <b>${s.totalKm ? Math.round(s.totalKm) : '—'}</b> km</span>
-                            <span>油費 <b>${s.fuelAmt ? '$' + Math.round(s.fuelAmt).toLocaleString() : '—'}</b></span>
-                        </div>
-                        <span style="margin-left:auto;">${photoLinks(s)}</span>
-                    </div>
-                    <div class="itin-line">${line}</div>
-                </div>`;
-            }).join('') || '<div style="color:#64748b; padding:20px; text-align:center;">區間內無行程記錄</div>';
+                    ? r.stops.map((x, i) => `${i ? '<span class="itin-arrow">→<\/span>' : ''}<span class="itin-stop${x.depot ? ' depot' : ''}"><span class="t">${escapeHTML(x.t || '--:--')}<\/span><span class="r">${escapeHTML(x.r)}<\/span><\/span>`).join('')
+                    : '<span style="color:#475569; font-size:12px;">（當日無行程足跡）<\/span>';
+                return `<div class="itin-card"> <div class="itin-head"> <span class="d">${s.date}<\/span> <span><span class="drv">${escapeHTML(drv)}<\/span> <span class="plate">${escapeHTML(s.plate)}<\/span><\/span> <div class="itin-meta"> <span>上班 <b>${s.timeIn || '—'}<\/b><\/span> <span>下班 <b>${s.timeOut || '—'}<\/b><\/span> <span>站數 <b>${r.stopCount}<\/b><\/span> <span>重量 <b>${Math.round(r.weight).toLocaleString()}<\/b> kg<\/span> <span>里程 <b>${s.totalKm ? Math.round(s.totalKm) : '—'}<\/b> km<\/span> <span>油費 <b>${s.fuelAmt ? '$' + Math.round(s.fuelAmt).toLocaleString() : '—'}<\/b><\/span> <\/div> <span style="margin-left:auto;">${photoLinks(s)}<\/span> <\/div> <div class="itin-line">${line}<\/div> <\/div>`;
+            }).join('') || '<div style="color:#64748b; padding:20px; text-align:center;">區間內無行程記錄<\/div>';
         }
 
-        // ===== 運費統計 =====
+        /*  ===== 運費統計 ===== */
         function compactFreightFormula(detail) {
             if (!detail) return '--';
             return String(detail)
@@ -883,9 +1468,9 @@
                 .replace(/\[搬運費\$(\d+(?:\.\d+)?)\]/g, '搬運$1')
                 .replace(/\[貨運行折扣\(([^)]*)\)\s*(\d+)%\]/g, '貨運行($1)$2%')
                 .replace(/\s*\+\s*/g, '+')
-                .replace(/\s*=\s*總計\$/g, '=$')
+                .replace(/\s*=\s*總計\$/g, '=' + '$')
                 .replace(/\s*\*\s*/g, ' × ')
-                .replace(/折扣後總計\$/g, '折扣後=$');
+                .replace(/折扣後總計\$/g, '折扣後=' + '$');
         }
 
         function handleAdjustFreight(el) {
@@ -919,7 +1504,7 @@
         }
 
         let __lastFreightSets = { rawOrders: [], orders: [], schedule: [] };
-        // V41.42: 狀況判斷 (偏遠 / 久候 / 指定時間 / 搬運 / 貨運行)；旗標來自後端 isTimed/isWait/isCarry，舊快取沒有時退回公式字串判斷
+        /*  V41.42: 狀況判斷 (偏遠 / 久候 / 指定時間 / 搬運 / 貨運行)；旗標來自後端 isTimed/isWait/isCarry，舊快取沒有時退回公式字串判斷 */
         function condsOf(o) {
             const p = parseFeeParts(o.detail);
             const c = [];
@@ -933,9 +1518,9 @@
         function condBadges(o) {
             const c = condsOf(o);
             if (o.carrierFlag) c.push('貨運行');
-            return c.length ? c.map(x => `<span class="cond-badge" style="color:${COND_COLOR[x]}">${x}</span>`).join('') : '<span style="color:var(--text-dim)">—</span>';
+            return c.length ? c.map(x => `<span class="cond-badge" style="color:${COND_COLOR[x]}">${x}<\/span>`).join('') : '<span style="color:var(--text-dim)">—<\/span>';
         }
-        // 單數分類：一般 / 退貨 / 貨運行 / 偏遠 (一張單可同時屬於多類)
+        /*  單數分類：一般 / 退貨 / 貨運行 / 偏遠 (一張單可同時屬於多類) */
         function kindsOf(o) {
             const k = [];
             if (freightTypeOf(o) === '退貨') k.push('退貨'); else k.push('一般');
@@ -943,7 +1528,7 @@
             if (o.isRemote && o.isRemote !== '否') k.push('偏遠');
             return k;
         }
-        let freightCond = '';   // 方塊上點選的分類/狀況篩選 ('' = 不篩)
+        let freightCond = '';   /*  方塊上點選的分類/狀況篩選 ('' = 不篩) */
         function setFreightCond(c) { freightCond = (freightCond === c) ? '' : c; renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []); }
         function matchCond(o) {
             if (!freightCond) return true;
@@ -952,7 +1537,7 @@
         }
         function renderFreightStats() {
             const orders = __lastFreightSets.orders, schedule = __lastFreightSets.schedule;
-            const base = __lastFreightSets.typed || orders;   // 分類/狀況計數用「類型篩選後、方塊篩選前」的集合，數字才不會點了就消失
+            const base = __lastFreightSets.typed || orders;   /*  分類/狀況計數用「類型篩選後、方塊篩選前」的集合，數字才不會點了就消失 */
             const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
             const finalFreightTotal = orders.reduce((sum, o) => sum + feeOf(o), 0);
             const fuelAmt = schedule.reduce((sum, x) => sum + (x.fuelAmt||0), 0);
@@ -962,7 +1547,7 @@
 
             const cnt = {};
             base.forEach(o => { kindsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); condsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); });
-            const chip = k => `<span class="chip ${freightCond === k ? 'on' : ''}" onclick="setFreightCond('${k}')" style="${COND_COLOR[k] && freightCond !== k ? 'color:' + COND_COLOR[k] : ''}">${k}<b>${cnt[k] || 0}</b></span>`;
+            const chip = k => `<span class="chip ${freightCond === k ? 'on' : ''}" onclick="setFreightCond('${k}')" style="${COND_COLOR[k] && freightCond !== k ? 'color:' + COND_COLOR[k] : ''}">${k}<b>${cnt[k] || 0}<\/b><\/span>`;
             document.getElementById('chips-kind').innerHTML = ['一般', '退貨', '貨運行', '偏遠'].map(chip).join('');
             document.getElementById('chips-cond').innerHTML = ['久候', '搬運', '指定時間'].map(chip).join('');
             setText('stat-cond-count', base.filter(o => condsOf(o).some(c => c !== '偏遠')).length);
@@ -971,10 +1556,10 @@
             orders.forEach(o => { const n = o.customer || '(無名)'; byCust[n] = (byCust[n] || 0) + feeOf(o); });
             const top = Object.entries(byCust).sort((a, b) => b[1] - a[1]).slice(0, 3);
             document.getElementById('top-customers').innerHTML = top.length
-                ? top.map((t, i) => `<div class="top-cust"><span class="n">${i + 1}. ${escapeHTML(t[0])}</span><span class="v">$${Math.round(t[1]).toLocaleString()}<span style="color:var(--text-dim);font-weight:500;font-size:10px"> ${finalFreightTotal ? (t[1] / finalFreightTotal * 100).toFixed(0) : 0}%</span></span></div>`).join('')
-                : '<div style="color:var(--text-dim);font-size:12px">區間內無資料</div>';
+                ? top.map((t, i) => `<div class="top-cust"><span class="n">${i + 1}. ${escapeHTML(t[0])}<\/span><span class="v">$${Math.round(t[1]).toLocaleString()}<span style="color:var(--text-dim);font-weight:500;font-size:10px"> ${finalFreightTotal ? (t[1] / finalFreightTotal * 100).toFixed(0) : 0}%<\/span><\/span><\/div>`).join('')
+                : '<div style="color:var(--text-dim);font-size:12px">區間內無資料<\/div>';
         }
-        // 客戶佔比 (點客戶分析方塊)
+        /*  客戶佔比 (點客戶分析方塊) */
         function openCustomerShare() {
             const orders = __lastFreightSets.orders || [];
             const feeOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
@@ -988,13 +1573,13 @@
             });
             document.getElementById('drillTitle').innerText = '客戶運費佔比' + (freightType !== '全部' ? '｜' + freightType : '') + (freightCond ? '｜' + freightCond : '');
             document.getElementById('drillSub').innerText = '依目前分公司 / 類型 / 狀況篩選後的單據統計；點欄位標頭可排序';
-            document.getElementById('drillSummary').innerHTML = [['客戶數', rows.length], ['總單數', orders.length], ['總運費', '$' + Math.round(total).toLocaleString()]].map(s => `<span class="s">${s[0]}<b>${s[1]}</b></span>`).join('');
+            document.getElementById('drillSummary').innerHTML = [['客戶數', rows.length], ['總單數', orders.length], ['總運費', '$' + Math.round(total).toLocaleString()]].map(s => `<span class="s">${s[0]}<b>${s[1]}<\/b><\/span>`).join('');
             renderDrillTable();
             document.getElementById('drillMask').classList.add('open');
             document.getElementById('drillPanel').classList.add('open');
         }
 
-        // V41.40: 運費明細 類型篩選 + 欄位排序 (標題旁 降序/升序 按鈕 + 表頭點擊)
+        /*  V41.40: 運費明細 類型篩選 + 欄位排序 (標題旁 降序/升序 按鈕 + 表頭點擊) */
         let freightType = '全部';
         let freightSort = { key: 'date', dir: -1 };
         function setFreightType(t) {
@@ -1002,7 +1587,7 @@
             document.querySelectorAll('#freightTypeBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.type === t));
             updateDashboard();
         }
-        // 注意：__lastFreightSets 是 let 宣告，不會掛在 window 上；之前寫成 window.__lastFreightSets 永遠 undefined → 按了沒反應
+        /*  注意：__lastFreightSets 是 let 宣告，不會掛在 window 上；之前寫成 window.__lastFreightSets 永遠 undefined → 按了沒反應 */
         function setFreightSortDir(dir) {
             freightSort.dir = dir;
             syncSortDirBtns();
@@ -1025,6 +1610,51 @@
             syncSortDirBtns();
             renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
         }
+        function toggleSelectAllMainRows(cb) {
+            const isChecked = cb.checked;
+            document.querySelectorAll('.main-row-cb').forEach(el => { el.checked = isChecked; });
+            updateMainBatchBar();
+        }
+
+        function updateMainBatchBar() {
+            const checkedCbs = document.querySelectorAll('.main-row-cb:checked');
+            const count = checkedCbs.length;
+            const bar = document.getElementById('mainTableBatchBar');
+            const cntSpan = document.getElementById('mainBatchSelectedCount');
+            if (cntSpan) cntSpan.innerText = count;
+            if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+        }
+
+        function submitMainBatchDocTypeChoice(docType) {
+            const checkedCbs = document.querySelectorAll('.main-row-cb:checked');
+            if (!checkedCbs.length) { notify('請先勾選要批次改判的單據', true); return; }
+            const items = Array.from(checkedCbs).map(cb => ({
+                id: cb.dataset.id,
+                branch: cb.dataset.branch,
+                docType: docType
+            }));
+
+            ask(`確定將選取的 ${items.length} 筆單據批次改判為「${docType || '依規則判定'}」？`, () => {
+                google.script.run.withSuccessHandler(res => {
+                    if (res && res.success) {
+                        items.forEach(it => {
+                            const o = rawData.orders.find(x => String(x.id) === String(it.id) && x.branch === it.branch);
+                            if (o) {
+                                o.docTypeManual = docType;
+                                if (docType === '樣品收費') { o.docType = '樣品'; o.sampleTo = 'out'; }
+                                else if (docType === '樣品免費') { o.docType = '樣品'; o.sampleTo = 'home'; }
+                                else if (docType) { o.docType = docType; o.sampleTo = ''; }
+                                else { o.docType = '銷貨'; o.sampleTo = ''; }
+                                o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
+                            }
+                        });
+                        notify(res.message || `✅ 已批次修改 ${items.length} 筆單據！`);
+                        updateDashboard();
+                    } else notify('批次改判失敗：' + ((res && res.error) || ''), true);
+                }).withFailureHandler(err => notify('批次改判失敗：' + err.message, true)).batchSetDocTypeOverride_V42(items, ATOKEN());
+            });
+        }
+
         function freightTypeOf(o) {
             if (o.docType === '退貨' || (o.status && o.status.indexOf('退貨') !== -1) || (o.shippingType && o.shippingType.indexOf('退貨') !== -1) || (o.customer && o.customer.indexOf('退貨') !== -1) || (o.returnReason && o.returnReason !== '')) return '退貨';
             if (o.docType === '樣品') return o.sampleTo === 'home' ? '樣品免費' : '樣品收費';
@@ -1032,7 +1662,7 @@
         }
         function renderFreight(rawOrders, schedule) {
             const typed = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
-            const orders = typed.filter(matchCond);   // 方塊上點的分類 / 狀況
+            const orders = typed.filter(matchCond);   /*  方塊上點的分類 / 狀況 */
             __lastFreightSets = { rawOrders, typed, orders, schedule };
             renderFreightStats();
             syncSortDirBtns();
@@ -1060,51 +1690,42 @@
             tableBody.innerHTML = orders.slice().sort(cmp).map(o => {
                 const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
                 const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
-                    ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">🚛 ${escapeHTML(o.carrierFlag)}</span>`
+                    ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">${escapeHTML(o.carrierFlag)}<\/span>`
                     : '';
-                // V41.43: 標籤滑過顯示「為什麼這樣判」(o.docWhy 由後端 _classifyDocTypeWhy_ 給)；點標籤可改判
+                /*  V41.43: 標籤滑過顯示「為什麼這樣判」(o.docWhy 由後端 _classifyDocTypeWhy_ 給)；點標籤開啟類型切換選單 */
                 const why = escapeHTML(o.docWhy || '');
-                const act = `style="font-size:10px; cursor:pointer;" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','銷貨')"`;
+                const act = `style="font-size:10px; cursor:pointer;" onclick="event.stopPropagation(); openDocTypeSelectModal('${escapeHTML(o.id)}','${escapeHTML(o.branch)}')"`;
                 const typeBadge = o.docType === '樣品'
-                    ? (o.sampleTo === 'home' ? ` <span class="badge badge-warn" ${act} title="樣品送回公司：不計費。判定原因：${why}。點一下改為一般銷貨">樣品免費</span>`
-                                             : ` <span class="badge badge-info" ${act} title="樣品送到外面 (貨運行/加工廠/客戶)：照常計費。判定原因：${why}。點一下改為一般銷貨">樣品收費</span>`)
-                    : (o.docType === '退貨' ? ` <span class="badge badge-danger" ${act} title="判定原因：${why}。點一下改為一般銷貨">退貨</span>` : '');
+                    ? (o.sampleTo === 'home' ? ` <span class="badge badge-warn" ${act} title="樣品送回公司：不計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品免費<\/span>`
+                                             : ` <span class="badge badge-info" ${act} title="樣品送到外場：照常計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品收費<\/span>`)
+                    : (o.docType === '退貨' ? ` <span class="badge badge-danger" ${act} title="判定原因：${why}。點擊開啟單據類型選擇選單">退貨<\/span>`
+                                             : ` <span class="badge" ${act} style="background:rgba(255,255,255,0.06); color:#94a3b8; font-size:10px; cursor:pointer;" title="一般銷貨。點擊開啟單據類型選擇選單">銷貨<\/span>`);
                 const rawImg = o.thumbnail || o.signPhoto;
                 let fixUrl = '';
                 if (rawImg) {
                     const u = String(rawImg).trim();
                     const m = u.match(/[-\w]{25,}/);
                     if (m && (u.includes('drive.google.com') || u.includes('docs.google.com'))) {
-                        fixUrl = 'https://lh3.googleusercontent.com/d/' + m[0];
+                        /* V41.56: 部署管線會吃掉字串內 // 之後的行尾，URL 拆兩段串接 */
+                        fixUrl = 'https:/' + '/lh3.googleusercontent.com/d/' + m[0];
                     } else {
                         fixUrl = u;
                     }
                 }
-                // V41.41: 縮圖不另開欄位，單號本身就是連結 (有圖才可點，開大圖預覽)
+                /*  V41.41: 縮圖不另開欄位，單號本身就是連結 (有圖才可點，開大圖預覽) */
                 const idCell = fixUrl
-                    ? `<a href="javascript:void(0)" onclick="showThumb('${escapeHTML(fixUrl)}')" title="點擊開啟銷貨單照片大圖" style="color:var(--accent); font-weight:700; text-decoration:underline dotted; text-underline-offset:3px;">${escapeHTML(o.id)} <i class="fas fa-image" style="font-size:10px; opacity:.7;"></i></a>`
-                    : `<span style="font-weight:700;">${escapeHTML(o.id)}</span>`;
+                    ? `<a href="javascript:void(0)" onclick="showThumb('${escapeHTML(fixUrl)}')" title="點擊開啟銷貨單照片大圖" style="color:var(--accent); font-weight:700; text-decoration:underline dotted; text-underline-offset:3px;">${escapeHTML(o.id)} <i class="fas fa-image" style="font-size:10px; opacity:.7;"></i><\/a>`
+                    : `<span style="font-weight:700;">${escapeHTML(o.id)}<\/span>`;
 
-                const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}</span>`;
-                const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}"
-                    style="width:76px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;"
-                    onchange="handleAdjustFreight(this)">`;
-                return `
-                    <tr>
-                        <td style="white-space:nowrap;">${o.date}</td>
-                        <td style="white-space:nowrap;">${idCell}</td>
-                        <td>${branchTag(o.branch)}</td>
-                        <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}</td>
-                        <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg</span></td>
-                        <td>${condBadges(o)}</td>
-                        <td>$${o.estFee}</td>
-                        <td>${formulaCell}</td>
-                        <td>${feeInput}</td>
-                    </tr>`;
-            }).join('') || '<tr><td colspan="9" style="text-align:center; color:#64748b;">區間內無運費單據</td></tr>';
+                const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}<\/span>`;
+                const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" style="width:76px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;" onchange="handleAdjustFreight(this)">`;
+                const cbTd = `<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="main-row-cb" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" onchange="updateMainBatchBar()"><\/td>`;
+                return ` <tr> ${cbTd} <td style="white-space:nowrap;">${o.date}<\/td> <td style="white-space:nowrap;">${idCell}<\/td> <td>${branchTag(o.branch)}<\/td> <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}<\/td> <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg<\/span><\/td> <td>${condBadges(o)}<\/td> <td>$${o.estFee}<\/td> <td>${formulaCell}<\/td> <td>${feeInput}<\/td> <\/tr>`;
+            }).join('') || '<tr><td colspan="10" style="text-align:center; color:#64748b;">區間內無運費單據<\/td><\/tr>';
+            updateMainBatchBar();
         }
 
-        // ===== 明細面板 (點卡片數字) =====
+        /*  ===== 明細面板 (點卡片數字) ===== */
         let drillState = { rows: [], cols: [], sortKey: '', sortDir: -1, kind: '', branch: '' };
         const brOfOrder = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
         function baseOrdersForDrill() {
@@ -1122,7 +1743,7 @@
             let rows = [], cols = [], title = '', sub = '', summary = [];
             const shortDate = d => String(d || '').replace(/^20(\d\d)\/0?(\d+)\/0?(\d+)$/, '$1/$2/$3');
             const feeCell = (v, o) => {
-                if (o.isSample) return '<span style="color:#fbbf24;">免費</span>';
+                if (o.isSample) return '<span style="color:#fbbf24;">免費<\/span>';
                 const p = parseFeeParts(o.detail);
                 let color = '#e2e8f0', why = [];
                 if (o.adjustedFee > 0) { color = '#22c55e'; why.push('人工核定'); }
@@ -1130,15 +1751,15 @@
                 if (p.remote) { color = '#fbbf24'; why.push('偏遠加乘'); }
                 if (p.timed) { color = '#38bdf8'; why.push('指定時間'); }
                 if (p.wait || p.carry) { color = '#c084fc'; why.push(p.wait ? '等候超時' : '搬運費'); }
-                return `<span style="color:${color}; font-weight:700;" title="${why.join('、') || '一般'}">$${Math.round(v).toLocaleString()}</span>${why.length ? `<div style="font-size:9px; color:${color}; opacity:0.85;">${why.join('·')}</div>` : ''}`;
+                return `<span style="color:${color}; font-weight:700;" title="${why.join('、') || '一般'}">$${Math.round(v).toLocaleString()}<\/span>${why.length ? `<div style="font-size:9px; color:${color}; opacity:0.85;">${why.join('·')}<\/div>` : ''}`;
             };
-            const thumbCell = (v, o) => o.thumbnail ? `<button class="mini-btn" onclick="event.stopPropagation(); showThumb('${escapeHTML(o.thumbnail)}')">📄 縮圖</button>` : '<span style="color:#475569">—</span>';
+            const thumbCell = (v, o) => o.thumbnail ? `<button class="mini-btn" onclick="event.stopPropagation(); showThumb('${escapeHTML(o.thumbnail)}')">縮圖<\/button>` : '<span style="color:#475569">—<\/span>';
             const colBase = [
                 { k: 'date', n: '日期', fmt: shortDate }, { k: 'id', n: '單號' }, { k: 'customer', n: '客戶' }, { k: 'address', n: '地址', w: 220 },
                 { k: 'weight', n: '重量(kg)', num: true }, { k: 'fee', n: '運費', num: true, fmtRow: feeCell, html: true },
                 { k: 'plate', n: '司機', fmt: v => plateLabel(v) }, { k: '_thumb', n: '銷貨單', fmtRow: thumbCell, html: true }
             ];
-            // 免費樣品 (送回公司) 運費一律 0
+            /*  免費樣品 (送回公司) 運費一律 0 */
             const withFee = list => list.map(o => Object.assign({}, o, { fee: o.isSample ? 0 : feeOfOrder(o) }));
             if (kind === 'orders') {
                 rows = withFee(bo.filter(o => !o.isSample || includeSamples())); cols = colBase.concat([{ k: 'docType', n: '類型', fmt: v => v || '銷貨' }, { k: '_act', n: '' }]);
@@ -1151,7 +1772,7 @@
                 const byCust = {}; rows.forEach(o => { byCust[o.customer] = (byCust[o.customer] || 0) + o.fee; });
                 const top = Object.entries(byCust).sort((a, b) => b[1] - a[1]).slice(0, 10);
                 summary = [['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()], ['基本運費', '$' + Math.round(parts.base).toLocaleString()], ['指定時間', '$' + Math.round(parts.timed).toLocaleString()], ['等候超時', '$' + Math.round(parts.wait).toLocaleString()], ['搬運費', '$' + Math.round(parts.carry).toLocaleString()], ['偏遠單數', parts.remoteN],
-                    ['運費顏色', '<span style="color:#22c55e">核定</span> <span style="color:#f97316">貨運行折扣</span> <span style="color:#fbbf24">偏遠</span> <span style="color:#38bdf8">指定時間</span> <span style="color:#c084fc">等候/搬運</span>']];
+                    ['運費顏色', '<span style="color:#22c55e">核定<\/span> <span style="color:#f97316">貨運行折扣<\/span> <span style="color:#fbbf24">偏遠<\/span> <span style="color:#38bdf8">指定時間<\/span> <span style="color:#c084fc">等候/搬運<\/span>']];
                 sub = '前 10 大客戶：' + top.map(t => t[0] + ' $' + Math.round(t[1]).toLocaleString()).join('｜');
             } else if (kind === 'compare') {
                 const list = all.filter(o => !o.isSample || includeSamples());
@@ -1171,40 +1792,178 @@
                 rows = withFee(bo.filter(o => o.docType === '退貨')); cols = colBase.concat([{ k: 'returnReason', n: '退回原因', w: 180 }]);
                 title = branch + '｜退貨'; drillState.sortKey = 'date';
                 summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            } else if (kind === 'forklift') {
+                rows = withFee(rawData.orders.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== ""));
+                cols = colBase.concat([{ k: 'carrierFlag', n: '貨運行/下貨標示' }]);
+                title = (branch || '全公司') + '｜堆高機下貨訂單明細'; drillState.sortKey = 'date';
+                sub = '勾選/標示貨運行之堆高機下貨單據明細';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg'], ['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]];
+            } else if (kind === 'manual') {
+                rows = withFee(rawData.orders.filter(o => !o.carrierFlag || String(o.carrierFlag).trim() === ""));
+                cols = colBase;
+                title = (branch || '全公司') + '｜手動搬運下貨訂單明細'; drillState.sortKey = 'date';
+                sub = '一般司機人工手動搬運下貨之單據明細';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg'], ['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]];
+            } else if (kind === 'driverForklift') {
+                const drvName = branch;
+                const vm = rawData.vehicleMap || {};
+                rows = withFee(rawData.orders.filter(o => (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName)) && o.carrierFlag && String(o.carrierFlag).trim() !== ""));
+                cols = colBase.concat([{ k: 'carrierFlag', n: '貨運行/下貨標示' }]);
+                title = drvName + ' 司機｜堆高機下貨單據明細'; drillState.sortKey = 'date';
+                sub = '該司機指送貨運行/堆高機下貨之單據明細';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            } else if (kind === 'driverManual') {
+                const drvName = branch;
+                const vm = rawData.vehicleMap || {};
+                rows = withFee(rawData.orders.filter(o => (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName)) && (!o.carrierFlag || String(o.carrierFlag).trim() === "")));
+                cols = colBase;
+                title = drvName + ' 司機｜手動搬運下貨單據明細'; drillState.sortKey = 'date';
+                sub = '該司機人工手動搬運下貨之單據明細';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            } else if (kind === 'driverAll') {
+                const drvName = branch;
+                const vm = rawData.vehicleMap || {};
+                rows = withFee(rawData.orders.filter(o => (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName))));
+                cols = colBase.concat([{ k: 'carrierFlag', n: '下貨模式', fmt: v => v ? '堆高機下貨 (' + v + ')' : '手動搬運' }]);
+                title = drvName + ' 司機｜個人全單載貨明細'; drillState.sortKey = 'date';
+                sub = '該司機在篩選區間內的所有出貨單據明細';
+                summary = [['單數', rows.length], ['總載重', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            } else if (kind === 'driverInternal') {
+                const drvName = branch;
+                const vm = rawData.vehicleMap || {};
+                rows = withFee(rawData.orders.filter(o => checkIsSample(o) && (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName))));
+                cols = colBase.concat([{ k: 'sampleTo', n: '類型', fmt: v => (v === 'home' ? '內部運輸/載回公司' : '免費樣品') }]);
+                title = drvName + ' 司機｜內部運輸與免費樣品單據'; drillState.sortKey = 'date';
+                sub = '載回鶯歌倉、永安倉、安帝嘉、喜悅納、漢樺、倉內調貨與免費樣品單據（獨立統計，不計入客戶配送單量與運費獎金）';
+                summary = [['筆數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg']];
+            } else if (kind === 'driverBonus') {
+                const drvName = branch;
+                const vm = rawData.vehicleMap || {};
+                const drvOrders = rawData.orders.filter(o => !checkIsSample(o) && (o.plate === drvName || (vm[o.plate] === drvName) || (o.driver === drvName)));
+                rows = withFee(drvOrders);
+                cols = colBase.concat([{ k: 'carrierFlag', n: '下貨模式', fmt: v => v ? '堆高機下貨 (' + v + ')' : '手動搬運' }]);
+                
+                const cfg = getBonusConfig();
+                const drvQuota = (cfg.quotas && cfg.quotas[drvName] !== undefined) ? cfg.quotas[drvName] : 20;
+
+                title = drvName + ' 司機｜配送獎金試算明細'; drillState.sortKey = 'date';
+                sub = `每單獎金 $${cfg.perOrderFee}/單 ＋ 超額重量 $${cfg.perTonFee}/噸 (個人額度底限 ${drvQuota} 噸/月)`;
+                summary = [['客戶配送單數', rows.length + ' 單'], ['單量獎金試算', '$' + Math.round(rows.length * cfg.perOrderFee).toLocaleString()]];
             }
             drillState = Object.assign(drillState, { rows, cols, kind, branch, sortDir: -1 });
             document.getElementById('drillTitle').innerText = title;
             document.getElementById('drillSub').innerText = sub;
-            document.getElementById('drillSummary').innerHTML = summary.map(s => `<span class="s">${s[0]}<b>${s[1]}</b></span>`).join('');
+            document.getElementById('drillSummary').innerHTML = summary.map(s => `<span class="s">${s[0]}<b>${s[1]}<\/b><\/span>`).join('');
             renderDrillTable();
             document.getElementById('drillMask').classList.add('open');
             document.getElementById('drillPanel').classList.add('open');
         }
+        function toggleSelectAllDrillRows(cb) {
+            const isChecked = cb.checked;
+            document.querySelectorAll('.drill-row-cb').forEach(el => { el.checked = isChecked; });
+            updateDrillBatchBar();
+        }
+
+        function updateDrillBatchBar() {
+            const checkedCbs = document.querySelectorAll('.drill-row-cb:checked');
+            const count = checkedCbs.length;
+            const bar = document.getElementById('drillBatchBar');
+            const cntSpan = document.getElementById('batchSelectedCount');
+            if (cntSpan) cntSpan.innerText = count;
+            if (bar) bar.style.display = count > 0 ? 'flex' : 'none';
+        }
+
+        function submitBatchDocTypeChoice(docType) {
+            const checkedCbs = document.querySelectorAll('.drill-row-cb:checked');
+            if (!checkedCbs.length) { notify('請先勾選要批次改判的單據', true); return; }
+            const items = Array.from(checkedCbs).map(cb => ({
+                id: cb.dataset.id,
+                branch: cb.dataset.branch,
+                docType: docType
+            }));
+
+            ask(`確定將選取的 ${items.length} 筆單據批次改判為「${docType || '依規則判定'}」？`, () => {
+                google.script.run.withSuccessHandler(res => {
+                    if (res && res.success) {
+                        items.forEach(it => {
+                            const o = rawData.orders.find(x => String(x.id) === String(it.id) && x.branch === it.branch);
+                            if (o) {
+                                o.docTypeManual = docType;
+                                if (docType === '樣品收費') { o.docType = '樣品'; o.sampleTo = 'out'; }
+                                else if (docType === '樣品免費') { o.docType = '樣品'; o.sampleTo = 'home'; }
+                                else if (docType) { o.docType = docType; o.sampleTo = ''; }
+                                else { o.docType = '銷貨'; o.sampleTo = ''; }
+                                o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
+                            }
+                        });
+                        notify(res.message || `✅ 已批次修改 ${items.length} 筆單據！`);
+                        updateDashboard();
+                        openDrill(drillState.kind, drillState.branch);
+                    } else notify('批次改判失敗：' + ((res && res.error) || ''), true);
+                }).withFailureHandler(err => notify('批次改判失敗：' + err.message, true)).batchSetDocTypeOverride_V42(items, ATOKEN());
+            });
+        }
+
         function closeDrill() { document.getElementById('drillMask').classList.remove('open'); document.getElementById('drillPanel').classList.remove('open'); }
         function drillSort(k) { if (drillState.sortKey === k) drillState.sortDir *= -1; else { drillState.sortKey = k; drillState.sortDir = -1; } renderDrillTable(); }
         function renderDrillTable() {
             const { rows, cols, sortKey, sortDir, kind } = drillState;
             const sorted = rows.slice().sort((a, b) => { const x = a[sortKey], y = b[sortKey]; if (typeof x === 'number' || typeof y === 'number') return ((x || 0) - (y || 0)) * sortDir; return String(x || '').localeCompare(String(y || '')) * sortDir; });
-            document.querySelector('#drillTable thead').innerHTML = '<tr>' + cols.map(c => `<th onclick="${c.k === '_act' ? '' : `drillSort('${c.k}')`}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${c.n}${sortKey === c.k ? (sortDir < 0 ? ' ▼' : ' ▲') : ''}</th>`).join('') + '</tr>';
-            const btn = (o, t, label) => `<button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','${t}')">${label}</button>`;
-            const resetBtn = o => o.docTypeManual ? ` <button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','')" title="清除人工判定，回到規則">↺</button>` : '';
+            const cbHeader = `<th style="width:32px; text-align:center;"><input type="checkbox" id="selectAllDrillRows" onchange="toggleSelectAllDrillRows(this)"><\/th>`;
+            document.querySelector('#drillTable thead').innerHTML = '<tr>' + cbHeader + cols.map(c => `<th onclick="${c.k === '_act' ? '' : `drillSort('${c.k}')`}" ${c.w ? `style="min-width:${c.w}px"` : ''}>${c.n}${sortKey === c.k ? (sortDir < 0 ? ' ▼' : ' ▲') : ''}<\/th>`).join('') + '<\/tr>';
+            const btn = (o, t, label) => `<button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','${t}')">${label}<\/button>`;
+            const resetBtn = o => o.docTypeManual ? ` <button class="mini-btn" onclick="event.stopPropagation(); overrideDocType('${escapeHTML(o.id)}','${escapeHTML(o.branch)}','')" title="清除人工判定，回到規則">↺<\/button>` : '';
             const actBtns = o => {
                 if (kind === 'orders') return (o.docType === '樣品' ? '' : btn(o, '樣品收費', '改為收費樣品') + ' ' + btn(o, '樣品免費', '改為免費樣品')) + resetBtn(o);
                 if (kind === 'sampleFree') return btn(o, '樣品收費', '改為收費樣品') + ' ' + btn(o, '銷貨', '改為正常單') + resetBtn(o);
                 if (kind === 'samplePaid') return btn(o, '樣品免費', '改為免費樣品') + ' ' + btn(o, '銷貨', '改為正常單') + resetBtn(o);
                 return '';
             };
-            document.querySelector('#drillTable tbody').innerHTML = sorted.map(o => `<tr class="row-click" onclick="drillRowClick(${JSON.stringify(String(o.id || '')).replace(/"/g, '&quot;')})">` + cols.map(c => {
-                if (c.k === '_act') return `<td>${actBtns(o)}</td>`;
-                const v = o[c.k]; const txt = c.fmtRow ? c.fmtRow(v, o) : (c.fmt ? c.fmt(v) : (v === undefined || v === null ? '' : v));
-                return `<td ${c.num ? 'style="text-align:right;white-space:nowrap;"' : ''}>${c.html ? txt : escapeHTML(txt)}${(c.k === 'id' && o.docTypeManual) ? ' <span class="badge badge-info" style="font-size:9px;" title="人工判定">人工</span>' : ''}</td>`;
-            }).join('') + '</tr>').join('') || '<tr><td colspan="12" style="text-align:center;color:#64748b;">無資料</td></tr>';
+            document.querySelector('#drillTable tbody').innerHTML = sorted.map(o => {
+                let rowBg = '';
+                if (checkIsSample(o)) {
+                    rowBg = 'background: rgba(234, 179, 8, 0.15) !important;'; // 黃色醒目高亮：內部運輸/載回公司
+                } else if (o.carrierFlag && String(o.carrierFlag).trim() !== "") {
+                    rowBg = 'background: rgba(56, 189, 248, 0.15) !important;'; // 藍色醒目高亮：指送貨運行/堆高機
+                }
+                const cbTd = `<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="drill-row-cb" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" onchange="updateDrillBatchBar()"><\/td>`;
+                return `<tr class="row-click" style="${rowBg}" onclick="drillRowClick('${escapeHTML(o.id || '')}')">` + cbTd + cols.map(c => {
+                    if (c.k === '_act') return `<td>${actBtns(o)}<\/td>`;
+                    const v = o[c.k]; const txt = c.fmtRow ? c.fmtRow(v, o) : (c.fmt ? c.fmt(v) : (v === undefined || v === null ? '' : v));
+                    return `<td ${c.num ? 'style="text-align:right;white-space:nowrap;"' : ''}>${c.html ? txt : escapeHTML(txt)}${(c.k === 'id' && o.docTypeManual) ? ' <span class="badge badge-info" style="font-size:9px;" title="人工判定">人工<\/span>' : ''}<\/td>`;
+                }).join('') + '<\/tr>';
+            }).join('') || '<tr><td colspan="12" style="text-align:center;color:#64748b;">無資料<\/td><\/tr>';
+            updateDrillBatchBar();
         }
         function showThumb(url) { document.getElementById('lightboxImg').src = url; document.getElementById('lightbox').classList.add('open'); }
         function drillRowClick(id) {
             const o = rawData.orders.find(x => String(x.id) === String(id));
             if (o && o.thumbnail) showThumb(o.thumbnail);
         }
+        let targetDocTypeTaskId = '';
+        let targetDocTypeBranch = '';
+
+        function openDocTypeSelectModal(id, branch) {
+            targetDocTypeTaskId = id;
+            targetDocTypeBranch = branch;
+            const el = document.getElementById('dtModalId');
+            if (el) el.innerText = id;
+            const m = document.getElementById('docTypeMask');
+            if (m) m.classList.add('open');
+        }
+
+        function closeDocTypeModal() {
+            const m = document.getElementById('docTypeMask');
+            if (m) m.classList.remove('open');
+        }
+
+        function submitDocTypeChoice(type) {
+            closeDocTypeModal();
+            if (targetDocTypeTaskId) {
+                overrideDocTypeDo(targetDocTypeTaskId, targetDocTypeBranch, type);
+            }
+        }
+
         function overrideDocType(id, branch, docType) {
             ask(`確定將 ${id} 改判為「${docType || '依規則判定'}」？`, () => overrideDocTypeDo(id, branch, docType));
         }
@@ -1221,7 +1980,6 @@
                         o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
                     }
                     notify(res.message); updateDashboard(); openDrill(drillState.kind, drillState.branch);
-                    fetchData(true);
                 } else notify('改判失敗：' + ((res && res.error) || ''), true);
             }).withFailureHandler(err => notify('改判失敗：' + err.message, true)).setDocTypeOverride_V41(id, branch, docType, ATOKEN());
         }
@@ -1241,11 +1999,11 @@
             setTimeout(() => URL.revokeObjectURL(url), 5000);
         }
 
-        // ===== 運費設定視窗 =====
+        /*  ===== 運費設定視窗 ===== */
         let cfgState = { weightSlabs: [], remoteAreas: [], addonFees: [] };
         function openFreightSettings() {
             document.getElementById('cfgMask').classList.add('open');
-            document.getElementById('cfgSlabs').innerHTML = '<div style="color:var(--text-dim)">載入中…</div>';
+            document.getElementById('cfgSlabs').innerHTML = '<div style="color:var(--text-dim)">載入中…<\/div>';
             google.script.run.withSuccessHandler(res => {
                 if (!res || !res.success) { notify('讀取設定失敗：' + ((res && res.error) || ''), true); closeFreightSettings(); return; }
                 cfgState = { weightSlabs: res.weightSlabs || [], remoteAreas: res.remoteAreas || [], addonFees: res.addonFees || [] };
@@ -1255,12 +2013,9 @@
         }
         function closeFreightSettings() { document.getElementById('cfgMask').classList.remove('open'); }
         function renderCfg() {
-            document.getElementById('cfgSlabs').innerHTML = cfgState.weightSlabs.map((s, i) => `
-                <div class="cfg-row"><span style="color:var(--text-dim);font-size:11px;">≤</span><input type="number" placeholder="重量上限 kg" value="${s.maxKg}" oninput="cfgState.weightSlabs[${i}].maxKg=this.value"><span style="color:var(--text-dim);font-size:11px;">kg $</span><input type="number" placeholder="費用" value="${s.fee}" oninput="cfgState.weightSlabs[${i}].fee=this.value"><button class="del" onclick="cfgDel('slab',${i})">×</button></div>`).join('');
-            document.getElementById('cfgRemote').innerHTML = cfgState.remoteAreas.map((a, i) => `
-                <div class="cfg-row"><input type="text" placeholder="關鍵字，逗號分隔" value="${escapeHTML(a.keywords)}" oninput="cfgState.remoteAreas[${i}].keywords=this.value"><span style="color:var(--text-dim);font-size:11px;">×</span><input type="number" step="0.1" style="max-width:70px" value="${a.multiplier}" oninput="cfgState.remoteAreas[${i}].multiplier=this.value"><button class="del" onclick="cfgDel('remote',${i})">×</button></div>`).join('');
-            document.getElementById('cfgAddons').innerHTML = cfgState.addonFees.map((a, i) => `
-                <div class="cfg-row"><input type="text" placeholder="項目" value="${escapeHTML(a.item)}" oninput="cfgState.addonFees[${i}].item=this.value"><span style="color:var(--text-dim);font-size:11px;">$</span><input type="number" style="max-width:90px" value="${a.rate}" oninput="cfgState.addonFees[${i}].rate=this.value"><button class="del" onclick="cfgDel('addon',${i})">×</button></div>`).join('');
+            document.getElementById('cfgSlabs').innerHTML = cfgState.weightSlabs.map((s, i) => ` <div class="cfg-row"><span style="color:var(--text-dim);font-size:11px;">≤<\/span><input type="number" placeholder="重量上限 kg" value="${s.maxKg}" oninput="cfgState.weightSlabs[${i}].maxKg=this.value"><span style="color:var(--text-dim);font-size:11px;">kg $<\/span><input type="number" placeholder="費用" value="${s.fee}" oninput="cfgState.weightSlabs[${i}].fee=this.value"><button class="del" onclick="cfgDel('slab',${i})">×<\/button><\/div>`).join('');
+            document.getElementById('cfgRemote').innerHTML = cfgState.remoteAreas.map((a, i) => ` <div class="cfg-row"><input type="text" placeholder="關鍵字，逗號分隔" value="${escapeHTML(a.keywords)}" oninput="cfgState.remoteAreas[${i}].keywords=this.value"><span style="color:var(--text-dim);font-size:11px;">×<\/span><input type="number" step="0.1" style="max-width:70px" value="${a.multiplier}" oninput="cfgState.remoteAreas[${i}].multiplier=this.value"><button class="del" onclick="cfgDel('remote',${i})">×<\/button><\/div>`).join('');
+            document.getElementById('cfgAddons').innerHTML = cfgState.addonFees.map((a, i) => ` <div class="cfg-row"><input type="text" placeholder="項目" value="${escapeHTML(a.item)}" oninput="cfgState.addonFees[${i}].item=this.value"><span style="color:var(--text-dim);font-size:11px;">$<\/span><input type="number" style="max-width:90px" value="${a.rate}" oninput="cfgState.addonFees[${i}].rate=this.value"><button class="del" onclick="cfgDel('addon',${i})">×<\/button><\/div>`).join('');
         }
         function cfgAddRow(kind) {
             if (kind === 'slab') cfgState.weightSlabs.push({ maxKg: '', fee: '' });
@@ -1285,7 +2040,7 @@
               .saveFreightSettings_V41(cfgState, ATOKEN());
         }
 
-        // 環圈圖：扇形內寫數值與百分比、中央寫總計 (Chart.js 沒有內建，自行繪製)
+        /*  環圈圖：扇形內寫數值與百分比、中央寫總計 (Chart.js 沒有內建，自行繪製) */
         const arcLabelPlugin = {
             id: 'arcLabels',
             afterDatasetsDraw(chart, args, pluginOpts) {
@@ -1301,7 +2056,7 @@
                     const v = Number(data[i]) || 0;
                     if (!v || !total) return;
                     const pct = v / total * 100;
-                    if (pct < 4) return; // 太小的扇形不寫，避免重疊
+                    if (pct < 4) return; /*  太小的扇形不寫，避免重疊 */
                     const angle = (arc.startAngle + arc.endAngle) / 2;
                     const r = (arc.innerRadius + arc.outerRadius) / 2;
                     const x = arc.x + Math.cos(angle) * r, y = arc.y + Math.sin(angle) * r;
@@ -1345,10 +2100,25 @@
                 }
             });
         }
+        function changeWeightPeriod(period) {
+            currentWeightPeriod = period;
+            document.querySelectorAll('.weight-period-select').forEach(sel => sel.value = period);
+            updateDashboard();
+        }
 
         function escapeHTML(s) {
-            return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            return String(s === undefined || s === null ? '' : s).replace(/[&<>"'\r\n\\]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','\r':'','\n':' ','\\':'&#92;'}[c]));
         }
     </script>
+
+<?!= include('GoogleLogin'); ?>
+<script>
+    if (window.TTSGoogle) TTSGoogle.resume({ app: 'analytics', onSuccess: function (res) {
+        setAdminToken(res.token);
+        TTSGoogle.showMe(document.getElementById('meSlot'), res);
+        var b = document.getElementById('whLoginBox'); if (b) b.remove();
+        if (window.__whAfterLogin) window.__whAfterLogin(); else location.reload();
+    } });
+</script>
 </body>
 </html>

@@ -1,6 +1,74 @@
 <!DOCTYPE html>
 <html>
 <head>
+<script>
+  /* V43.25 登入資料保管 (本檔內容直接寫在 Index/Dashboard/WebDashboard/Warehouse 的 <head>：<head> 裡的 include 會被 HtmlService 移除，改這段要四頁一起改)
+     iPhone 主畫面 App／LINE 會清掉這個 iframe (第三方) 的儲存，關掉 App 再開就要重登。
+     → 登入相關的 localStorage 一寫入就同步一份到 bigt.cc 外殼頁 (第一方，不會被清)；
+       打開時先向外殼頁拿回來，頁面的 window.onload 等拿到 (最多 0.4 秒) 才開始跑 → 只載入一次就是已登入。
+       萬一超過 0.4 秒才拿到，才蓋住畫面請外殼頁重新載入一次。注意：網址拆開寫 (GAS 會截斷兩個斜線)。 */
+  (function () {
+    var KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/;
+    var ORIGIN = 'https:' + '/' + '/bigt.cc';
+    var embedded = window.top !== window;
+    function post(m) { try { if (embedded) window.top.postMessage(m, ORIGIN); } catch (e) { } }
+
+    var ready = !embedded, waiters = [];
+    window.ttsVaultReady = function (cb) { if (ready) cb(); else waiters.push(cb); };
+    function markReady() {
+      if (ready) return;
+      ready = true;
+      var w = waiters; waiters = [];
+      w.forEach(function (f) { try { f(); } catch (e) { setTimeout(function () { throw e; }); } });
+    }
+    if (!ready) setTimeout(markReady, 400);
+
+    /* 頁面設定的 window.onload 改成「等登入資料拿回來」再執行 */
+    try {
+      var od = Object.getOwnPropertyDescriptor(window, 'onload') || Object.getOwnPropertyDescriptor(Window.prototype, 'onload');
+      if (embedded && od && od.set && od.get) {
+        Object.defineProperty(window, 'onload', {
+          configurable: true,
+          get: function () { return od.get.call(window); },
+          set: function (fn) { od.set.call(window, typeof fn === 'function' ? function (ev) { var self = this; window.ttsVaultReady(function () { fn.call(self, ev); }); } : fn); }
+        });
+      }
+    } catch (e) { }
+
+    var S, oset, odel;
+    try {
+      S = Storage.prototype; oset = S.setItem; odel = S.removeItem;
+      S.setItem = function (k, v) { oset.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-set', k: k, v: String(v) }); } catch (e) { } };
+      S.removeItem = function (k) { odel.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-del', k: k }); } catch (e) { } };
+    } catch (e) { markReady(); return; }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== ORIGIN) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-vault' || !d.data) return;
+      var restored = false;
+      Object.keys(d.data).forEach(function (k) {
+        if (!KEYS.test(k) || !d.data[k]) return;
+        var cur = null;
+        try { cur = window.localStorage.getItem(k); } catch (e) { return; }
+        if (!cur) { try { oset.call(window.localStorage, k, d.data[k]); restored = true; } catch (e) { } }
+      });
+      var late = ready;
+      markReady();
+      if (restored && late) {
+        /* 太晚拿到 (頁面已經開始跑)：蓋住畫面再請外殼頁重新載入一次，避免跳出「連線失敗 HTTP 0」 */
+        try {
+          var cv = document.createElement('div');
+          cv.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#020617';
+          (document.body || document.documentElement).appendChild(cv);
+        } catch (e) { }
+        window.alert = function () { };
+        post({ type: 'tts-vault-reload' });
+      }
+    });
+    post({ type: 'tts-vault-get' });
+  })();
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>鈦傳速｜倉庫驗貨系統</title>
@@ -32,6 +100,14 @@
 
         .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .header-title { font-size: 24px; font-weight: 900; color: #fff; }
+        /* V43.5 手機：登入者資訊放到標題下一行，標題不再被擠成三行 */
+        @media (max-width: 600px) {
+            .header-top { flex-wrap: wrap; row-gap: 4px; }
+            .header-title { font-size: 20px; white-space: nowrap; }
+            #whMeWrap { flex: 0 0 100%; }
+            #whMeWrap .tts-me { flex-direction: row; align-items: baseline; gap: 8px; margin-right: 0; }
+            #statInfo { display: none; }
+        }
         
         /* 篩選區 */
         .filter-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
@@ -298,7 +374,10 @@
                 <button class="header-refresh-btn" id="searchToggleBtn" onclick="toggleSearch()" title="搜尋" style="margin-left: 8px;">🔍</button>
                 <button class="header-refresh-btn" onclick="refreshData()" title="重新整理" style="margin-left: 4px;">🔄</button>
             </div>
-            <div id="statInfo" style="font-size:12px;color:var(--text-dim)">SYNC OK</div>
+            <div id="whMeWrap" style="display:flex;align-items:center;gap:10px;">
+                <span id="meSlot"></span>
+                <div id="statInfo" style="font-size:12px;color:var(--text-dim)">SYNC OK</div>
+            </div>
         </div>
         <div class="filter-row">
             <button id="yinggeToggle" class="toggle-btn" onclick="toggleYingge()">回鶯歌</button>
@@ -454,9 +533,9 @@
             const pieces = Number(rawQty.replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
             const perBox = Number(String(pcsPerBox || '').replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
             const esc = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-            const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${esc(value)}</span>`;
-            const unit = value => `<span style="color:#94a3b8;font-weight:800;">${esc(value)}</span>`;
-            const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${esc(value)}</span>`;
+            const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${esc(value)}<\/span>`;
+            const unit = value => `<span style="color:#94a3b8;font-weight:800;">${esc(value)}<\/span>`;
+            const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${esc(value)}<\/span>`;
             if (!pieces || !perBox) {
                 const label = /[片箱包件]/.test(rawQty) ? rawQty : rawQty + '片';
                 return colorNum(label.replace(/[^\d.]/g, '') || label, '#fbbf24') + unit(label.replace(/[\d.]/g, ''));
@@ -506,13 +585,47 @@
         // 注意：這頁常被 bigt.cc/tts/QC.html 用 iframe 包住，Chrome 封鎖跨網域 iframe 的 window.prompt()，
         // 所以絕對不能用 prompt() 問密碼，備援改用頁內登入框。
         const WH_USERINFO = <?!= JSON.stringify(userInfo || {}) ?>;
+        if (WH_USERINFO.pwdLogin === false) { const st = document.createElement('style'); st.textContent = '#whLoginPwd,#whLoginBtn{display:none!important}'; document.head.appendChild(st); } // V43.16
         const ADMIN_TOKEN_KEY = 'ttsAdminTokenV41';
+        /* V43.5: 驗貨改成個人 Google 登入 (倉管/司機/行政)，操作記錄才有姓名。
+           個人憑證存在 WH_PERSON_KEY；過渡期仍可「暫時不登入」用伺服器下發的共用憑證 (記錄只會寫「倉庫驗貨」) */
+        const WH_PERSON_KEY = 'ttsWhPersonTokenV43';
         let __adminTokenMem = '';
+        function personToken() { try { return localStorage.getItem(WH_PERSON_KEY) || ''; } catch (e) { return ''; } }
+        function setPersonToken(t) { try { if (t) localStorage.setItem(WH_PERSON_KEY, t); else localStorage.removeItem(WH_PERSON_KEY); } catch (e) { } __adminTokenMem = t || ''; }
+        /* V43.7: 驗貨只認「個人 Google 登入」。戰情室的共用密碼登入不算 (記錄會變成「管理員」、看不出是誰) */
         function ATOKEN() {
             if (__adminTokenMem) return __adminTokenMem;
-            try { __adminTokenMem = localStorage.getItem(ADMIN_TOKEN_KEY) || ''; } catch (e) { }
-            if (!__adminTokenMem && WH_USERINFO && WH_USERINFO.token) __adminTokenMem = WH_USERINFO.token;
+            __adminTokenMem = personToken();
+            if (!__adminTokenMem && window.__whAnonymous && WH_USERINFO && WH_USERINFO.token) __adminTokenMem = WH_USERINFO.token;
             return __adminTokenMem;
+        }
+        function showWhMe(me) { if (window.TTSGoogle && me) TTSGoogle.showMe(document.getElementById('meSlot'), me); }
+        function whGoogleLogin() {
+            TTSGoogle.start({ app: 'warehouse', onSuccess: function (res) {
+                setPersonToken(res.token); showWhMe(res);
+                const b = document.getElementById('whPersonLogin'); if (b) b.remove();
+                initData();
+            } });
+        }
+        /* 沒有個人登入時的畫面：Google 登入 (推薦) 或 暫時不登入 (過渡期) */
+        function showPersonLogin() {
+            if (document.getElementById('whPersonLogin')) return;
+            if (window.TTSGoogle) TTSGoogle.autoLine({ app: 'warehouse', onSuccess: function (res) {
+                setPersonToken(res.token); showWhMe(res);
+                const b = document.getElementById('whPersonLogin'); if (b) b.remove();
+                initData();
+            } });
+            const box = document.createElement('div');
+            box.id = 'whPersonLogin';
+            box.style.cssText = 'position:fixed;inset:0;z-index:99990;background:#0b1220;display:flex;align-items:center;justify-content:center;padding:24px;';
+            box.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:18px;padding:26px 22px;width:100%;max-width:360px;color:#e2e8f0;text-align:center">'
+                + '<div style="font-size:22px;font-weight:900;margin-bottom:6px">倉庫驗貨<\/div>'
+                + '<div style="font-size:14px;color:#94a3b8;margin-bottom:20px;line-height:1.6">請用自己的 Google 帳號登入，<br>驗貨記錄才會記下是誰做的。<\/div>'
+                + TTSGoogle.buttonHtml('whGoogleLogin()')
+                + '<button id="whSkipLogin" style="margin-top:16px;background:transparent;border:0;color:#64748b;font-size:13px;text-decoration:underline;cursor:pointer">暫時不登入（過渡期，記錄不會有姓名）<\/button><\/div>';
+            document.body.appendChild(box);
+            document.getElementById('whSkipLogin').onclick = function () { window.__whAnonymous = true; __adminTokenMem = ''; box.remove(); initData(); };
         }
         function setAdminToken(t) { __adminTokenMem = t || ''; try { if (t) localStorage.setItem(ADMIN_TOKEN_KEY, t); else localStorage.removeItem(ADMIN_TOKEN_KEY); } catch (e) { } }
         function isAuthError(x) { const m = String((x && x.message) || (x && x.error) || x || ''); return m.indexOf('AUTH_REQUIRED') !== -1 || m.indexOf('AUTH_FORBIDDEN') !== -1; }
@@ -523,10 +636,10 @@
                 box.id = 'whLoginBox';
                 box.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.92);display:flex;align-items:center;justify-content:center;padding:24px;';
                 box.innerHTML = '<div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;width:100%;max-width:320px;color:#e2e8f0;font-family:inherit">'
-                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">驗貨系統登入</div>'
-                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"></div>'
+                    + '<div style="font-size:18px;font-weight:700;margin-bottom:12px">驗貨系統登入<\/div>'
+                    + '<div id="whLoginMsg" style="font-size:13px;color:#fca5a5;min-height:18px;margin-bottom:8px"><\/div>'
                     + '<input id="whLoginPwd" type="password" placeholder="管理員密碼" style="width:100%;box-sizing:border-box;padding:12px;border-radius:10px;border:1px solid #475569;background:#0f172a;color:#fff;font-size:16px;margin-bottom:12px">'
-                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700">登入</button></div>';
+                    + '<button id="whLoginBtn" style="width:100%;padding:12px;border:0;border-radius:10px;background:#0ea5e9;color:#fff;font-size:16px;font-weight:700">登入<\/button><\/div>';
                 document.body.appendChild(box);
                 const submit = () => {
                     const pwd = document.getElementById('whLoginPwd').value;
@@ -550,15 +663,25 @@
         // 授權失敗：先丟掉失效的 admin token 改用伺服器下發的 warehouse token 重試一次；再不行才顯示登入框
         let __whFallbackTried = false;
         function onAuthFail(retry) {
+            if (!window.__whAnonymous) { setPersonToken(''); showPersonLogin(); return; }
             const whTok = (WH_USERINFO && WH_USERINFO.token) || '';
-            setAdminToken('');
+            __adminTokenMem = ''; /* 不要清戰情室的登入 (同一台裝置的戰情室會被登出) */
             if (whTok && !__whFallbackTried) { __whFallbackTried = true; __adminTokenMem = whTok; retry(); return; }
             promptAdminLogin(retry);
         }
 
         window.onload = function () {
-            if (!ATOKEN()) promptAdminLogin(initData);
-            else initData();
+            const ls = function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+            const tok = personToken() || ls(ADMIN_TOKEN_KEY) || ls('titan_driver_token');
+            if (!tok) { showPersonLogin(); return; }
+            google.script.run.withSuccessHandler(function (r) {
+                if (r && r.valid && (r.via === 'google' || r.via === 'line') && ['warehouse', 'driver', 'admin'].indexOf(r.role) !== -1) {
+                    /* 同一支手機在戰情室/司機端用 Google 登入過，就直接沿用 */
+                    setPersonToken(r.renewed || tok);
+                    showWhMe(r);
+                    initData();
+                } else { setPersonToken(''); __adminTokenMem = ''; showPersonLogin(); }
+            }).withFailureHandler(function () { showPersonLogin(); }).checkSession_V43(tok);
         };
 
         function initData() {
@@ -622,7 +745,7 @@
         function buildFilters() {
             const dateF = document.getElementById('dateFilter');
             const dates = [...new Set(allTasks.map(t => t.date))].sort();
-            dateF.innerHTML = '<option value="">日期</option>' + dates.map(d => `<option value="${d}">${d.substring(5)}</option>`).join('');
+            dateF.innerHTML = '<option value="">日期<\/option>' + dates.map(d => `<option value="${d}">${d.substring(5)}<\/option>`).join('');
 
             const quickDriversHtml = driversList.map(function(d) {
                 const dObj = getDriverColor(d.name);
@@ -630,13 +753,13 @@
                 const styleStr = isActive 
                     ? `background:${dObj.color}; color:${dObj.textColor}; border: 2px solid ${dObj.color}; box-shadow: 0 0 10px ${dObj.color}; font-weight: 900;` 
                     : `background:#0f172a; color:${dObj.color}; border: 2px solid ${dObj.color}; font-weight: bold;`;
-                return `<button class="quick-driver-btn" style="${styleStr}" onclick="toggleDriverSort('${d.name}')">${getShortDriverName(d.name)}</button>`;
+                return `<button class="quick-driver-btn" style="${styleStr}" onclick="toggleDriverSort('${d.name}')">${getShortDriverName(d.name)}<\/button>`;
             }).join('') + (() => {
                 const isActive = activeSortDriver === '未派';
                 const styleStr = isActive 
                     ? `background:#64748b; color:#fff; border: 2px solid #64748b; box-shadow: 0 0 10px #64748b; font-weight: 900;` 
                     : `background:#0f172a; color:#64748b; border: 2px solid #64748b; font-weight: bold;`;
-                return `<button class="quick-driver-btn" style="${styleStr}" onclick="toggleDriverSort('未派')">未派</button>`;
+                return `<button class="quick-driver-btn" style="${styleStr}" onclick="toggleDriverSort('未派')">未派<\/button>`;
             })();
             
             document.getElementById('quickDriverGrid').innerHTML = quickDriversHtml;
@@ -748,7 +871,7 @@
                 var s = driverStats[d];
                 var unAssigned = s.total - s.pickedUp - s.assigned;
                 var blink = unAssigned > 0 ? 'animation:pulse-light 1.5s infinite;font-weight:900;' : '';
-                detailHtml += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="font-weight:900;">' + d + '</span><span>待裝' + s.total + ' / 已載' + s.pickedUp + ' <span style="' + blink + 'color:' + (unAssigned > 0 ? '#ef4444' : '#22c55e') + ';">未上' + unAssigned + '</span></span></div>';
+                detailHtml += '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);"><span style="font-weight:900;">' + d + '<\/span><span>待裝' + s.total + ' / 已載' + s.pickedUp + ' <span style="' + blink + 'color:' + (unAssigned > 0 ? '#ef4444' : '#22c55e') + ';">未上' + unAssigned + '<\/span><\/span><\/div>';
             });
             document.getElementById('statsDetail').innerHTML = detailHtml;
 
@@ -776,48 +899,47 @@
                     const whDriverShort = getShortDriverName(gt.whDriver || gt.assignedDriver);
 
                     const whStatusVal = _whGet(gt.id, 'whStatus', gt.whStatus || '');
-                    const driverConfirmVal = _whGet(gt.id, 'driverConfirm', gt.driverConfirm || '');
                     const isAssigned = _whGet(gt.id, 'assignedDriver', gt.assignedDriver || '');
                     return `
                         <div class="task-card ${isVerified ? 'verified' : ''} ${whStatusVal === '已分配' ? 'wh-assigned' : ''}" onclick="toggleSelect('${gt.id}')">
                             <div class="card-content">
                                 <div class="line-1">
-                                    <div class="card-checkbox ${isChecked ? 'checked' : ''}">${gt.isNotWh ? '<span style="color:#64748b;font-size:9px;font-weight:900;">免驗</span>' : ''}</div>
-                                    <span class="idx-num" style="font-size:12px;">${i + gIdx + 1}.</span>
-                                    <span class="cust-name" style="font-size:14px;">${gt.customer.substring(0, 2)}</span>
-                                    ${gt.shippingType && gt.shippingType !== '送貨' ? '<span style="background:#f59e0b; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; box-shadow:0 0 8px rgba(245,158,11,0.4); line-height:1.1;">' + gt.shippingType + '</span>' : ''}
-                                    <span class="id-box" style="margin-left:4px; font-size: 13px; font-weight: 700; background:${brObj.color}; color:${brObj.textColor};">${displayId}</span>
+                                    <div class="card-checkbox ${isChecked ? 'checked' : ''}">${gt.isNotWh ? '<span style="color:#64748b;font-size:9px;font-weight:900;">免驗<\/span>' : ''}<\/div>
+                                    <span class="idx-num" style="font-size:12px;">${i + gIdx + 1}.<\/span>
+                                    <span class="cust-name" style="font-size:14px;">${gt.customer.substring(0, 2)}<\/span>
+                                    ${gt.shippingType && gt.shippingType !== '送貨' ? '<span style="background:#f59e0b; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; box-shadow:0 0 8px rgba(245,158,11,0.4); line-height:1.1;">' + gt.shippingType + '<\/span>' : ''}
+                                    <span class="id-box" style="margin-left:4px; font-size: 13px; font-weight: 700; background:${brObj.color}; color:${brObj.textColor};">${displayId}<\/span>
                                     ${gt.whDriver && gt.whDriver !== gt.assignedDriver ? `
                                     <span style="margin-left:auto; font-size:11px; font-weight:900;">
-                                        <span style="background:${dObj.color}; color:${dObj.textColor}; padding:1px 5px; border-radius:4px;">${assignedDriverShort}</span>
-                                        <span style="color:#fbbf24;">/(<span style="border-bottom:2px solid #fbbf24;">${getShortDriverName(gt.whDriver)}載回</span>)</span>
-                                    </span>
+                                        <span style="background:${dObj.color}; color:${dObj.textColor}; padding:1px 5px; border-radius:4px;">${assignedDriverShort}<\/span>
+                                        <span style="color:#fbbf24;">/(<span style="border-bottom:2px solid #fbbf24;">${getShortDriverName(gt.whDriver)}載回<\/span>)<\/span>
+                                    <\/span>
                                     ` : `
-                                    <span class="driver-tag" style="margin-left:auto; background:${dObj.color}; color:${dObj.textColor}; font-size:11px; padding:1px 5px;">${assignedDriverShort}</span>
+                                    <span class="driver-tag" style="margin-left:auto; background:${dObj.color}; color:${dObj.textColor}; font-size:11px; padding:1px 5px;">${assignedDriverShort}<\/span>
                                     `}
-                                </div>
+                                <\/div>
                                 <div class="line-2" style="display:flex; align-items:center; gap:5px; flex-wrap: wrap;">
                                     <div class="${gt.isReturn || gt.isProcessing ? 'addr-return' : ''}">
                                         ${scrubAddress(gt.address)}
-                                        ${gt.isReturn ? '<span style="margin-left:4px; font-size:11px;">&lt;收退貨&gt;</span>' : ''}
-                                        ${gt.isProcessing ? '<span style="margin-left:4px; font-size:11px;">&lt;取加工&gt;</span>' : ''}
-                                    </div>
-                                    ${gt.weight ? `<span class="weight-box-new" style="background: rgba(34,197,94,0.15); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap;">${Math.round(gt.weight)}kg</span>` : ''}
-                                    ${gt.thumbnail && !gt.thumbnail.includes('undefined') ? `<div class="photo-btn" style="margin-left:auto;" onclick="previewImage(event, '${gt.thumbnail}')">圖</div>` : ''}
-                                </div>
+                                        ${gt.isReturn ? '<span style="margin-left:4px; font-size:11px;">&lt;收退貨&gt;<\/span>' : ''}
+                                        ${gt.isProcessing ? '<span style="margin-left:4px; font-size:11px;">&lt;取加工&gt;<\/span>' : ''}
+                                    <\/div>
+                                    ${gt.weight ? `<span class="weight-box-new" style="background: rgba(34,197,94,0.15); color: #22c55e; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap;">${Math.round(gt.weight)}kg<\/span>` : ''}
+                                    ${gt.thumbnail && !gt.thumbnail.includes('undefined') ? `<div class="photo-btn" style="margin-left:auto;" onclick="previewImage(event, '${gt.thumbnail}')">圖<\/div>` : ''}
+                                <\/div>
                                 <div class="line-3" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
                                     ${gt.items && gt.items.length > 0 ? `
                                     <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="font-size:11px; padding:2px 7px;">
-                                        明細 <span class="arrow-icon" id="arrow-${gt.id}">▼</span>
-                                    </div>
-                                    ` : '<div style="flex:1;"></div>'}
+                                        明細 <span class="arrow-icon" id="arrow-${gt.id}">▼<\/span>
+                                    <\/div>
+                                    ` : '<div style="flex:1;"><\/div>'}
                                     ${gt.note ? `
                                     <div class="note-line-content" style="color: #fbbf24; font-weight: bold; font-size: 12px; line-height: 1.35; word-break: break-all; flex: 1; min-width: 140px;">
                                         ${gt.note}
-                                    </div>
-                                    ` : '<div style="flex:1;"></div>'}
-                                    <span class="date-box" style="margin-left:auto; flex-shrink:0; font-size:12px;">${gt.date.substring(5)}</span>
-                                </div>
+                                    <\/div>
+                                    ` : '<div style="flex:1;"><\/div>'}
+                                    <span class="date-box" style="margin-left:auto; flex-shrink:0; font-size:12px;">${gt.date.substring(5)}<\/span>
+                                <\/div>
                                 ${gt.items && gt.items.length > 0 ? `
                                 <div class="items-dropdown-content" id="items-${gt.id}" style="display:none;" onclick="event.stopPropagation()">
                                     ${gt.items.map((item, itemIdx) => {
@@ -830,58 +952,54 @@
                                         return `
                                             <div style="display:flex; flex-direction:column; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.08);">
                                                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:14px; font-weight:700; color:#fff;">
-                                                    <span>${item.code} <span style="color:var(--accent); margin-left:8px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.22); border-radius:4px; padding:1px 5px;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}</span></span>
-                                                    <span style="color:var(--primary);">${String(item.qty).replace(/[^0-9.]/g, '')}片</span>
+                                                    <span>${item.code} <span style="color:var(--accent); margin-left:8px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.22); border-radius:4px; padding:1px 5px;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}<\/span><\/span>
+                                                    <span style="color:var(--primary);">${String(item.qty).replace(/[^0-9.]/g, '')}片<\/span>
                                                     ${item.image ? '<img src="' + item.image.replace(/'/g,"\\'") + '" style="width:50px;height:50px;object-fit:cover;border-radius:4px;cursor:pointer;margin-left:6px;" onclick="previewImage(event,\'' + item.image.replace(/'/g,"\\'") + '\')">' : ''}
-                                                </div>
+                                                <\/div>
                                                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; color:#cbd5e1; margin-top:3px; padding-left:2px;">
-                                                    <span>${qtyBox}</span>
-                                                    <span style="color:var(--success); font-weight:700;">${weightText}</span>
-                                                </div>
+                                                    <span>${qtyBox}<\/span>
+                                                    <span style="color:var(--success); font-weight:700;">${weightText}<\/span>
+                                                <\/div>
                                                 ${(item.series || item.originalName) ? `
                                                 <div style="display:flex; gap:8px; font-size:12px; color:#94a3b8; margin-top:2px; padding-left:2px;">
-                                                    ${item.series ? '<span style="color:#fbbf24; font-weight:600;">' + item.series + '</span>' : ''}
-                                                    ${item.originalName ? '<span>' + item.originalName + '</span>' : ''}
-                                                </div>
+                                                    ${item.series ? '<span style="color:#fbbf24; font-weight:600;">' + item.series + '<\/span>' : ''}
+                                                    ${item.originalName ? '<span>' + item.originalName + '<\/span>' : ''}
+                                                <\/div>
                                                 ` : ''}
-                                            </div>
+                                            <\/div>
                                         `;
                                     }).join('')}
-                                </div>
+                                <\/div>
                                 ` : ''}
-                                ${isVerified ? `<div class="picked-up-marker">${whDriverShort} 回車</div>` : ''}
+                                ${isVerified ? `<div class="picked-up-marker">${whDriverShort} 回車<\/div>` : ''}
                                 <div class="wh-stage-row" style="display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center;" onclick="event.stopPropagation()">
                                     ${gt.isNotWh ? `
-                                    <span style="font-size:11px; color:#94a3b8; font-weight:900; padding:2px 0;">免驗貨</span>
+                                    <span style="font-size:11px; color:#94a3b8; font-weight:900; padding:2px 0;">免驗貨<\/span>
                                     ` : `
                                     <div style="flex:1; display:flex; gap:6px; align-items:center;">
-                                    ${!isVerified ? `<button class="wh-stage-btn ${whStatusVal === '已分配' ? 'active' : ''}" onclick="whToggleAssign('${gt.id}')" style="font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #38bdf8; background:${whStatusVal === '已分配' ? '#38bdf8' : 'transparent'}; color:${whStatusVal === '已分配' ? '#000' : '#38bdf8'}; cursor:pointer; font-weight:900;">${whStatusVal === '已分配' ? '✅ 完成分配' : '☐ 分配驗貨'}</button>` : `<span style="font-size:11px; color:#22c55e; font-weight:900;">✅ 倉管對點完成</span>`}
+                                    ${!isVerified ? `<button class="wh-stage-btn ${whStatusVal === '已分配' ? 'active' : ''}" onclick="whToggleAssign('${gt.id}')" style="font-size:11px; padding:2px 8px; border-radius:4px; border:1px solid #38bdf8; background:${whStatusVal === '已分配' ? '#38bdf8' : 'transparent'}; color:${whStatusVal === '已分配' ? '#000' : '#38bdf8'}; cursor:pointer; font-weight:900;">${whStatusVal === '已分配' ? '✅ 完成分配' : '☐ 分配驗貨'}<\/button>` : `<span style="font-size:11px; color:#22c55e; font-weight:900;">✅ 倉管對點完成<\/span>`}
                                     ${!isAssigned ? `
                                     <select class="wh-driver-select" onchange="whSetDriver('${gt.id}',this.value)" style="background:#1e293b; color:#fbbf24; border:1px solid #fbbf24; border-radius:4px; padding:2px 5px; font-size:11px; font-weight:900; cursor:pointer;">
-                                        <option value="">選司機</option>
-                                        ${driversList.map(function(d) { return '<option value="' + d.name + '">' + d.name + '</option>'; }).join('')}
-                                    </select>
+                                        <option value="">選司機<\/option>
+                                        ${driversList.map(function(d) { return '<option value="' + d.name + '">' + d.name + '<\/option>'; }).join('')}
+                                    <\/select>
                                     ` : ''}
-                                    <label style="font-size:11px; color:#94a3b8; display:flex; align-items:center; gap:3px; cursor:pointer;">
-                                        <input type="checkbox" ${driverConfirmVal === '已確認' ? 'checked' : ''} onchange="whToggleDriverConfirm('${gt.id}',this.checked)" style="width:14px;height:14px;cursor:pointer;">
-                                        <span style="${driverConfirmVal === '已確認' ? 'color:#22c55e;font-weight:900' : ''}">司機確認</span>
-                                    </label>
-                                    </div>
+                                    <\/div>
                                     `}
-                                    ${gt.isBackYingge ? '<span class="yingge-tag" style="font-size:10px; padding:1px 5px; margin-left:auto;">回鶯歌</span>' : ''}
-                                    ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag-breath" style="margin-left:4px;">膠膜</span>' : ''}
-                                </div>
-                            </div>
-                        </div>
+                                    ${gt.isBackYingge ? '<span class="yingge-tag" style="font-size:10px; padding:1px 5px; margin-left:auto;">回鶯歌<\/span>' : ''}
+                                    ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag-breath" style="margin-left:4px;">膠膜<\/span>' : ''}
+                                <\/div>
+                            <\/div>
+                        <\/div>
                     `;
                 }).join('');
 
                 if (isGroup) {
                     html += `
                         <div class="address-group">
-                            <div class="address-group-header">📍 同地址訂單 (${groupSize}筆)</div>
+                            <div class="address-group-header">📍 同地址訂單 (${groupSize}筆)<\/div>
                             ${groupInnerHtml}
-                        </div>`;
+                        <\/div>`;
                 } else {
                     html += groupInnerHtml;
                 }
@@ -897,7 +1015,7 @@
                         html += `
                             <div class="driver-divider" style="margin: 15px 0; border-bottom: 2px dashed var(--accent); padding-bottom: 8px; text-align: center; color: var(--accent); font-weight: bold; font-size: 14px;">
                                 ⬇️ 以上為 ${getShortDriverName(activeSortDriver)} 的訂單，以下為其他訂單 ⬇️
-                            </div>
+                            <\/div>
                         `;
                     }
                 }
@@ -946,17 +1064,12 @@
             _pruneCleanPending(id);
             renderList();
         }
-        function whToggleDriverConfirm(id, checked) {
-            _whSet(id, 'driverConfirm', checked ? '已確認' : '');
-            _pruneCleanPending(id);
-            renderList();
-        }
         function _pruneCleanPending(id) {
             var p = whPendingMap[id];
             if (!p) return;
             var orig = allTasks.find(function(x) { return x.id === id; });
             var hasChanges = false;
-            var fields = ['whStatus','assignedDriver','whDriver','driverConfirm'];
+            var fields = ['whStatus','assignedDriver','whDriver'];
             for (var fi = 0; fi < fields.length; fi++) {
                 var f = fields[fi];
                 var origVal = orig ? (orig[f] || '') : '';
@@ -979,8 +1092,7 @@
                     id: id,
                     whStatus: p.whStatus !== undefined ? p.whStatus : (orig ? orig.whStatus : ''),
                     assignedDriver: p.assignedDriver !== undefined ? p.assignedDriver : (orig ? orig.assignedDriver : ''),
-                    whDriver: p.whDriver !== undefined ? p.whDriver : (orig ? (orig.whDriver || '') : ''),
-                    driverConfirm: p.driverConfirm !== undefined ? p.driverConfirm : (orig ? (orig.driverConfirm || '') : '')
+                    whDriver: p.whDriver !== undefined ? p.whDriver : (orig ? (orig.whDriver || '') : '')
                 };
             });
             var btn = document.getElementById('whBatchSaveBtn');
@@ -996,7 +1108,6 @@
                                 if (p.whStatus) t.whStatus = p.whStatus;
                                 if (p.assignedDriver) t.assignedDriver = p.assignedDriver;
                                 if (p.whDriver) t.whDriver = p.whDriver;
-                                t.driverConfirm = p.driverConfirm;
                             }
                         });
                         _whClearAll();
@@ -1014,7 +1125,7 @@
 
         function refreshData() {
             selectedIds.clear();
-            document.getElementById('taskList').innerHTML = '<div style="text-align:center;padding:50px;color:var(--primary)">🔄 重新載入資料中...</div>';
+            document.getElementById('taskList').innerHTML = '<div style="text-align:center;padding:50px;color:var(--primary)">🔄 重新載入資料中...<\/div>';
             showToast('🔄 正在同步最新雲端資料...');
             initData();
         }
@@ -1044,18 +1155,13 @@
                 return;
             }
             
-            // 三階段流程：先分配驗貨 → 再司機確認 → 才能勾選裝車
+            // V42.31: 拿掉「司機確認」關卡，分配驗貨完成後即可直接勾選裝車
             var effStatus = _whGet(id, 'whStatus', task.whStatus || '');
-            var effConfirm = _whGet(id, 'driverConfirm', task.driverConfirm || '');
             if (effStatus !== '已分配') {
                 showToast('⚠️ 請先完成「分配驗貨」');
                 return;
             }
-            if (effConfirm !== '已確認') {
-                showToast('⚠️ 請先完成「司機確認」');
-                return;
-            }
-            
+
             if (selectedIds.has(id)) {
                 selectedIds.delete(id);
             } else {
@@ -1133,9 +1239,9 @@
                 const isChecked = selectedBranches.includes(opt);
                 return `
                     <div class="option-item" onclick="toggleOption('branch', '${opt}')">
-                        <div class="opt-checkbox ${isChecked ? 'checked' : ''}"></div>
-                        <div class="opt-label">${BRANCH_LABELS[opt] || opt}</div>
-                    </div>
+                        <div class="opt-checkbox ${isChecked ? 'checked' : ''}"><\/div>
+                        <div class="opt-label">${BRANCH_LABELS[opt] || opt}<\/div>
+                    <\/div>
                 `;
             }).join('');
 
@@ -1143,9 +1249,9 @@
                 const isChecked = selectedDrivers.includes(d.name);
                 return `
                     <div class="option-item" onclick="toggleOption('driver', '${d.name}')">
-                        <div class="opt-checkbox ${isChecked ? 'checked' : ''}"></div>
-                        <div class="opt-label">${d.name}</div>
-                    </div>
+                        <div class="opt-checkbox ${isChecked ? 'checked' : ''}"><\/div>
+                        <div class="opt-label">${d.name}<\/div>
+                    <\/div>
                 `;
             }).join('');
 
@@ -1174,5 +1280,13 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     </script>
+<?!= include('GoogleLogin'); ?>
+<script>
+    if (window.TTSGoogle) TTSGoogle.resume({ app: 'warehouse', onSuccess: function (res) {
+        setPersonToken(res.token); showWhMe(res);
+        const b = document.getElementById('whPersonLogin'); if (b) b.remove();
+        initData();
+    } });
+</script>
 </body>
 </html>

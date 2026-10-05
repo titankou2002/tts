@@ -32,8 +32,7 @@ const V11_PROD_CONFIG = {
     "1G5q-GixMWSdJJeF8ZiXWMOfrx4FMobER25jNc8m4Zds", // 高雅瓷
     "1OnLLqn3zUp-AzoD6ds95lZ01XxwOut8bt8SCHYLl0hc"  // 漢樺
   ],
-  // V41.30: 「送回公司/倉庫」的地址關鍵字 — 樣品單只有送回這些地方才不計單、不收運費；送到貨運行/加工廠/客戶處照常計費
-  HOME_ADDR_KEYWORDS: ["高職西街", "高職東街", "鶯歌倉", "載回", "回鶯歌", "回公司", "喜悅納", "安帝嘉", "高雅瓷", "漢樺公司"], // V41.45: 安/喜倉庫實際在高職東街13號
+  HOME_ADDR_KEYWORDS: ["指送安帝嘉", "指送喜悅納", "指送高雅瓷", "指送漢樺", "高職東街13號", "文化路三段535巷98號", "載回公司", "回公司", "倉內調貨", "轉倉"], // V41.95: 必須具備「指送 + 分公司名」才判定為內部免費
   // V41.28: 各分公司「銷售報表」(樣品 / 退貨 判定用；漢樺沒有報表，只靠關鍵字)
   SALES_REPORT: {
     "安帝嘉": { ssId: "16QNID9hLs2K1iy_ePo7MxYxhW4kpDrDlfEIZ2p83ixo", sheet: "經銷銷售報表" },
@@ -42,22 +41,124 @@ const V11_PROD_CONFIG = {
   }
 };
 
+/** 🔓 雲端專案一鍵授權測試函式 (在 GAS 編輯器中選取此函式並點「執行」，即可完成 Google 帳號授權) */
+function authorizeScript() {
+  var ss = getSS_V11();
+  var name = ss ? ss.getName() : "智慧物流系統";
+  var r = (typeof FreightEngine !== 'undefined' && FreightEngine.loadRates) ? FreightEngine.loadRates() : null;
+  console.log("✅ 鈦傳速雲端專案授權成功！試算表：" + name);
+  return "✅ 授權成功";
+}
+
+/**
+ * V42.30: 修正版 - 不再用寫死的 30 欄清單覆寫兩張表的標頭！
+ * 舊版 V42.29 每次 onOpen 都會用這份寫死清單「清空並重寫」兩張表的第 1 列，
+ * 但《派送清單》實際欄位早已透過 ensureHeaders_V11 自動成長到 76 欄(品項1-10、派遣司機、貨單縮圖...等)，
+ * 這份寫死清單只有前 30 欄，導致：
+ *   1. 《派送清單》第 31 欄之後的標頭被清空 (資料還在，但欄名消失)
+ *   2. 《派送清單_封存區》的標頭被覆寫成這份舊清單，但封存區實際資料早已是新版寬表結構，
+ *      標頭與資料完全對不上 → 分析中心用標頭去對應欄位時全部抓錯欄
+ * 新版改成：動態讀取《派送清單》目前真實的標頭列，只用來「補齊/校正」封存區的標頭文字，
+ * 絕不覆寫或清空任何一張表下方的資料列，也絕不使用寫死清單。
+ */
+function applyCorrectRow1Headers_V42() {
+  // V42.40: 不只派送清單/封存區，送貨日誌/封存區也要保持標頭一致，改成共用同一支同步邏輯
+  var pairs = [
+    [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"],
+    [V11_PROD_CONFIG.SHEET_LOG, V11_PROD_CONFIG.SHEET_LOG + "_封存區"]
+  ];
+  var ss = getSS_V11();
+  var reports = pairs.map(function (p) { return _syncArchiveHeaderToLive_(ss, p[0], p[1]); });
+  return reports.join(" / ");
+}
+
+function _syncArchiveHeaderToLive_(ss, liveName, archiveName) {
+  try {
+    var liveSheet = ss.getSheetByName(liveName);
+    if (!liveSheet) return "❌ 找不到《" + liveName + "》";
+    var liveLastCol = liveSheet.getLastColumn();
+    if (liveLastCol < 1) return "ℹ️ 《" + liveName + "》尚無標頭，略過";
+    var liveHeaders = liveSheet.getRange(1, 1, 1, liveLastCol).getValues()[0];
+
+    var archiveSheet = ss.getSheetByName(archiveName);
+    if (!archiveSheet) return "ℹ️ 找不到《" + archiveName + "》，僅確認主表標頭";
+
+    var archLastCol = archiveSheet.getLastColumn();
+    var archHeaders = archLastCol > 0 ? archiveSheet.getRange(1, 1, 1, archLastCol).getValues()[0] : [];
+
+    var changed = 0;
+    for (var i = 0; i < liveHeaders.length; i++) {
+      var want = String(liveHeaders[i] || "").trim();
+      if (!want) continue; // 主表這欄本身沒標頭，不強行帶入封存區
+      var have = String(archHeaders[i] || "").trim();
+      if (have !== want) {
+        archiveSheet.getRange(1, i + 1).setValue(want);
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      archiveSheet.getRange(1, 1, 1, liveHeaders.length)
+        .setBackground("#34495e").setFontColor("#ffffff").setFontWeight("bold");
+    }
+    return changed > 0
+      ? ("✅ " + archiveName + " 標頭已同步 (校正 " + changed + " 欄，共 " + liveHeaders.length + " 欄)")
+      : ("ℹ️ " + archiveName + " 標頭已一致");
+  } catch (e) {
+    return "❌ " + archiveName + " 同步失敗: " + e.message;
+  }
+}
+
+/**
+ * V42.30: 舊版會無條件清空第 31 欄之後的標頭，但《派送清單》第 31 欄之後正是品項明細、
+ * 派遣司機、驗貨狀態等實際在用的欄位，清掉標頭等於讓資料變成「查無欄名」的孤兒資料。
+ * 改為不做任何清除動作，僅保留函式名稱相容舊選單，避免手動誤觸再次造成資料遺失表象。
+ */
+function trimExtraTrailingColumns_V42() {
+  return "ℹ️ 此功能已停用：主表第 31 欄之後(品項明細/派遣司機/驗貨狀態等)都是使用中的真實欄位，不應被清除。";
+}
+
+function cleanAndFixAllHeaders_V42() {
+  return applyCorrectRow1Headers_V42();
+}
+
+function fixArchiveHeaders_V42() {
+  return applyCorrectRow1Headers_V42();
+}
+
 /** V2632.11: 核心選單初始化 */
 function onOpen() {
-  var ui = SpreadsheetApp.getUi();
+  try { fixArchiveHeaders_V42(); } catch (e) { }
+  var ui;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) { return; } // 從非容器介面呼叫時靜默退回
   ui.createMenu("🚛 鈦傳速工具")
     .addItem("🧾 立即更新樣品/退貨判定", "menuRefreshSalesDoc")
     .addItem("🆘 救回誤封存訂單 (從封存區移回)", "emergencyRestoreTasks")
+    .addItem("🎨 標記貨運行/樣品免費顏色", "menuColorizeCarrierAndSample")
     .addSeparator()
     .addSubMenu(ui.createMenu("⚙️ 設定")
       .addItem("🔑 設定管理員密碼", "menuSetAdminPassword")
-      .addItem("⏰ 建立/更新全部排程 (LINE + Email + 3天封存 + 樣品判定)", "menuSetupAllTriggers")
-      .addItem("🚚 把指送地點清單寫進運費管理表 (J–L 欄)", "menuSeedDirectMap"))
+      .addItem("🔐 共用密碼登入：開啟／關閉 (緊急用)", "menuTogglePasswordLogin_V43")
+      .addItem("⏰ 建立/更新全部排程 (LINE + Email + 3天封存 + 樣品判定 + 每30分快取預熱)", "menuSetupAllTriggers")
+      .addItem("🔥 靜默補齊封存區標題欄位", "fixArchiveHeaders_V42")
+      .addItem("🔥 立即預熱全站快取 (0.1秒極速冷啟動)", "menuWarmAllCaches"))
     .addSubMenu(ui.createMenu("🧹 維護")
       .addItem("🧼 立即執行 3 天封存清理", "cleanupOldLogsAndTasks_V11")
+      .addItem("🗂️ 整理送貨日誌 (補完成時間/貨單縮圖、封存區欄位對齊、清黃底)", "menuTidyDeliveryLog_V43")
       .addItem("🧹 清理屬性空間 (UUID 垃圾)", "menuCleanupProperties")
-      .addItem("🗑 刪除沒用到的分頁", "menuDeleteUnusedSheets"))
+      .addItem("📊 立即發送版面神器日報 (Telegram)", "menuAitDailyReport_V43"))
     .addToUi();
+}
+
+/** V43.16: 緊急開關 — 有人被鎖在外面時暫時開放共用密碼登入，用完記得關 */
+function menuTogglePasswordLogin_V43(e) {
+  _requireSystemContext_(e);
+  var props = PropertiesService.getScriptProperties();
+  var on = props.getProperty('PASSWORD_LOGIN') === 'on';
+  props.setProperty('PASSWORD_LOGIN', on ? 'off' : 'on');
+  var msg = on ? '已關閉共用密碼登入：所有人都要用 LINE／Google 個人帳號登入，舊的密碼登入立刻失效。'
+    : '⚠️ 已暫時開放共用密碼登入（操作記錄只會寫「管理員」）。處理完請再按一次關閉。';
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e2) { }
+  return msg;
 }
 
 /** V41.47: 一次建好所有排程 (取代原本兩個分開的選單項) */
@@ -66,28 +167,19 @@ function menuSetupAllTriggers() {
   var msg = [];
   try { msg.push(String(setupHourlyDeliverySummaryTrigger_V11() || "✅ LINE/Email/封存排程 OK")); } catch (e) { msg.push("❌ LINE/Email/封存排程：" + e.message); }
   try { msg.push(String(setupSalesDocTypeTrigger_V41() || "✅ 樣品判定排程 OK")); } catch (e) { msg.push("❌ 樣品判定排程：" + e.message); }
+  try { msg.push(String(setupWarmAllCachesTrigger_V42() || "✅ 快取預熱排程 (每30分) OK")); } catch (e) { msg.push("❌ 快取預熱排程：" + e.message); }
   ui.alert(msg.join("\n\n"));
 }
 
-/**
- * V41.47: 刪除程式已經不讀不寫的分頁 (一鍵)。名單以程式碼實際引用為準：
- *   撿貨明細 — OCR 子表，驗貨/戰情室都直接讀派送清單品項欄，從沒被讀過 (寫入程式已一併移除)
- *   KPI 統計 — 只有「確保存在」，KPI 早改即時計算
- *   運費管理表_歷史 — 舊版設定備份，已停用 (改用試算表版本記錄)
- *   指送對照表 / 分公司代碼表 — 設定裡有名字、程式從沒讀過 (指送清單現在在運費管理表 J–L)
- * 「排車習慣記錄」有在用 (AI 排車路線熟悉度)，不在名單內。
- */
-var UNUSED_SHEETS_V41 = ["撿貨明細", "KPI 統計", "運費管理表_歷史", "指送對照表", "分公司代碼表"];
-function menuDeleteUnusedSheets() {
+/** V42.17: 從試算表選單立即執行全站快取預熱 */
+function menuWarmAllCaches() {
   var ui = SpreadsheetApp.getUi();
-  var ss = getSS_V11();
-  var found = UNUSED_SHEETS_V41.filter(function (n) { return !!ss.getSheetByName(n); });
-  if (!found.length) { ui.alert("✅ 沒用到的分頁都已經不在了，不用刪。"); return; }
-  var ok = ui.alert("🗑 刪除沒用到的分頁", "將刪除以下 " + found.length + " 個分頁 (程式已不讀不寫)：\n\n" + found.join("\n") + "\n\n刪掉後可從「檔案 → 版本記錄」還原。確定？", ui.ButtonSet.YES_NO);
-  if (ok !== ui.Button.YES) return;
-  var done = [], fail = [];
-  found.forEach(function (n) { try { ss.deleteSheet(ss.getSheetByName(n)); done.push(n); } catch (e) { fail.push(n + "：" + e.message); } });
-  ui.alert("已刪除 " + done.length + " 個：" + done.join("、") + (fail.length ? "\n\n失敗：\n" + fail.join("\n") : ""));
+  try {
+    var res = warmAllCaches_V42();
+    ui.alert(res);
+  } catch (e) {
+    ui.alert("❌ 快取預熱失敗：" + e.message);
+  }
 }
 
 /** V41: 從試算表選單設定管理員密碼 (屬性超過 50 個時 Apps Script 設定頁無法編輯，改走這裡) */
@@ -111,6 +203,84 @@ function menuCleanupProperties() {
   cleanupSystemProperties();
   var after = Object.keys(PropertiesService.getScriptProperties().getProperties()).length;
   ui.alert("✅ 清理完成：" + before + " → " + after + " 個屬性");
+}
+
+/**
+ * V42.39: 用程式直接標記整列背景色，取代條件式格式設定(小姐反應設定不好抓、還會跑位)。
+ * 依欄位「名稱」找「貨運行標示」「單據類型(人工)」兩欄，不寫死欄位字母：
+ *   貨運行標示 含「貨運行」→ 整列淺黃
+ *   單據類型(人工) = 「樣品免費」→ 整列淺藍
+ * 每次執行都會先把上次這支工具標過、但現在已經不符合條件的列清成白底，再重新標一次，
+ * 不會動到其他手動上的顏色(例如退貨列的粉紅色)，因為只認自己專用的兩個顏色代碼。
+ */
+var CARRIER_ROW_COLOR_V42 = "#fff9c4"; // 淺黃
+var SAMPLE_FREE_ROW_COLOR_V42 = "#bbdefb"; // 淺藍
+
+function menuColorizeCarrierAndSample() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    ui.alert(colorizeCarrierAndSampleRows_V42());
+  } catch (e) {
+    ui.alert("❌ 標記顏色失敗: " + e.message);
+  }
+}
+
+function colorizeCarrierAndSampleRows_V42() {
+  var ss = getSS_V11();
+  var targets = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"];
+  var report = [];
+
+  targets.forEach(function (sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return;
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow < 2 || lastCol < 1) return;
+
+    var values = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    var h = values[0].map(function (v) { return String(v).trim(); });
+    var idxCarrier = h.indexOf("貨運行標示");
+    var idxDocType = h.indexOf("單據類型(人工)");
+    if (idxCarrier === -1 && idxDocType === -1) return; // 這張表沒有這兩個欄位，略過
+
+    var curBg = sheet.getRange(2, 1, lastRow - 1, 1).getBackgrounds(); // 只看第一欄底色，判斷是不是本工具之前標過的
+    var toClear = [], toCarrier = [], toSample = [];
+
+    for (var r = 1; r < values.length; r++) {
+      var isCarrier = idxCarrier !== -1 && String(values[r][idxCarrier] || "").indexOf("貨運行") !== -1;
+      var isSample = idxDocType !== -1 && String(values[r][idxDocType] || "").trim() === "樣品免費";
+      var sheetRow = r + 1;
+      var a1 = "A" + sheetRow + ":" + columnToLetter_(lastCol) + sheetRow;
+      var prevColor = curBg[r - 1][0];
+
+      if (isCarrier) {
+        toCarrier.push(a1);
+      } else if (isSample) {
+        toSample.push(a1);
+      } else if (prevColor === CARRIER_ROW_COLOR_V42 || prevColor === SAMPLE_FREE_ROW_COLOR_V42) {
+        toClear.push(a1); // 之前被本工具標過、現在已經不符合條件了，清回白底
+      }
+    }
+
+    if (toClear.length) sheet.getRangeList(toClear).setBackground(null);
+    if (toCarrier.length) sheet.getRangeList(toCarrier).setBackground(CARRIER_ROW_COLOR_V42);
+    if (toSample.length) sheet.getRangeList(toSample).setBackground(SAMPLE_FREE_ROW_COLOR_V42);
+
+    report.push(sheetName + "：貨運行 " + toCarrier.length + " 列、樣品免費 " + toSample.length + " 列、清除 " + toClear.length + " 列");
+  });
+
+  return report.length ? ("✅ 標記完成\n" + report.join("\n")) : "ℹ️ 找不到可標記的分頁";
+}
+
+/** 輔助：欄位編號轉字母 (1->A, 27->AA...)，跟既有 getColumnLetter 邏輯相同，這裡獨立一份避免耦合 */
+function columnToLetter_(col) {
+  var letter = "";
+  while (col > 0) {
+    var t = (col - 1) % 26;
+    letter = String.fromCharCode(65 + t) + letter;
+    col = (col - t - 1) / 26;
+  }
+  return letter;
 }
 
 const VISION_API_KEY = PropertiesService.getScriptProperties().getProperty('VISION_API_KEY');
@@ -285,9 +455,13 @@ function getScriptUrl() {
 }
 
 function doGet(e) {
+  try { _ensureAitReportTrigger_(); } catch (eTr) { } // V43.19: 版面神器每日 Telegram 日報排程
   // V11.50: 經銷商查詢專用 API 路由入口 (安全後端過濾)
   if (e && e.parameter && e.parameter.action === 'getDealerProgress') {
     return handleDealerApiRequest_V11(e);
+  }
+  if (e && e.parameter && e.parameter.action === 'initHeaders') {
+    return ContentService.createTextOutput(fixArchiveHeaders_V42());
   }
 
   // 除錯用：回傳實際送出的頁面原始碼 (原始碼本來就在公開 repo，無敏感資料；userInfo 固定為訪客)
@@ -296,6 +470,13 @@ function doGet(e) {
     return ContentService.createTextOutput(_renderPageHtml_(f0, { active: false, role: "訪客" }, 'admin'));
   }
   var page = ((e && e.parameter && e.parameter.p) || 'index').toLowerCase();
+  // V43.0: 帳號申請審核頁 (Telegram 按鈕 → bigt.cc/tts/approve.html → 這裡)
+  if (page === 'approve') {
+    return HtmlService.createHtmlOutput(_renderPageHtml_('Approve', _approvePageInfo_(e.parameter || {}), 'approve'))
+      .setTitle('鈦傳速｜帳號審核')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   var title = '鈦傳速｜智能運控系統 V8.8';
   var fileName = 'Index';
   
@@ -317,15 +498,17 @@ function doGet(e) {
   }
   
   var email = getUserEmail_V11();
-  var auth = checkAuth_V24(email);
+  // V43.26 加速：從 bigt.cc 開啟時 Google 不給 Email，比對一定落空 → 不必開整份主資料庫讀白名單 (省 0.5~1 秒)
+  var auth = email ? checkAuth_V24(email) : { active: false, role: "訪客", detectedEmail: "" };
   if (fileName === 'Warehouse') {
     // V41.37: 驗貨頁略過後台密碼 (見 Auth.js _requireWarehouse_)；token 隨頁面下發，只能用驗貨功能
     auth = { active: true, role: 'warehouse', token: _issueWarehouseToken_() };
   }
-  // V39.32: GAS 網頁實際渲染在 googleusercontent.com 的內部 iframe，
-  // client端 window.location.search 讀不到原始 exec 網址帶的 ?p=xxx，
-  // 改用伺服器端變數直接把 page 值塞進頁面，讓「?p=dispatch 自動開啟派車」這類邏輯可靠運作
-  var html = _renderPageHtml_(fileName, auth, page);
+  // V43.16: 告訴頁面共用密碼登入是否開放 (關閉時隱藏密碼框)
+  var info = {};
+  if (auth) for (var k in auth) info[k] = auth[k];
+  info.pwdLogin = _passwordLoginEnabled_();
+  var html = _renderPageHtml_(fileName, info, page);
 
   return HtmlService.createHtmlOutput(html)
     .setTitle(title)
@@ -345,18 +528,25 @@ function doGet(e) {
 function _renderPageHtml_(fileName, userInfo, initialPage) {
   var html = HtmlService.createHtmlOutputFromFile(fileName).getContent();
   // createHtmlOutputFromFile 會把 HTML 文字節點裡的 <? 轉成 &lt;? (script 內則不會)，兩種形式都要接
-  html = html.replace(/(?:<|&lt;)\?!=\s*include\('([A-Za-z0-9_\-]+)'\);?\s*\?>/g, function (m, inc) {
+  html = html.replace(/(?:<|&lt;)\?!=\s*include\('([A-Za-z0-9_\-]+)'\);?\s*(?:\?>|&gt;)/gi, function (m, inc) {
     try { return HtmlService.createHtmlOutputFromFile(inc).getContent(); } catch (err) { return "<!-- include " + inc + " failed: " + err.message + " -->"; }
   });
   var userJson = JSON.stringify(userInfo || {});
   var pageJson = JSON.stringify(String(initialPage || ''));
-  html = html.replace(/<\?!=\s*JSON\.stringify\(userInfo(?:\s*\|\|\s*\{\})?\)\s*\?>/g, userJson);
-  html = html.replace(/<\?!=\s*JSON\.stringify\(initialPage(?:\s*\|\|\s*'')?\)\s*\?>/g, pageJson);
+  html = html.replace(/(?:<|&lt;)\?!=\s*JSON\.stringify\(userInfo(?:\s*\|\|\s*\{\})?\)\s*(?:\?>|&gt;)/gi, userJson);
+  html = html.replace(/(?:<|&lt;)\?!=\s*JSON\.stringify\(initialPage(?:\s*\|\|\s*\'\')?\)\s*(?:\?>|&gt;)/gi, pageJson);
   return html;
 }
 
 /** V11.20: LINE Webhook 捕捉 Group ID */
 function doPost(e) {
+  // V43.17: 版面記錄神器共用帳號 (登入驗證／申請)，不是 LINE webhook
+  if (e && e.parameter && e.parameter.ait === '1') {
+    var out;
+    try { out = _aitExternal_(JSON.parse((e.postData && e.postData.contents) || '{}')); }
+    catch (errA) { out = { status: 'error', message: String((errA && errA.message) || errA) }; }
+    return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
+  }
   try {
     // V41: 先驗證來源 (Webhook URL 需帶 &key=<LINE_WEBHOOK_KEY>)，否則任何人都能 POST 假事件改寫 LINE_TARGET_ID
     if (!_verifyLineWebhook_(e)) {
@@ -431,7 +621,7 @@ function checkAuth_V24(email) {
 
 /** 戰情室資料抓取 V2633.2 (帶快取優化) */
 function getWarRoomData_V11(force, targetDateStr, token) {
-  _requireAdmin_(token);
+  _requireViewer_(token); // V43.0: 業務可看不能改
   // V36.14: cache key 帶入今日日期，確保換日後自動失效，不再讀到昨日殘留快取
   const cacheKey = _warRoomCacheKey_(targetDateStr);
   const cache = CacheService.getScriptCache();
@@ -457,7 +647,23 @@ function getWarRoomData_V11(force, targetDateStr, token) {
       if (archiveSheet) {
         var archiveData = archiveSheet.getDataRange().getValues();
         if (archiveData.length > 1) {
-          tData = tData.concat(archiveData.slice(1));
+          // V42.38: 封存區欄位順序不一定跟主表一樣，直接 concat 整列會讓後面依主表算出的欄位索引對錯欄。
+          // 欄位順序一致才直接整批 concat(較快)，不一致就依欄位名稱重新對齊成跟主表一樣的順序。
+          var mainH = tData[0].map(function (v) { return String(v).trim(); });
+          var archH = archiveData[0].map(function (v) { return String(v).trim(); });
+          if (archH.join("\u0001") === mainH.join("\u0001")) {
+            tData = tData.concat(archiveData.slice(1));
+          } else {
+            var archIdxByName = {};
+            archH.forEach(function (name, i) { if (name && archIdxByName[name] === undefined) archIdxByName[name] = i; });
+            var remapped = archiveData.slice(1).map(function (srcRow) {
+              return mainH.map(function (name) {
+                var si = archIdxByName[name];
+                return (si !== undefined) ? srcRow[si] : "";
+              });
+            });
+            tData = tData.concat(remapped);
+          }
         }
       }
     }
@@ -765,23 +971,96 @@ function getWarRoomData_V11(force, targetDateStr, token) {
 function _clearDashboardCache_() {
   try {
     var c = CacheService.getScriptCache();
-    var meta = c.get('dashboard_stats_v4_meta');
+    var meta = c.get('dashboard_stats_v5_meta');
     var cnt = meta ? (JSON.parse(meta).count || 0) : 0;
-    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v4_' + i);
-    c.remove('dashboard_stats_v4_meta');
+    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v5_' + i);
+    c.remove('dashboard_stats_v5_meta');
   } catch (e) { }
 }
 
+const DASHBOARD_CACHE_SHEET = "_分析中心快取_";
+
+function _readDashboardSheetCache_() {
+  try {
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(DASHBOARD_CACHE_SHEET);
+    if (!sheet) return null;
+    // V43.2: 資料早就超過單格 5 萬字上限，改成拆在 A 欄多格 (每格開頭加 ~ 避免被當成公式或數字)
+    var last = sheet.getLastRow();
+    if (!last) return null;
+    var val = sheet.getRange(1, 1, last, 1).getValues().map(function (r) {
+      var s = String(r[0] == null ? '' : r[0]);
+      return s.charAt(0) === '~' ? s.slice(1) : s;
+    }).join('');
+    if (!val.trim()) return null;
+    var data = JSON.parse(val);
+    return data;
+  } catch (e) {
+    console.log("分析中心分頁快取讀取失敗: " + e.message);
+    return null;
+  }
+}
+
+function _writeDashboardSheetCache_(data) {
+  try {
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(DASHBOARD_CACHE_SHEET);
+    if (!sheet) {
+      sheet = ss.insertSheet(DASHBOARD_CACHE_SHEET);
+      try { sheet.hideSheet(); } catch (he) { }
+    }
+    // V43.2: 舊寫法整包塞 A1，超過單格 5 萬字上限 → 每次都寫入失敗，而且錯誤在執行結束才冒出來，
+    // 連帶讓 getDashboardData 算了 2 分半之後整個失敗。改成每 4 萬字一格，並在 try 內 flush 讓錯誤被接住。
+    var jsonStr = JSON.stringify(data);
+    var CH = 40000, rows = [];
+    for (var i = 0; i < jsonStr.length; i += CH) rows.push(['~' + jsonStr.slice(i, i + CH)]);
+    sheet.clearContents();
+    if (sheet.getMaxRows() < rows.length) sheet.insertRowsAfter(sheet.getMaxRows(), rows.length - sheet.getMaxRows());
+    sheet.getRange(1, 1, rows.length, 1).setNumberFormat('@').setValues(rows);
+    SpreadsheetApp.flush();
+    return true;
+  } catch (e) {
+    console.log("分析中心分頁快取寫入失敗: " + e.message);
+    return false;
+  }
+}
+
 function getDashboardData(force, token) {
-  _requireAdmin_(token);
+  try {
+    _requireViewer_(token); // V43.0: 業務可看不能改
+  } catch (authErr) {
+    return { success: false, error: "AUTH_REQUIRED", message: authErr.message || "未登入或 Token 已失效" };
+  }
   const cache = CacheService.getScriptCache();
-  // V41.13: 改用分段快取 (升級至 v4 以強制使舊快取失效)
-  const DASH_CACHE_KEY = 'dashboard_stats_v4';
+  const DASH_CACHE_KEY = 'dashboard_stats_v5';
+  
   if (!force) {
+    // 1. 記憶體快取
     const cachedObj = readChunkedCacheJson_V11(cache, DASH_CACHE_KEY);
     if (cachedObj && cachedObj.success) return cachedObj;
+
+    // 2. 0.1 秒極速試算表分頁快取 (避免 cold start 算 30 秒)
+    const sheetCache = _readDashboardSheetCache_();
+    if (sheetCache && sheetCache.success) {
+      try { writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, sheetCache, 3600); } catch (e) { }
+      return sheetCache;
+    }
   }
 
+  // 冷算 fallback (若強制刷新或無快取)
+  const result = _computeDashboardDataCore_V11();
+  if (result && result.success) {
+    try { writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, result, 3600); } catch (ce) { }
+    try { _writeDashboardSheetCache_(result); } catch (se) { }
+  }
+  return result;
+}
+
+/**
+ * V41.57: 分析中心 RAW 資料重算核心（不含授權與快取），與 getDashboardData / warmDashboardCache_V11 共用。
+ * 冷算耗時可達 30s+，web app 端有執行上限會 502，故由定時暖機預先算好。
+ */
+function _computeDashboardDataCore_V11() {
   try {
     const ss = getSS_V11();
     const cutoffDate = new Date();
@@ -799,14 +1078,31 @@ function getDashboardData(force, token) {
       if (!curSheet) continue;
       var curData = curSheet.getDataRange().getValues();
       if (curData.length < 2) continue;
-      
+
+      var curH = curData[0].map(function (v) { return String(v).trim(); });
+
       if (!tH) {
-        tH = curData[0].map(v => String(v).trim());
+        tH = curH.slice(); // 以第一張表(派送清單)的標頭做為後續欄位索引的統一基準
       }
-      
-      // 跳過首行標頭，將資料列加入 allRows
-      for (var rIdx = 1; rIdx < curData.length; rIdx++) {
-        allRows.push(curData[rIdx]);
+
+      // V42.38: 封存區的欄位順序不一定跟主表完全一樣(手動刪欄/歷史資料)，
+      // 若整列直接照原樣塞進 allRows，後面全部欄位索引(tIdx)都是照「主表」算的，會對錯欄。
+      // 改成：欄位順序一致才直接整列塞入(較快)，不一致就依欄位名稱重新對齊成跟主表一樣的順序。
+      if (curH.join("\u0001") === tH.join("\u0001")) {
+        for (var rIdx = 1; rIdx < curData.length; rIdx++) {
+          allRows.push(curData[rIdx]);
+        }
+      } else {
+        var srcIdxByName = {};
+        curH.forEach(function (name, i) { if (name && srcIdxByName[name] === undefined) srcIdxByName[name] = i; });
+        for (var rIdx2 = 1; rIdx2 < curData.length; rIdx2++) {
+          var srcRow = curData[rIdx2];
+          var mappedRow = tH.map(function (name) {
+            var si = srcIdxByName[name];
+            return (si !== undefined) ? srcRow[si] : "";
+          });
+          allRows.push(mappedRow);
+        }
       }
     }
 
@@ -891,12 +1187,9 @@ function getDashboardData(force, token) {
 
       // 預設規則 (若儲存格空白)
       if (!isTimedDeliver) {
-        // 如果「指定送貨」儲存格為空：
-        // 1. 若「指定到貨時間」欄位有值（表示OCR匯入時小姐有勾選指定時間並選擇或手動輸入了時間）
-        // 2. 或「備註」中包含「限時」或「指定」時
-        // 以上任一成立，則預設為「是」；否則預設為「否」（排除普通的AM/PM時段全量誤判）
+        // V41.55: 只有當「指定到貨時間」欄位明確勾選/填寫時段時，才符合加收指定費 300；備註中的「指送」等文字不再誤判為指定到貨
         var specifiedArriveVal = tIdx.specifiedArrive !== -1 ? String(getSafeVal(row, tIdx.specifiedArrive) || "").trim() : "";
-        isTimedDeliver = (specifiedArriveVal || noteText.indexOf("限時") !== -1 || noteText.indexOf("指定") !== -1) ? "是" : "否";
+        isTimedDeliver = (specifiedArriveVal && specifiedArriveVal !== "否" && specifiedArriveVal !== "") ? "是" : "否";
       }
       if (!isTimedReturn) {
         // 退貨單且備註中指定時間，才預設為是
@@ -1072,11 +1365,69 @@ function getDashboardData(force, token) {
     var vehicleMap = {};
     try { vehicleMap = getManagementData().vehicleMap || {}; } catch (vmErr) { }
     const result = { success: true, orders: orders, schedule: schedule, freightRates: freightRatesInfo.rates, vehicleMap: vehicleMap, generatedAt: Date.now() };
-    writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, result, 600); // 10 分鐘；運費調整 / 申訴會清除
     return result;
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+/**
+ * V41.57: 分析中心快取暖機 — 供定時觸發器每小時執行，讓 web 端永遠命中快取。
+ * 也可在 Apps Script 編輯器手動執行一次，立即暖機。
+ */
+function warmDashboardCache_V11(e) {
+  const result = _computeDashboardDataCore_V11();
+  if (result && result.success) {
+    try { writeChunkedCacheJson_V11(CacheService.getScriptCache(), 'dashboard_stats_v5', result, 3600); } catch (ce) { }
+    try { _writeDashboardSheetCache_(result); } catch (se) { }
+    return { success: true, orders: result.orders && result.orders.length, schedule: result.schedule && result.schedule.length, at: Date.now() };
+  }
+  return { success: false, error: (result && result.error) || "未知錯誤" };
+}
+
+/**
+ * V41.57: 建立分析中心快取暖機排程 (每小時)；重複執行會先刪舊再建。
+ */
+function setupDashboardWarmTrigger_V11(e) {
+  _requireSystemContext_(e);
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => { if (t.getHandlerFunction() === 'warmDashboardCache_V11') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('warmDashboardCache_V11').timeBased().everyHours(1).create();
+  console.log("✅ 分析中心快取暖機排程已建立（每小時）");
+}
+
+/**
+ * V42.17: 定時預熱全站快取 (分析中心 + 戰情室)
+ * 每 30 分鐘自動背景執行一次，讓使用者打開分析中心或戰情室時 0.1 秒極速載入，完全免等待冷算！
+ */
+function warmAllCaches_V42(e) {
+  _requireSystemContext_(e);
+  var r1 = warmDashboardCache_V11(e);
+  var r2 = warmWarRoomCache_V11();
+  var msg = "✅ 全站快取預熱完成！\n分析中心: " + (r1 && r1.orders) + " 筆\n戰情室: " + (r2 && r2.count) + " 筆";
+  console.log(msg);
+  return msg;
+}
+
+function warmWarRoomCache_V11() {
+  try {
+    var todayStr = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
+    var res = getWarRoomData_V11(true, todayStr, null);
+    console.log("✅ 戰情室資料已成功預熱快取");
+    return { success: true, count: res && res.tasks && res.tasks.length };
+  } catch (e) {
+    console.log("❌ 戰情室預熱失敗: " + e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+function setupWarmAllCachesTrigger_V42(e) {
+  _requireSystemContext_(e);
+  var triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(function (t) { if (t.getHandlerFunction() === 'warmAllCaches_V42' || t.getHandlerFunction() === 'warmDashboardCache_V11') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('warmAllCaches_V42').timeBased().everyMinutes(30).create();
+  var firstRun = warmAllCaches_V42(e);
+  return "✅ 已建立每 30 分鐘全站快取預熱排程，並已完成首次暖機：\n" + firstRun;
 }
 
 /**
@@ -1293,18 +1644,30 @@ function _classifyDocTypeWhy_(branch, orderId, customer, note, shippingType, map
   return { t: "銷貨", why: key ? "銷售報表查無此單號，且無樣品關鍵字 → 預設銷貨" : "此分公司無銷售報表 → 預設銷貨" };
 }
 
-/** 地址是否為「送回公司 / 倉庫」 */
-function _isHomeAddress_(addr) {
-  var a = String(addr || "").replace(/\s/g, "");
+/** 地址、備註或客戶名稱是否為「送回公司 / 倉庫 / 倉內調貨 / 內部運輸」 */
+function _isHomeAddress_(addr, note, customer) {
+  var a = (String(addr || "") + " " + String(note || "") + " " + String(customer || "")).replace(/\s/g, "");
   if (!a) return false;
-  return V11_PROD_CONFIG.HOME_ADDR_KEYWORDS.some(function (k) { return a.indexOf(k) !== -1; });
+  // V41.94: 1. 送去加工廠(棨新加工/噴砂)、營造工地(國原營造)一律屬客戶正常銷貨單據，絕非免費內部
+  if (a.indexOf("加工") !== -1 || a.indexOf("噴砂") !== -1 || a.indexOf("營造") !== -1) return false;
+
+  // 2. 指送安帝嘉、指送喜悅納 才是內部免費
+  if (a.indexOf("指送安帝嘉") !== -1 || a.indexOf("指送喜悅納") !== -1 || a.indexOf("指送高雅瓷") !== -1 || a.indexOf("指送漢樺") !== -1) return true;
+
+  // 3. 官方總部完全吻合地址：高職東街13號 或 文化路三段535巷98號
+  if (a.indexOf("高職東街13號") !== -1 || a.indexOf("文化路三段535巷98號") !== -1) return true;
+
+  // 4. 明確標示「載回公司」、「回公司」、「倉內調貨」、「轉倉」
+  if (a.indexOf("載回公司") !== -1 || a.indexOf("回公司") !== -1 || a.indexOf("倉內調貨") !== -1 || a.indexOf("轉倉") !== -1) return true;
+
+  return false;
 }
 
 /**
  * 對一批 {branch, id, customer, note, shippingType, address} 物件填入：
  *   docType   樣品 / 退貨 / 銷貨
- *   sampleTo  'home' (送回公司，不計單不計費) | 'out' (送去貨運行/加工廠/客戶，照常計費) | ''
- *   isSample  只有「樣品且送回公司」才為 true → 統計預設排除的就是這種
+ *   sampleTo  'home' (送回公司/倉內調貨，不計單不計費) | 'out' (送去貨運行/加工廠/客戶，照常計費) | ''
+ *   isSample  只有「樣品且送回公司」或「倉內調貨」才為 true → 統計預設排除的就是這種
  */
 function _annotateDocTypes_(list) {
   var mapCache = {};
@@ -1322,9 +1685,16 @@ function _annotateDocTypes_(list) {
         o.docType = r.t; o.docWhy = r.why;
       }
     } catch (e) { o.docType = "銷貨"; o.docWhy = "判定出錯，預設銷貨：" + e.message; }
-    if (o.docType === "樣品") {
-      o.sampleTo = o.__manualSampleTo || (_isHomeAddress_(o.address) ? 'home' : 'out');
+    
+    // V41.55: 倉內調貨/送回公司倉庫判斷（無論客戶名、地址或備註寫載回/永安倉/鶯歌倉/倉內調貨，一律比照免費樣品模式，不計費）
+    var isHomeTransfer = _isHomeAddress_(o.address, o.note, o.rawCustomer || o.customer);
+    if (o.docType === "樣品" || isHomeTransfer) {
+      o.sampleTo = o.__manualSampleTo || (isHomeTransfer ? 'home' : 'out');
       o.isSample = (o.sampleTo === 'home');
+      if (isHomeTransfer && o.docType !== "樣品") {
+        o.docType = "樣品";
+        o.docWhy = "倉內調貨/送回公司倉庫 (不計運費)";
+      }
     } else {
       o.sampleTo = '';
       o.isSample = false;
@@ -1400,6 +1770,52 @@ function cleanCustName_V11(name) {
     }
   }
   return n.trim();
+}
+
+/**
+ * ➕ 新增常用貨運行/加工廠點至後台《運費管理表》(J, K, L 欄)
+ */
+function addCommonLocation_V41_impl_(shortName, fullName, fullAddress, token) {
+  try {
+    // V42.60: 原本沒收 token 卻要求登入身分，從戰情室呼叫一定被擋 → 改成驗管理端 token
+    _requireAdmin_(token);
+    if (!shortName || !fullAddress) return { success: false, error: '請填寫指送簡稱與完整地址' };
+
+    fullName = fullName || shortName;
+
+    // 開啟「鈦傳速物流派車神器」試算表
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName("運費管理表");
+    if (!sheet) {
+      var sheets = ss.getSheets();
+      for (var i = 0; i < sheets.length; i++) {
+        if (sheets[i].getName().indexOf("運費") !== -1) { sheet = sheets[i]; break; }
+      }
+    }
+    if (!sheet) return { success: false, error: '找不到《運費管理表》分頁' };
+
+    // 尋找 J 欄 (指送簡稱)、K 欄 (全名)、L 欄 (完整地址) 的最後一行空位
+    var lastRow = sheet.getLastRow();
+    var targetRow = lastRow + 1;
+    var dataJ = sheet.getRange("J1:J" + Math.max(lastRow, 30)).getValues();
+    for (var r = 1; r < dataJ.length; r++) {
+      if (!dataJ[r][0] || String(dataJ[r][0]).trim() === "") {
+        targetRow = r + 1;
+        break;
+      }
+    }
+
+    // 寫入 J, K, L 欄
+    sheet.getRange(targetRow, 10).setValue(shortName);   // J欄: 指送簡稱
+    sheet.getRange(targetRow, 11).setValue(fullName);    // K欄: 全名
+    sheet.getRange(targetRow, 12).setValue(fullAddress); // L欄: 完整地址
+
+    try { CacheService.getScriptCache().remove("direct_map_v20"); } catch(e) {}
+
+    return { success: true, message: '成功新增常用點「' + fullName + '」至運費管理表第 ' + targetRow + ' 行！' };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
 }
 
 /** V38.x: 高雅瓷業務 LINE ID 對照（讀取「系統設定」分頁的 姓名/稱職 + LINEID 欄） */
@@ -1508,7 +1924,7 @@ function estimateFreight_V11(address, weight, isTimedDeliver) {
   }
 }
 
-function adminAddTempTask(data, token) {
+function adminAddTempTask_impl_(data, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -1694,13 +2110,13 @@ function ensureHeaders_V11(sheet) {
   var required = ["車牌", "狀態", "順序", "緯度", "經度", "貨單縮圖"];
   var sheetName = sheet.getName();
   if (sheetName === V11_PROD_CONFIG.SHEET_LOG) {
-    required = ["單號", "clientUUID", "抵達 GPS 定位", "是否有退貨", "退貨照片", "簽收類型"];
+    required = ["單號", "clientUUID", "抵達 GPS 定位", "是否有退貨", "退貨照片", "簽收類型", "貨單縮圖", "司機"];
   } else if (sheetName === V11_PROD_CONFIG.SHEET_SCHEDULE) {
     required = ["上班時間", "下班時間"];
   }
   
-  // V11.20: 強制包含退回原因欄位與運費對帳欄位 (全新簡化後台，獨立指定時間判斷)
-  if (sheetName === V11_PROD_CONFIG.SHEET_TASKS) {
+  // V11.20: 強制包含退回原因欄位與運費對帳欄位 (全新簡化後台，獨立指定時間判斷，含封存區)
+  if (sheetName === V11_PROD_CONFIG.SHEET_TASKS || sheetName === V11_PROD_CONFIG.SHEET_TASKS + "_封存區") {
     if (required.indexOf("退回原因") === -1) required.push("退回原因");
     if (required.indexOf("封膠膜") === -1) required.push("封膠膜");
     if (required.indexOf("單據類型(人工)") === -1) required.push("單據類型(人工)");
@@ -1723,7 +2139,8 @@ function ensureHeaders_V11(sheet) {
 
   required.forEach(function (name) {
     var exists = false;
-    var coreKey = headerMap[name];
+    // V43.15: 送貨日誌一律比對完整欄名 — 別名「照片」會把「簽收單照片」誤判成已有「貨單縮圖」，導致縮圖欄永遠沒建
+    var coreKey = (sheetName === V11_PROD_CONFIG.SHEET_LOG) ? null : headerMap[name];
     
     if (coreKey) {
       exists = (findHIdx_Core(h, coreKey) !== -1);
@@ -1774,7 +2191,7 @@ function fixVehicleStatusDates(e) {
   Logger.log("✅ 完成，共修正 " + count + " 筆");
 }
 
-function adminDispatchTasks(tasksData, car, token) {
+function adminDispatchTasks_impl_(tasksData, car, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -1793,7 +2210,6 @@ function adminDispatchTasks(tasksData, car, token) {
       s: findCol(["狀態"]),
       sq: findCol(["順序", "趟次"]),
       ds: findCol(["派遣司機"]),
-      dx: findCol(["派遣車次"]),
       cust: findCol(["客戶"]),
       addr: findCol(["地址"]),
       w: findCol(["重量"]),
@@ -1856,11 +2272,10 @@ function adminDispatchTasks(tasksData, car, token) {
         data[targetRow - 1][idx.s] = "配送中";
         data[targetRow - 1][idx.sq] = curMax;
         
-        // ⚡️ 統一寫入派遣司機與車次
+        // ⚡️ 統一寫入派遣司機
         var drvName = drvNameOfCar;
         habitDriverName = drvName;
         if (idx.ds !== -1) data[targetRow - 1][idx.ds] = drvName;
-        if (idx.dx !== -1) data[targetRow - 1][idx.dx] = "1";
         touchedRows.push(targetRow);
 
         habitTasks.push({
@@ -1877,13 +2292,13 @@ function adminDispatchTasks(tasksData, car, token) {
     }
 
     // V41.22: 只寫回改到的列與欄 (舊版整表覆蓋會蓋掉司機同時間的結案)
-    touchedRows.forEach(function (r) { _writeRowCells_(sheet, r, data[r - 1], [idx.v, idx.s, idx.sq, idx.ds, idx.dx]); });
+    touchedRows.forEach(function (r) { _writeRowCells_(sheet, r, data[r - 1], [idx.v, idx.s, idx.sq, idx.ds]); });
 
     if (habitTasks.length > 0 && typeof logDispatchHabit_V8 === 'function') {
       var totalHabitWeight = habitTasks.reduce(function (sum, t) { return sum + (Number(t.weight) || 0); }, 0);
       logDispatchHabit_V8(ss, {
         tasks: habitTasks,
-        config: { plate: car, name: habitDriverName, shift: "1" },
+        config: { plate: car, name: habitDriverName },
         tripTotalWeight: totalHabitWeight,
         utilization: "戰情室指派",
         source: "戰情室指派",
@@ -1904,7 +2319,7 @@ function adminDispatchTasks(tasksData, car, token) {
 }
 
 /** V11.15: 單筆或批次取消指派 */
-function adminUnassignTask(tasksData, token) {
+function adminUnassignTask_impl_(tasksData, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -1958,7 +2373,7 @@ function adminUnassignTask(tasksData, token) {
 }
 
 /** V11.12.2: 清除所有訂單的司機指派，用於重新分配 */
-function adminResetAllAssignments(token) {
+function adminResetAllAssignments_impl_(token) {
   try {
     _requireAdmin_(token);
     var ss = getSS_V11();
@@ -1991,7 +2406,7 @@ function adminResetAllAssignments(token) {
 }
 
 
-function updateTaskOrder(tasks, token) {
+function updateTaskOrder_impl_(tasks, token) {
   var lock = LockService.getScriptLock();
   try {
     var ctx = _requireDriver_(token);
@@ -2039,7 +2454,7 @@ function updateTaskOrder(tasks, token) {
 /**
  * V11.18: 刪除訂單 (邏輯為封存，不上演物理刪除)
  */
-function adminDeleteTask_V11(taskId, branch, token) {
+function adminDeleteTask_V11_impl_(taskId, branch, token) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return "❌ 系統忙碌中，刪除失敗";
 
@@ -2254,7 +2669,7 @@ function submitQuickReport(report) {
       setLog("退貨照片", photoUrl);
       setLog("抵達 GPS 定位", report.lat + "," + report.lng);
       setLog("clientUUID", report.clientUUID || "");
-      logSheet.appendRow(logRow);
+      _prependRow_(logSheet, logRow);
 
       // 2. 寫入行程足跡 (SHEET_SCHEDULE)
       updateScheduleTrace_V12(report.car, report.lat, report.lng);
@@ -2440,7 +2855,7 @@ function checkTodayAttendance(car, token) {
 }
 
 /** V35.9: 司機重新回報 (撤回結案) */
-function driverRedoTask(orderId, branch, token) {
+function driverRedoTask_impl_(orderId, branch, token) {
   try {
     _requireDriver_(token);
     var ss = getSS_V11();
@@ -2718,7 +3133,20 @@ function submitFinalDelivery(report) {
   try {
     var ctx = _requireDriver_(report && report.token); if (!_driverMayUseCar_(ctx, report && report.car)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + (report && report.car));
     var ss = getSS_V11(), now = new Date(), timeStr = Utilities.formatDate(now, "GMT+8", "yyyy/MM/dd HH:mm:ss");
+    
+    // V41.80: 高階雙重原子鎖防護（防止雙擊與平行併發）
     if (checkUUIDDuplicate(ss, report.clientUUID)) return { success: true, duplicated: true };
+    _markUUIDDone_(report.clientUUID); // 立即記錄原子鎖，擋下 100ms 內同 UUID 的並行請求
+
+    var orderKey = 'order_completed_' + String(report.orderId || '').trim();
+    var cache = CacheService.getScriptCache();
+    if (report.orderId && cache.get(orderKey)) {
+      console.log('防併發重複結案: 單號 ' + report.orderId + ' 已結案，略過');
+      return { success: true, duplicated: true };
+    }
+    if (report.orderId) {
+      try { cache.put(orderKey, '1', 600); } catch (ce) { }
+    }
 
     var driverName = report.driverName || "";
     if (!driverName) {
@@ -2749,9 +3177,11 @@ function submitFinalDelivery(report) {
       idxBranch = findHIdx_Core(h, "BRANCH"),
       idxStatus = findHIdx_Core(h, "STATUS"),
       idxFinish = findHIdx_Core(h, "FINISH_TIME"),
-      idxSpecified = h.indexOf("指定到貨時間");
+      idxSpecified = h.indexOf("指定到貨時間"),
+      idxThumbSrc = findHIdx_Core(h, "THUMBNAIL");
 
     var specifiedArrive = "";
+    var orderThumbnail = ""; // V42.40: 送貨日誌備份一份貨單縮圖，避免另一邊(派送清單)沒存到就整個沒了
 
     if (idxId !== -1) {
       var foundRow = -1;
@@ -2775,6 +3205,7 @@ function submitFinalDelivery(report) {
 
         foundRow = i + 1;
         if (idxSpecified !== -1) specifiedArrive = _fmtArriveTime_(getSafeVal(tData[i], idxSpecified)); // V40
+        if (idxThumbSrc !== -1) orderThumbnail = String(tData[i][idxThumbSrc] || "").trim();
         break;
       }
 
@@ -2803,6 +3234,7 @@ function submitFinalDelivery(report) {
     setLog("送貨地址", report.address);
     setLog("指定到貨時間", specifiedArrive); // V40: 強制指定到貨時間 (電梯管制)
     setLog("配送完成時間", timeStr);
+    setLog("貨單縮圖", orderThumbnail); // V42.40: 備份一份，避免派送清單那邊沒存到就整個沒了
     var currentSignType = report.signType || "本人親簽";
     var isUnattendedSign = (currentSignType.indexOf("無人") !== -1 || currentSignType.indexOf("放置指定位置") !== -1);
     var signPrefixTag = isUnattendedSign ? "[" + currentSignType + "] " : "";
@@ -2816,7 +3248,7 @@ function submitFinalDelivery(report) {
     setLog("抵達 GPS 定位", report.lat + "," + report.lng);
     setLog("clientUUID", report.clientUUID || "");
     setLog("簽收類型", currentSignType);
-    logSheet.appendRow(logRow);
+    _prependRow_(logSheet, logRow);
 
     // V37.23: 同地址批次結案 — 為每個合併訂單更新狀態 + 寫入 Log
     if (report.batchTasks && Array.isArray(report.batchTasks) && report.batchTasks.length > 0) {
@@ -2828,12 +3260,14 @@ function submitFinalDelivery(report) {
           // 更新 SHEET_TASKS 狀態
           if (idxId !== -1) {
             var btRow = -1;
+            var btThumbnail = "";
             for (var bi = 1; bi < tData.length; bi++) {
               var btRowId = String(tData[bi][idxId] || "").trim();
               if (!btRowId) continue;
               if (btRowId !== btId && btRowId.replace(/-[安高漢喜]$/, '') !== btId.replace(/-[安高漢喜]$/, '')) continue;
               if (btBranch && idxBranch !== -1 && String(tData[bi][idxBranch] || "").trim() !== btBranch) continue;
               btRow = bi + 1;
+              if (idxThumbSrc !== -1) btThumbnail = String(tData[bi][idxThumbSrc] || "").trim();
               break;
             }
             if (btRow !== -1) {
@@ -2852,6 +3286,7 @@ function submitFinalDelivery(report) {
           setBt("送貨地址", bt.address || "");
           setBt("指定到貨時間", specifiedArrive); // V40
           setBt("配送完成時間", timeStr);
+          setBt("貨單縮圖", btThumbnail); // V42.40
           setBt("備註", "[批次結案] 同地址合併");
           setBt("司機說明", report.driverIssue || ""); // V40
           setBt("貨物破損", "否");
@@ -2860,7 +3295,7 @@ function submitFinalDelivery(report) {
           setBt("抵達 GPS 定位", (report.lat || 0) + "," + (report.lng || 0));
           setBt("clientUUID", bt.clientUUID || "");
           setBt("簽收類型", report.signType || "本人親簽");
-          logSheet.appendRow(btLogRow);
+          _prependRow_(logSheet, btLogRow);
         } catch(bte) {
           console.error("批次結案錯誤 " + (bt.id || "") + ": " + bte.message);
         }
@@ -3028,7 +3463,7 @@ function calculateAndLogETA_V6(car, taskId, fromLat, fromLng, toLat, toLng, toke
  * V6.6: 動態調整任務順序
  * 司機選定下一站後，該站與同地址站點設為 SEQ=1，其餘往後排
  */
-function adjustTaskSequence_V6(carPlate, selectedTaskId, token) {
+function adjustTaskSequence_V6_impl_(carPlate, selectedTaskId, token) {
   try {
     var ctx = _requireDriver_(token); if (!_driverMayUseCar_(ctx, carPlate)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + carPlate);
     var ss = getSS_V11();
@@ -3112,7 +3547,7 @@ function adjustTaskSequence_V6(carPlate, selectedTaskId, token) {
  */
 function getSignPhotoBase64(fileId, token) {
   try {
-    _requireAdmin_(token);
+    _requireViewer_(token); // V43.0: 業務可看不能改
     if (!fileId) return { success: false, error: "缺少 fileId" };
     var file = DriveApp.getFileById(fileId);
     var blob = file.getBlob();
@@ -3173,7 +3608,7 @@ function updateBeautifiedSignPhoto(orderId, branch, photoDataUrl, token) {
  * 在主資料夾下建立「簽收單_YYMMDD」子資料夾，複製所有今日簽收照片進去後回傳資料夾連結
  * 檔名格式：客戶名_地址_日期
  */
-function createTodaySignPhotoZip(dateStr, branchFilter, token) {
+function createTodaySignPhotoZip_impl_(dateStr, branchFilter, token) {
   try {
     _requireAdmin_(token);
     var ss = getSS_V11();
@@ -3608,7 +4043,7 @@ function updateScheduleTrace_V12(car, lat, lng, eventName, taskAddr) {
 
 function getRouteHistory_V11p9(carName, token) {
   try {
-    _requireAdmin_(token);
+    _requireViewer_(token); // V43.0: 業務可看不能改
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_ROUTE);
     if (!sheet) return [];
@@ -3674,7 +4109,7 @@ function _calculatePreciseMinutesLive_(lat1, lon1, lat2, lon2) {
 }
 
 function calculateSimpleETA(lat1, lon1, lat2, lon2, token) {
-  _requireAdmin_(token);
+  _requireViewer_(token); // V43.0: 業務可看不能改
   if (!lat1 || !lon1 || !lat2 || !lon2) return "N/A";
   try {
     var matrix = Maps.newDistanceMatrix()
@@ -4461,7 +4896,7 @@ function applyProfessionalStyles_V11(e) {
 }
 
 /** V2632.16: 司機端取消任務 */
-function adminCancelTaskV2(taskId, branch, token) {
+function adminCancelTaskV2_impl_(taskId, branch, token) {
   try {
     var ctx = _requireDriver_(token);
     var ss = getSS_V11();
@@ -4495,6 +4930,35 @@ function adminCancelTaskV2(taskId, branch, token) {
   }
 }
 
+/** V42.40: 新資料插入標題列之後(最上面)，取代 appendRow，供送貨日誌等要求「最新在最上面」的表使用 */
+function _prependRow_(sheet, rowValues) {
+  sheet.insertRowAfter(1);
+  // V43.15: 插在標題列後面會沿用標題列的底色／字色(黃底、黑底)，先清回一般格式再寫入
+  var r = sheet.getRange(2, 1, 1, Math.max(rowValues.length, sheet.getLastColumn()));
+  r.setBackground(null).setFontColor(null).setFontWeight('normal');
+  sheet.getRange(2, 1, 1, rowValues.length).setValues([rowValues]);
+}
+
+/** V43.15: 從 clientUUID (u + 13 位毫秒時間) 取出司機送出回報的時間；取不到再用單號 15MMDD 推日期 */
+function _logTimeFromRow_(uuid, orderId) {
+  var m = String(uuid || '').match(/^u(\d{13})/);
+  if (m) {
+    var d = new Date(Number(m[1]));
+    if (d.getFullYear() >= 2024 && d.getTime() <= Date.now() + 86400000) return d;
+  }
+  var o = String(orderId || '').match(/^15(\d{2})(\d{2})\d/);
+  if (o) {
+    var now = new Date(), mm = Number(o[1]), dd = Number(o[2]);
+    if (mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      var y = now.getFullYear();
+      var dt = new Date(y, mm - 1, dd, 12, 0, 0);
+      if (dt.getTime() > now.getTime() + 86400000 * 7) dt = new Date(y - 1, mm - 1, dd, 12, 0, 0);
+      return dt;
+    }
+  }
+  return null;
+}
+
 /** 輔助：取得欄位英文字母 */
 function getColumnLetter(col) {
   var letter = "";
@@ -4513,6 +4977,12 @@ function cleanupOldLogsAndTasks_V11(e) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) { console.error("cleanupOldLogsAndTasks_V11: 取得鎖失敗，本次略過"); return; }
   try {
+    // V43.15: 第一次夜間封存時順便整理送貨日誌 (之後不再重跑)
+    var props = PropertiesService.getScriptProperties();
+    if (!props.getProperty('TIDY_LOG_V43_DONE')) {
+      try { console.log(_tidyDeliveryLogCore_(getSS_V11())); props.setProperty('TIDY_LOG_V43_DONE', new Date().toISOString()); }
+      catch (eT) { console.error('整理送貨日誌失敗：' + eT.message); }
+    }
     _cleanupOldLogsAndTasksCore_(getSS_V11());
   } finally {
     lock.releaseLock();
@@ -4522,7 +4992,6 @@ function cleanupOldLogsAndTasks_V11(e) {
 function _cleanupOldLogsAndTasksCore_(ss) {
   var cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - 3);
-  var cutoffStr = Utilities.formatDate(cutoffDate, "GMT+8", "yyyy/MM/dd");
 
   var cleanSheet = function (sheetName, dateHeader) {
     var sheet = ss.getSheetByName(sheetName);
@@ -4536,10 +5005,38 @@ function _cleanupOldLogsAndTasksCore_(ss) {
     // 準備封存表
     var archiveName = sheetName + "_封存區";
     var archSheet = ss.getSheetByName(archiveName) || ss.insertSheet(archiveName);
-    if (archSheet.getLastRow() === 0) archSheet.appendRow(data[0]);
+
+    // V42.34: 改成「依欄位名稱」搬移，不再假設兩表欄位順序完全一樣。
+    // 舊版直接整列陣列複製(moveData.push(data[i]))，只要主表被手動插入/搬移過欄位，
+    // 封存區的資料就會對到錯的欄位（例如經度被寫進司機確認狀態欄）。
+    var archLastCol = archSheet.getLastColumn();
+    var archHeaders = archLastCol > 0
+      ? archSheet.getRange(1, 1, 1, archLastCol).getValues()[0].map(function (v) { return String(v).trim(); })
+      : [];
+
+    if (archHeaders.length === 0) {
+      // 封存區是全新的，直接沿用主表標頭
+      archHeaders = h.slice();
+      archSheet.getRange(1, 1, 1, archHeaders.length).setValues([archHeaders]);
+    } else {
+      // 主表若有封存區沒有的新欄位，自動補到封存區標頭最後面，避免新欄位被靜默丟棄
+      var missing = h.filter(function (name) { return name && archHeaders.indexOf(name) === -1; });
+      if (missing.length > 0) {
+        archSheet.getRange(1, archHeaders.length + 1, 1, missing.length).setValues([missing]);
+        archHeaders = archHeaders.concat(missing);
+      }
+    }
+
+    // 主表「欄位名稱 -> 索引」對照，供依名稱取值用（重複欄名取第一個，跟 indexOf 行為一致）
+    var srcIdxByName = {};
+    h.forEach(function (name, i) { if (name && srcIdxByName[name] === undefined) srcIdxByName[name] = i; });
+
+    // V43.15: 送貨日誌完成時間空白 (8 月舊資料) → 用 clientUUID / 單號推算，否則永遠不會被封存
+    var idxUuid = h.indexOf("clientUUID"), idxOid = h.indexOf("單號");
+    var isLogSheet = (sheetName === V11_PROD_CONFIG.SHEET_LOG);
 
     var keepData = [data[0]]; // 保留標題
-    var moveData = [];
+    var moveDataWithTime = []; // {row, time} 一起存，之後依日期新到舊排序
     var cutoffTime = cutoffDate.getTime();
 
     for (var i = 1; i < data.length; i++) {
@@ -4559,17 +5056,36 @@ function _cleanupOldLogsAndTasksCore_(ss) {
         }
       }
 
+      if (rowTime === 0 && isLogSheet) {
+        var guess = _logTimeFromRow_(idxUuid !== -1 ? data[i][idxUuid] : '', idxOid !== -1 ? data[i][idxOid] : '');
+        if (guess) {
+          rowTime = guess.getTime();
+          data[i][idx] = Utilities.formatDate(guess, "GMT+8", "yyyy/MM/dd HH:mm:ss");
+        }
+      }
+
       // 若日期不明，或日期大於等於截止日，則保留
       if (rowTime === 0 || rowTime >= cutoffTime) {
         keepData.push(data[i]);
       } else {
-        moveData.push(data[i]);
+        // 依封存區「欄位名稱」逐欄從主表對應欄位取值，不再依賴實體位置
+        var srcRow = data[i];
+        var mappedRow = archHeaders.map(function (name) {
+          var si = srcIdxByName[name];
+          return (si !== undefined) ? srcRow[si] : "";
+        });
+        moveDataWithTime.push({ row: mappedRow, time: rowTime });
       }
     }
 
+    // V42.40: 封存區改成新資料插入標題列之後(最上面)，依日期新到舊排序，不用使用者自己手動排序
+    moveDataWithTime.sort(function (a, b) { return b.time - a.time; });
+    var moveData = moveDataWithTime.map(function (x) { return x.row; });
+
     if (moveData.length > 0) {
-      // 1. 寫入封存區
-      archSheet.getRange(archSheet.getLastRow() + 1, 1, moveData.length, moveData[0].length).setValues(moveData);
+      // 1. 插入封存區最上面(標題列之後)
+      archSheet.insertRowsAfter(1, moveData.length);
+      archSheet.getRange(2, 1, moveData.length, archHeaders.length).setValues(moveData);
 
       // 2. 高效覆寫原始分頁 (代替緩慢的 deleteRow)
       sheet.clearContents();
@@ -4587,6 +5103,111 @@ function _cleanupOldLogsAndTasksCore_(ss) {
 
   cleanSheet(V11_PROD_CONFIG.SHEET_TASKS, "日期");
   cleanSheet(V11_PROD_CONFIG.SHEET_LOG, "配送完成時間");
+}
+
+/**
+ * V43.15: 整理送貨日誌 (試算表選單「🧹 維護」手動執行；夜間封存也會自動做一次)
+ *   1. 送貨日誌補「貨單縮圖」「司機」欄，完成時間空白的用 clientUUID/單號推算補上，貨單縮圖從派送清單(含封存區)補回
+ *   2. 清掉資料列沿用標題列的黃底／黑底 (破損紅底是條件式格式，不受影響)
+ *   3. 送貨日誌_封存區欄位順序改成跟送貨日誌一樣 (依欄名搬，不會錯欄)，同樣補完成時間與貨單縮圖
+ *   4. 立刻跑一次 3 天封存，把補好時間的舊資料移進封存區
+ */
+function menuTidyDeliveryLog_V43(e) {
+  _requireSystemContext_(e);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) throw new Error('系統忙碌中，請稍後再試');
+  var msg;
+  try {
+    msg = _tidyDeliveryLogCore_(getSS_V11());
+    PropertiesService.getScriptProperties().setProperty('TIDY_LOG_V43_DONE', new Date().toISOString());
+  } finally {
+    lock.releaseLock();
+  }
+  try { SpreadsheetApp.getActive().toast(msg, '送貨日誌整理完成', 15); } catch (e2) { }
+  console.log(msg);
+  return msg;
+}
+
+function _tidyDeliveryLogCore_(ss) {
+  var logSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
+  if (!logSheet) return '找不到送貨日誌';
+  ensureHeaders_V11(logSheet);
+
+  // 貨單縮圖對照：派送清單 + 封存區，單號 → 縮圖網址
+  var thumbById = {};
+  [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"].forEach(function (name) {
+    var sh = ss.getSheetByName(name);
+    if (!sh || sh.getLastRow() < 2) return;
+    var d = sh.getDataRange().getValues();
+    var hh = d[0].map(function (v) { return String(v).trim(); });
+    var iId = hh.indexOf("單號"), iTh = hh.indexOf("貨單縮圖");
+    if (iId === -1 || iTh === -1) return;
+    for (var r = 1; r < d.length; r++) {
+      var id = String(d[r][iId]).trim(), th = String(d[r][iTh] || '').trim();
+      if (id && th && /^https?:/.test(th) && !thumbById[id]) thumbById[id] = th;
+    }
+  });
+
+  var fixRows = function (rows, hh) {
+    var iT = hh.indexOf("配送完成時間"), iU = hh.indexOf("clientUUID"), iO = hh.indexOf("單號"), iTh = hh.indexOf("貨單縮圖");
+    var nTime = 0, nThumb = 0;
+    rows.forEach(function (row) {
+      if (iT !== -1 && (row[iT] === '' || row[iT] == null)) {
+        var g = _logTimeFromRow_(iU !== -1 ? row[iU] : '', iO !== -1 ? row[iO] : '');
+        if (g) { row[iT] = Utilities.formatDate(g, "GMT+8", "yyyy/MM/dd HH:mm:ss"); nTime++; }
+      }
+      if (iTh !== -1 && iO !== -1 && !row[iTh]) {
+        var th = thumbById[String(row[iO]).trim()];
+        if (th) { row[iTh] = th; nThumb++; }
+      }
+    });
+    return { time: nTime, thumb: nThumb };
+  };
+
+  // ── 1+2. 送貨日誌 ──
+  var logData = logSheet.getDataRange().getValues();
+  var logH = logData[0].map(function (v) { return String(v).trim(); });
+  var logRows = logData.slice(1);
+  var r1 = fixRows(logRows, logH);
+  if (logRows.length) {
+    ["配送完成時間", "貨單縮圖"].forEach(function (name) {
+      var c = logH.indexOf(name);
+      if (c === -1) return;
+      logSheet.getRange(2, c + 1, logRows.length, 1).setValues(logRows.map(function (r) { return [r[c]]; }));
+    });
+    logSheet.getRange(2, 1, logRows.length, logSheet.getLastColumn()).setBackground(null).setFontColor(null).setFontWeight('normal');
+  }
+
+  // ── 3. 送貨日誌_封存區：欄位順序對齊送貨日誌 ──
+  var archName = V11_PROD_CONFIG.SHEET_LOG + "_封存區";
+  var arch = ss.getSheetByName(archName);
+  var r2 = { time: 0, thumb: 0 }, archCount = 0;
+  if (arch && arch.getLastRow() >= 1) {
+    var aData = arch.getDataRange().getValues();
+    var aH = aData[0].map(function (v) { return String(v).trim(); });
+    var aRows = aData.slice(1);
+    var target = logH.filter(function (n) { return n; });
+    aH.forEach(function (n, i) {
+      if (n && target.indexOf(n) === -1) target.push(n);
+      // 沒有欄名但有資料的欄，保留在最後面，避免資料消失
+      if (!n && aRows.some(function (r) { return r[i] !== '' && r[i] != null; })) target.push('#' + i);
+    });
+    var srcIdx = target.map(function (n) { return n.charAt(0) === '#' ? Number(n.slice(1)) : aH.indexOf(n); });
+    var newRows = aRows.map(function (r) { return srcIdx.map(function (si) { return si === -1 ? '' : r[si]; }); });
+    var newH = target.map(function (n) { return n.charAt(0) === '#' ? '' : n; });
+    r2 = fixRows(newRows, newH);
+    if (arch.getMaxColumns() < newH.length) arch.insertColumnsAfter(arch.getMaxColumns(), newH.length - arch.getMaxColumns());
+    arch.clearContents();
+    arch.getRange(1, 1, 1, newH.length).setValues([newH]);
+    if (newRows.length) arch.getRange(2, 1, newRows.length, newH.length).setValues(newRows);
+    archCount = newRows.length;
+  }
+
+  // ── 4. 立刻封存 ──
+  _cleanupOldLogsAndTasksCore_(ss);
+
+  return '送貨日誌：補完成時間 ' + r1.time + ' 筆、貨單縮圖 ' + r1.thumb + ' 筆，已清除黃底。'
+    + '封存區：' + archCount + ' 筆欄位已對齊送貨日誌，補完成時間 ' + r2.time + ' 筆、貨單縮圖 ' + r2.thumb + ' 筆。';
 }
 
 /**
@@ -4823,7 +5444,7 @@ function syncOldLogsOrderId_V11(e) {
  * @param {Array} sequenceData - 格式: [{id: "單號", seq: 數字}, ...]
  * @param {String} vehicleName - 車牌/司機代碼
  */
-function adminUpdateSequence_V11(sequenceData, vehicleName, token) {
+function adminUpdateSequence_V11_impl_(sequenceData, vehicleName, token) {
   _requireAdmin_(token);
   if (!sequenceData || !sequenceData.length) return "無更新資料";
   
@@ -4901,7 +5522,7 @@ function pushLineMessageWithShortUrls_V11(msg) {
 }
 
 /** V11.20: 批次退回分公司邏輯 */
-function adminBatchReturnTasks_V11(updates, token) {
+function adminBatchReturnTasks_V11_impl_(updates, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -5196,7 +5817,7 @@ function lookupProductMasterData_V11() {
 }
 
 /** V11.20: LINE 推播核心 */
-function pushLineMessage_V11(msg, token) {
+function pushLineMessage_V11_impl_(msg, token) {
   _requireAdmin_(token);
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
   var targetId = PropertiesService.getScriptProperties().getProperty('LINE_TARGET_ID');
@@ -5397,6 +6018,72 @@ function pushTelegramDeliveryPhoto_V11(photoBlob, caption, branch) {
 }
 
 /**
+ * 📨 Telegram 發送純文字警報通知
+ */
+function pushTelegramTextMessage_V11(text, branch) {
+  try {
+    _requireCtx_();
+    _ensureTelegramDelivery_V11();
+    var props = PropertiesService.getScriptProperties();
+    var token = props.getProperty('TG_TOKEN');
+    var chatId = _getTgGroupIdForBranch_V11(branch);
+    if (!token || !chatId) return false;
+
+    var payload = {
+      'chat_id': chatId,
+      'text': text,
+      'parse_mode': 'HTML'
+    };
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    var resp = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/sendMessage", options);
+    var json = JSON.parse(resp.getContentText());
+    return json && json.ok;
+  } catch (e) {
+    console.error("TG 文字推送異常: " + e.message);
+    return false;
+  }
+}
+
+/**
+ * 🚨 司機完成任務現場異常回報與運費加成 API
+ * surchargeType: 'qty' (數量過多 x2), 'dist' (距離過遠 x2), 'wait' (等候過久), 'cancel' (取消空跑)
+ */
+function submitDriverSurcharge_V41(orderId, branch, driverName, surchargeType, waitHours, note, token) {
+  try {
+    _requireCtx_();
+    if (!orderId || !branch) return { success: false, error: '缺少單號或分公司' };
+
+    var labelMap = {
+      'qty': '數量過多 (運費x2)',
+      'dist': '距離過遠 (運費x2)',
+      'wait': '等候過久 (' + (waitHours || 1) + '小時)',
+      'cancel': '取消空跑 (運費維持基本趟費)'
+    };
+
+    var sLabel = labelMap[surchargeType] || surchargeType;
+
+    // 1. 發送 Telegram 警報
+    var alertMsg = "🚨 <b>司機現場異常回報提醒</b>\n\n" +
+                   "👤 <b>司機：</b>" + (driverName || '司機') + "\n" +
+                   "📦 <b>單號：</b>" + orderId + " (" + branch + ")\n" +
+                   "⚠️ <b>異常狀況：</b>" + sLabel + "\n" +
+                   (note ? "📝 <b>說明：</b>" + note + "\n" : "") +
+                   "💰 <b>運費連動：</b>" + (surchargeType === 'qty' || surchargeType === 'dist' ? '運費加倍 (Double)' : '已記錄於對帳中心');
+
+    pushTelegramTextMessage_V11(alertMsg, branch);
+
+    return { success: true, message: '現場異常回報成功！已發送 Telegram 警報與運費連動。' };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * 🚀 核心功能：同步「業務配送清單」的司機下拉選單
  * 功用：自動讀取系統白名單，找出該列對應分公司的「業務」與「司機」，套用到下拉選單中！
  */
@@ -5563,7 +6250,7 @@ function getMileageHistory_V11(car, yearMonth, token) {
  * @param {string} type 'start' (上班里程) 或 'end' (下班里程)
  * @param {number} newMileage 新的里程數字
  */
-function updateMileageRecord_V11(rowNum, type, newMileage, token) {
+function updateMileageRecord_V11_impl_(rowNum, type, newMileage, token) {
   try {
     var ctx = _requireDriver_(token);
     var ss = getSS_V11();
@@ -5618,7 +6305,7 @@ function updateMileageRecord_V11(rowNum, type, newMileage, token) {
  * @param {string} type 'amt' (加油金額) 或 'lit' (加油公升數)
  * @param {number} newVal 新的數值
  */
-function updateFuelRecord_V11(rowNum, type, newVal, token) {
+function updateFuelRecord_V11_impl_(rowNum, type, newVal, token) {
   try {
     var ctx = _requireDriver_(token);
     var ss = getSS_V11();
@@ -5693,118 +6380,12 @@ function formatLastUpdate(timestamp) {
 }
 
 /**
- * 申訴 API：分公司對某一筆訂單的運費提出申訴
- */
-function submitFreightAppeal(taskId, branch, reason, expectedFee, token) {
-  var lock = LockService.getScriptLock();
-  try {
-    _requireAdmin_(token);
-    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
-    
-    var ss = getSS_V11();
-    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
-    if (!sheet) throw new Error("找不到派送清單");
-    
-    var data = sheet.getDataRange().getValues();
-    var h = data[0].map(v => String(v).trim());
-    var idxId = h.indexOf("單號");
-    var idxBr = h.indexOf("分公司");
-    var idxStatus = h.indexOf("申訴狀態");
-    var idxReason = h.indexOf("申訴理由");
-    var idxAdjust = h.indexOf("調整後運費");
-    
-    if (idxId === -1 || idxStatus === -1 || idxReason === -1) {
-      throw new Error("系統欄位不完整，無法申訴。請管理員重新初始化欄位。");
-    }
-    
-    var targetRow = -1;
-    for (var i = 1; i < data.length; i++) {
-      var rowId = String(data[i][idxId]).trim();
-      var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
-      if (rowId === String(taskId) && (branch === "全部" || rowBr === branch)) {
-        targetRow = i + 1;
-        break;
-      }
-    }
-    
-    if (targetRow === -1) throw new Error("找不到該筆訂單");
-    
-    // 寫入申訴資料
-    sheet.getRange(targetRow, idxStatus + 1).setValue("申訴中");
-    sheet.getRange(targetRow, idxReason + 1).setValue(reason + " (期望金額: $" + expectedFee + ")");
-    if (idxAdjust !== -1) {
-      sheet.getRange(targetRow, idxAdjust + 1).setValue(""); // 清空舊的調整後金額
-    }
-    
-    // 清除快取
-    _clearDashboardCache_();
-    
-    return { success: true, message: "✅ 申訴已成功提交！" };
-  } catch (e) {
-    return { success: false, error: e.message };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * 審批 API：管理端同意調整或駁回申訴
- */
-function resolveFreightAppeal(taskId, status, replyNote, finalFee, token) {
-  var lock = LockService.getScriptLock();
-  try {
-    _requireAdmin_(token);
-    if (!lock.tryLock(15000)) throw new Error("系統忙碌中，請稍後再試。");
-    
-    var ss = getSS_V11();
-    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
-    if (!sheet) throw new Error("找不到派送清單");
-    
-    var data = sheet.getDataRange().getValues();
-    var h = data[0].map(v => String(v).trim());
-    var idxId = h.indexOf("單號");
-    var idxStatus = h.indexOf("申訴狀態");
-    var idxReply = h.indexOf("申訴處理說明");
-    var idxAdjust = h.indexOf("調整後運費");
-    
-    if (idxId === -1 || idxStatus === -1 || idxReply === -1 || idxAdjust === -1) {
-      throw new Error("系統欄位不完整");
-    }
-    
-    var targetRow = -1;
-    for (var i = 1; i < data.length; i++) {
-      if (String(data[i][idxId]).trim() === String(taskId)) {
-        targetRow = i + 1;
-        break;
-      }
-    }
-    
-    if (targetRow === -1) throw new Error("找不到該筆訂單");
-    
-    sheet.getRange(targetRow, idxStatus + 1).setValue(status); // "已調整" 或 "已駁回"
-    sheet.getRange(targetRow, idxReply + 1).setValue(replyNote);
-    if (status === "已調整") {
-      sheet.getRange(targetRow, idxAdjust + 1).setValue(parseFloat(finalFee) || 0);
-    } else {
-      sheet.getRange(targetRow, idxAdjust + 1).setValue(""); // 駁回則無調整金額
-    }
-    
-    _clearDashboardCache_();
-    return { success: true, message: "✅ 申訴案件已處理完成！" };
-  } catch (e) {
-    return { success: false, error: e.message };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
  * V39.23: 對帳頁面直接手動調整核定運費 (不經過申訴流程，供內部管理端直接改)
  * @param {string} taskId 單號
  * @param {string} branch 分公司 (可傳空字串，僅比對單號)
  * @param {number} newFee 新的核定運費金額
  */
-function manualAdjustFreight_V11(taskId, branch, newFee, token) {
+function manualAdjustFreight_V11_impl_(taskId, branch, newFee, token) {
   var lock = LockService.getScriptLock();
   try {
     _requireAdmin_(token);
@@ -5814,34 +6395,38 @@ function manualAdjustFreight_V11(taskId, branch, newFee, token) {
     if (isNaN(feeVal) || feeVal < 0) throw new Error("請輸入有效的運費金額");
 
     var ss = getSS_V11();
-    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
-    if (!sheet) throw new Error("找不到派送清單");
+    var targets = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"];
 
-    var data = sheet.getDataRange().getValues();
-    var h = data[0].map(function (v) { return String(v).trim(); });
-    var idxId = h.indexOf("單號");
-    var idxBr = h.indexOf("分公司");
-    var idxAdjust = h.indexOf("調整後運費");
-    if (idxId === -1 || idxAdjust === -1) throw new Error("系統欄位不完整");
+    for (var s = 0; s < targets.length; s++) {
+      var sheet = ss.getSheetByName(targets[s]);
+      if (!sheet) continue;
 
-    var targetRow = -1;
-    for (var i = 1; i < data.length; i++) {
-      var rowId = String(data[i][idxId]).trim();
-      var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
-      if (rowId === String(taskId) && (!branch || rowBr === branch)) {
-        targetRow = i + 1;
-        break;
+      var data = sheet.getDataRange().getValues();
+      if (!data || data.length < 2) continue;
+      var h = data[0].map(function (v) { return String(v).trim(); });
+      var idxId = h.indexOf("單號");
+      var idxBr = h.indexOf("分公司");
+      var idxAdjust = h.indexOf("調整後運費");
+      if (idxId === -1) continue;
+      if (idxAdjust === -1) { idxAdjust = h.length; sheet.getRange(1, idxAdjust + 1).setValue("調整後運費"); }
+
+      for (var i = 1; i < data.length; i++) {
+        var rowId = String(data[i][idxId]).trim();
+        var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+        if (rowId === String(taskId) && (!branch || rowBr === branch)) {
+          sheet.getRange(i + 1, idxAdjust + 1).setValue(feeVal);
+          _updateDashboardSheetCacheItem_(taskId, branch, undefined, feeVal);
+          _clearWarRoomCache_();
+          return { success: true, message: "✅ 運費已成功調整為 $" + feeVal, newFee: feeVal };
+        }
       }
     }
-    if (targetRow === -1) throw new Error("找不到該筆訂單 [" + taskId + "]");
 
-    sheet.getRange(targetRow, idxAdjust + 1).setValue(feeVal);
-    _clearDashboardCache_();
-    return { success: true, message: "✅ 運費已調整為 $" + feeVal, newFee: feeVal };
+    throw new Error("找不到該筆訂單 [" + taskId + "]");
   } catch (e) {
     return { success: false, error: e.message };
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e2) { }
   }
 }
 
@@ -5851,7 +6436,7 @@ function manualAdjustFreight_V11(taskId, branch, newFee, token) {
 //   A-B 重量上限(KG)/基礎運費、D-E 偏遠地區關鍵字/加乘倍率、G-H 附加項目/費率
 // ==========================================
 function getFreightSettings_V41(token) {
-  _requireAdmin_(token);
+  _requireViewer_(token); // V43.0: 業務可看不能改
   try {
     var r = FreightEngine.loadRates();
     if (!r) return { success: false, error: "找不到運費管理表，請先執行 setupFreightRateSheet_V11" };
@@ -5864,7 +6449,7 @@ function getFreightSettings_V41(token) {
   } catch (e) { return { success: false, error: e.message }; }
 }
 
-function saveFreightSettings_V41(cfg, token) {
+function saveFreightSettings_V41_impl_(cfg, token) {
   _requireAdmin_(token);
   var lock = LockService.getScriptLock();
   try {
@@ -5907,11 +6492,63 @@ function saveFreightSettings_V41(cfg, token) {
 }
 
 
+function _matchOrderId_(id1, id2) {
+  if (!id1 || !id2) return false;
+  var s1 = String(id1).trim().toUpperCase();
+  var s2 = String(id2).trim().toUpperCase();
+  if (s1 === s2) return true;
+  return _stripOrderSuffix_(s1) === _stripOrderSuffix_(s2);
+}
+
+function _matchBranch_(b1, b2) {
+  if (!b1 || !b2) return true;
+  var s1 = String(b1).trim(), s2 = String(b2).trim();
+  return s1 === s2 || s1.indexOf(s2) !== -1 || s2.indexOf(s1) !== -1;
+}
+
+function _updateDashboardSheetCacheItem_(taskId, branch, docType, adjustedFee) {
+  try {
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(DASHBOARD_CACHE_SHEET);
+    if (!sheet) return;
+    var val = String(sheet.getRange(1, 1).getValue() || "").trim();
+    if (!val) return;
+    var data = JSON.parse(val);
+    if (data && data.orders && Array.isArray(data.orders)) {
+      var hit = false;
+      for (var i = 0; i < data.orders.length; i++) {
+        var o = data.orders[i];
+        if (_matchOrderId_(o.id, taskId) && _matchBranch_(o.branch, branch)) {
+          if (docType !== undefined) {
+            o.docTypeManual = docType;
+            if (docType === '樣品收費') { o.docType = '樣品'; o.sampleTo = 'out'; }
+            else if (docType === '樣品免費') { o.docType = '樣品'; o.sampleTo = 'home'; }
+            else if (docType) { o.docType = docType; o.sampleTo = ''; }
+            else { o.docType = '銷貨'; o.sampleTo = ''; }
+            o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
+          }
+          if (adjustedFee !== undefined) {
+            o.adjustedFee = adjustedFee;
+          }
+          hit = true;
+        }
+      }
+      if (hit) {
+        _writeDashboardSheetCache_(data);
+        var cache = CacheService.getScriptCache();
+        try { writeChunkedCacheJson_V11(cache, 'dashboard_stats_v5', data, 3600); } catch (ce) { }
+      }
+    }
+  } catch (e) {
+    console.log("更新分析中心單筆快取失敗: " + e.message);
+  }
+}
+
 /**
  * V41.34: 人工改判單據類型 (分析中心明細面板用)。寫入派送清單「單據類型(人工)」欄，規則判定會被覆蓋。
  * docType: '樣品' | '銷貨' | '' (清除人工判定，回到規則)
  */
-function setDocTypeOverride_V41(taskId, branch, docType, token) {
+function setDocTypeOverride_V41_impl_(taskId, branch, docType, token) {
   _requireAdmin_(token);
   var lock = LockService.getScriptLock();
   try {
@@ -5929,15 +6566,66 @@ function setDocTypeOverride_V41(taskId, branch, docType, token) {
       if (idxId === -1) continue;
       if (idxT === -1) { idxT = h.length; sheet.getRange(1, idxT + 1).setValue("單據類型(人工)"); }
       for (var i = 1; i < data.length; i++) {
-        if (String(data[i][idxId]).trim() !== String(taskId).trim()) continue;
-        if (branch && idxBr !== -1 && String(data[i][idxBr]).trim() !== String(branch).trim()) continue;
-        sheet.getRange(i + 1, idxT + 1).setValue(val);
-        _clearDashboardCache_();
-        _clearWarRoomCache_();
-        return { success: true, message: "✅ " + taskId + " 已改為「" + (val || "依規則判定") + "」" };
+        var rowId = String(data[i][idxId]).trim();
+        var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+        if (_matchOrderId_(rowId, taskId) && _matchBranch_(rowBr, branch)) {
+          sheet.getRange(i + 1, idxT + 1).setValue(val);
+          _updateDashboardSheetCacheItem_(rowId, rowBr, val);
+          _clearWarRoomCache_();
+          return { success: true, message: "✅ " + taskId + " 已改為「" + (val || "依規則判定") + "」" };
+        }
       }
     }
     return { success: false, error: "找不到單號 " + taskId };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
+}
+
+/**
+ * V42.20: 批次人工改判單據類型 (分析中心明細面板批次勾選用)
+ * items: Array of { id, branch, docType }
+ */
+function batchSetDocTypeOverride_V42_impl_(items, token) {
+  _requireAdmin_(token);
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(30000)) throw new Error("系統忙碌中，請稍後再試");
+    if (!items || !Array.isArray(items) || !items.length) throw new Error("請選擇至少一筆單據");
+
+    var ss = getSS_V11();
+    var targets = [V11_PROD_CONFIG.SHEET_TASKS, V11_PROD_CONFIG.SHEET_TASKS + "_封存區"];
+    var totalUpdated = 0;
+
+    for (var s = 0; s < targets.length; s++) {
+      var sheet = ss.getSheetByName(targets[s]);
+      if (!sheet) continue;
+      var data = sheet.getDataRange().getValues();
+      var h = data[0].map(function (v) { return String(v).trim(); });
+      var idxId = h.indexOf("單號"), idxBr = h.indexOf("分公司"), idxT = h.indexOf("單據類型(人工)");
+      if (idxId === -1) continue;
+      if (idxT === -1) { idxT = h.length; sheet.getRange(1, idxT + 1).setValue("單據類型(人工)"); }
+
+      for (var i = 1; i < data.length; i++) {
+        var rowId = String(data[i][idxId]).trim();
+        var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+
+        for (var k = 0; k < items.length; k++) {
+          var it = items[k];
+          if (_matchOrderId_(rowId, it.id) && _matchBranch_(rowBr, it.branch)) {
+            var val = String(it.docType || "").trim();
+            sheet.getRange(i + 1, idxT + 1).setValue(val);
+            _updateDashboardSheetCacheItem_(rowId, rowBr, val);
+            totalUpdated++;
+            break;
+          }
+        }
+      }
+    }
+    _clearWarRoomCache_();
+    return { success: true, count: totalUpdated, message: "✅ 已成功批次改判 " + totalUpdated + " 筆單據！" };
   } catch (e) {
     return { success: false, error: e.message };
   } finally {

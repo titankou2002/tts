@@ -1,6 +1,69 @@
 # 鈦傳速智慧物流系統 - 開發進度
 
-**最後更新：2026-09-14（QC 驗貨頁還原）**
+**最後更新：2026-10-06（V43.30，GAS version 751 / 主 Web App @751）**
+
+---
+
+## 2026-10-06 V43.30 — 帳號申請通知一律發「高雅瓷私密專區」＋ git 修復
+
+- **需求**：鈦傳速、漢樺沒有自己的 Telegram 群組，帳號申請會退回私訊高弘治，老闆沒空時沒人能按核准。
+- **修法**（Accounts.js）：新增 `ACCOUNT_NOTIFY_BRANCH = '高雅瓷'` 與 `_accountNotifyChat_()`，`_notifyAccountRequest_`（附核准/拒絕按鈕）和 `_notifyAccountEvent_`（核准/停用等異動）全部改發高雅瓷群組（-5590086103，與到貨通知同一群），不再依分公司分流；抓不到群組 ID 才退回私訊（`ACCOUNT_FALLBACK_CHAT`）。審核權限不變：按的人仍須登入且是白名單「主管」。
+- **部署**：`clasp push -f` → version 751 → redeploy 主 Web App `AKfycbz3…` @750→@751。後端單改，bigt.cc 頁面不用動。
+- **git 修復**：這台電腦的 repo 被 Drive 同步弄壞（`.git/refs/remotes/origin/main.lock` 殘留、本機停在 V41.57 未推的 3 個 commit、多個檔案被清成 0 byte、產生大量「X 2.js」重複檔）。改在乾淨 clone 把 GAS 現行原始碼（Code/Auth/DispatchLogic/OcrEngine/Settings/Accounts/AuditLog/GoogleLogin/TtsVault/Index/Dashboard/DispatchSystem/Warehouse/WebDashboard/tracking/appsscript.json/.claspignore）補進 GitHub。
+- **注意**：repo 裡 `DRIVER.html / OS.html / QC.html / Analytics.html / approve.html / index.html` 是 **bigt.cc 外殼頁**，跟 GAS 同名檔（DRIVER/OS/QC/Analytics/Approve/Index）內容不同；Mac 檔名不分大小寫，`index.html` 與 `Index.html`、`approve.html` 與 `Approve.html` 會互撞。本機資料夾保留 GAS 版，這幾個外殼檔在本機 git 設 `skip-worktree`，改外殼頁請在另一份 clone 改。
+- **缺口**：V42.x ～ V43.29 另一台電腦沒有寫進度紀錄，只有 git log / GAS 版本描述可查。
+
+---
+
+## 2026-09-16 V41.57 — 分析中心 502 Bad Gateway：暖機快取，避免冷算撞 Web App 30 秒執行上限
+
+- **現象**：白屏修復後，`getDashboardData` 的 `google.script.run` 呼叫長時間等待後回 502（`GET .../callback?nocache_id=6... 502 (Bad Gateway)`）。
+- **根因**：1111 回覆 `getDashboardData`（Code.js:782）整支包的 try/catch，真正 throw 只會回傳 `{success:false,error}` JSON 而不是 502 → 502 是 **Web App 執行逾時**（~30s 被砍）。冷快取時要載「任務表 + 封存區」186 天資料、每列跑 FreightEngine／貨運行判定／行程表 RichText 讀取，耗時超過上限 → 快取永遠寫不進去 → 每次都冷算 → 每次都 502。
+- **修法**：
+  - 重算核心抽成共用 `_computeDashboardDataCore_V11()`（不含授權/快取），`getDashboardData` 與暖機函式共用同一份邏輯（無行為差異）。
+  - 快取 TTL 600s → 3600s，減少冷算頻率。
+  - 新增 `warmDashboardCache_V11(e)`：由定時觸發器每小時暖機；也可在編輯器**手動執行一次**立即暖機。
+  - 新增 `setupDashboardWarmTrigger_V11(e)`：建立每小時暖機排程（重複執行會先刪舊）。
+- **部署**：push 到 HEAD → `clasp version` 建 635 → `clasp redeploy @633→635`（V8.8.23）。已 pull 驗證 HEAD 含新函式。
+- **使用者需做一次**：Apps Script 編輯器執行 `warmDashboardCache_V11`（暖機）＋ `setupDashboardWarmTrigger_V11`（建排程）。
+- **待辦**：舊副本機器 push 前先 git pull。
+
+---
+
+## 2026-09-16 V41.56 — 分析中心整頁白屏修復：HtmlService 精簡器截斷字串內 `//`
+
+- **現象**：`https://bigt.cc/tts/Analytics.html` 白屏，console 報 `Uncaught SyntaxError: Invalid or unexpected token (userCodeAppPanel?createOAuthDialog=true:600:34)`。
+- **根因**：GAS HtmlService 部署管線的精簡器會把「緊接在 regex 後面、含 `//` 的字串」當註解，`//` 之後到行尾全部截斷（專案曾在 Dashboard.html:4614 記錄過此坑）。WebDashboard.html 的 `fixUrl = 'https://lh3.googleusercontent.com/d/' + m[0];`（緊接在前一樣的 `u.match(/[-\w]{25,}/)` regex 之後）被截成 `fixUrl = 'https:` → 字串永不閉合 → 整支 script 無法解析。
+- **修法**：把含 `//` 的 URL 字串拆兩段串接（`'https:/' + '/...'`，執行結果 URL 不變、任何單一字串內都不再出現 `//`）：
+  - `WebDashboard.html`：分析中心照片縮圖 URL（本次元凶）
+  - `Dashboard.html`：戰情室 openstreetmap 圖磚、g0v 縣市邊界 JSON、照片縮圖 URL（同款地雷預防）
+- **部署**：`clasp push -f` + 建版本 634 + `clasp redeploy @633→634`（分析中心 iframe 用的 deployment 釘在固定版本，push 不會生效，必須 redeploy）。已用 curl 加 no-cache 重抓線上頁面，解碼後 `node --check` 通過。
+- **待辦**：舊副本機器 push 前先 git pull；`\r\n` 換行清洗與網頁模板解析那批（V41.55）也已隨 634 上線。
+
+---
+
+## 2026-09-16 V41.55 — 倉內調貨免運費、指定送貨判定收緊、網頁模板解析修復
+
+- **倉內調貨/送回公司倉庫一律免運費**：`HOME_ADDR_KEYWORDS` 新增「永安倉 / 永安 / 倉內調貨 / 調貨 / 轉倉」（Code.js:38）。`_isHomeAddress_` 改吃「地址 + 備註」，`_annotateDocTypes_` 新增 `isHomeTransfer`：即使原本判銷貨，只要地址/備註命中倉內調貨關鍵字也轉「樣品 (不計運費)」。
+- **分析中心「指定送貨」判定收緊**：只有「指定到貨時間」欄位明確勾選/填寫時段才加收 300；備註文字含「指送 / 限時」不再誤判（避免全量誤收）。先前會把 AM/PM 時段的全量單誤判為指定送貨。
+- **Dashboard 快取升級 v5**：`_clearDashboardCache_` / `getDashboardData` 改用 `dashboard_stats_v5` 並清舊鍵；未登入時 getDashboardData 回傳 `AUTH_REQUIRED`（不再 throw 被前端吞掉）。
+- **網頁模板解析修復（關鍵）**：
+  - `_renderPageHtml_` 的 `include()` 與 `JSON.stringify(userInfo/initialPage)` 正則補上 `?>/&gt;` 閉合判定（Code.js:356-362）。
+  - `WebDashboard.html` 配合改法：JS 樣板字串由多行壓成單行、`//` 行註解改 `/* */`、`userInfo` 改 `(<?!= JSON.stringify(userInfo || {}) ?>)`、`escapeHTML` 補 `\r\n\` 清洗。原因：HtmlService 模板引擎會把 HTML 文字節點裡的 `<?` 轉成 `&lt;?`，JS 內不會；先前正則沒要求閉合，遇到樣板字串內的 `?>` 序列可能被誤判成模板標記。
+- **授權體驗**：新增 `authorizeScript()` 一鍵授權函式；`onOpen` 在非容器介面（Web App / 觸發器）呼叫時靜默退回；`Analytics.html` 掛上 Google 帳號一次性啟用授權提示 overlay。
+- **待辦**：本批尚未 clasp push；分頁整理（使用者說太多）仍未做。
+
+**補記（承接 @611 V41.42 → 現在）**：
+- V41.43 樣品/退貨判定附原因 `docWhy`、分析中心標籤滑過可看、點一下可改判為一般銷貨
+- V41.44 修正「大量銷貨單被判退貨」（銷/退分開彙總，純數字流水號不吃報表退貨判定）
+- V41.45 指送對照表預設加入 安帝嘉/喜悅納 鶯歌倉（高職東街13號）；`HOME_ADDR_KEYWORDS` 加高職東街
+- V41.46 AI 排車改用「排車習慣記錄」做路線熟悉度配車
+- V41.47 試算表選單重整 + 一鍵刪除用不到的分頁
+- V41.48 / V41.49 OCR 指送辨識容錯、指送比對改「視窗搜尋」
+- V41.50 指送貨運行/加工廠 → 一律「貨運行集貨」（折扣 0.5）
+- V41.51 排車視窗新增「🤖 AI 排車」按鈕
+- V41.52 司機端指定時間提示補齊：只有計費旗標（指定送貨=是）沒填時間的單也顯示 ⏰
+- V41.53 @622 戰情室/排車/分析中心/驗貨 全站按鈕統一回饋（hover 提亮、按下縮放 0.95、disabled 變淡）
 
 ---
 

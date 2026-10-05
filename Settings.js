@@ -119,7 +119,7 @@ function _findLatestDate(data, keyColIdx, dateColIdx, targetKey) {
 // ──────────────────────────────
 // 1. 系統白名單 (需密碼)
 // ──────────────────────────────
-function sysGetWhitelist(token) {
+function sysGetWhitelist_impl_(token) {
     _requireAdmin_(token);
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_WHITELIST);
@@ -144,7 +144,7 @@ function sysGetVehicles(token) {
 // 3. 送貨日誌 (依「車牌號碼」或「司機」篩選，近 30 天)
 // ──────────────────────────────
 function sysGetDeliveryLog(carNo, driverName, token) {
-    _requireAdmin_(token);
+    _requireViewer_(token); // V43.0: 業務可看不能改
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_LOG);
     if (!sheet) return { headers: [], data: [] };
@@ -192,7 +192,7 @@ function sysGetDeliveryLog(carNo, driverName, token) {
 // 4. 每日行程表 (依「車牌號碼」或「司機」篩選，抓最新一天 + 行程足跡)
 // ──────────────────────────────
 function sysGetItinerary(carNo, driverName, token) {
-    _requireAdmin_(token);
+    _requireViewer_(token); // V43.0: 業務可看不能改
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_SCHEDULE);
     if (!sheet) return { headers: [], data: [], footprint: [] };
@@ -332,7 +332,7 @@ function sysGetMaintenance(carNo, token) {
 // ──────────────────────────────
 // 6. 儲存修改（白名單 / 車輛管理 / 日誌 / 行程）+ Audit Trail
 // ──────────────────────────────
-function sysSaveEdits(tabKey, updates, newRows, token) {
+function sysSaveEdits_impl_(tabKey, updates, newRows, token) {
     _requireAdmin_(token);
     if (tabKey === 'whitelist') { try { CacheService.getScriptCache().remove('deactivated_drivers_v1'); } catch (e) { } } // 停用名單即時生效
     var ss = getSS_V11();
@@ -364,7 +364,7 @@ function sysSaveEdits(tabKey, updates, newRows, token) {
 // ──────────────────────────────
 // 7. 刪除勾選列 + Audit Trail
 // ──────────────────────────────
-function sysDeleteRows(tabKey, rowIdxs, token) {
+function sysDeleteRows_impl_(tabKey, rowIdxs, token) {
     _requireAdmin_(token);
     if (!Array.isArray(rowIdxs) || !rowIdxs.length) return { ok: false, deleted: 0 };
     rowIdxs = rowIdxs.map(function (n) { return parseInt(n, 10); }).filter(function (n) { return !isNaN(n) && n >= 0; });
@@ -391,6 +391,13 @@ function sysDeleteRows(tabKey, rowIdxs, token) {
 // 工具：Audit Trail 寫入
 // ──────────────────────────────
 function _logAudit(ss, tabKey, opType, rowNum, colName, before, after) {
+    // V42.60: 同一份「修改前→後」也放進新的操作記錄 (AuditLog.js)
+    try {
+        if (typeof __AUDIT_CHANGES__ !== 'undefined' && __AUDIT_CHANGES__.length < 200) {
+            var _cut = function (v) { v = String(v == null ? '' : v); return v.length > 60 ? v.slice(0, 60) + '…' : (v === '' ? '（空白）' : v); };
+            __AUDIT_CHANGES__.push(opType + '｜' + _getSheetNameByTab(tabKey) + ' 第' + rowNum + '列 ' + colName + '：' + _cut(before) + (opType === '刪除' ? '' : ' → ' + _cut(after)));
+        }
+    } catch (e0) { }
     try {
         var auditSheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_AUDIT);
         if (!auditSheet) return; // 尚未初始化則靜默跳過

@@ -99,9 +99,12 @@ function _requireAuth_(token, roles) {
   }
   var ctx = _parseToken_(token);
   if (!ctx) throw new Error('🔒 AUTH_REQUIRED：身分驗證失效，請重新登入');
+  if (_isBlockedSharedAdmin_(ctx)) throw new Error('🔒 AUTH_REQUIRED：共用密碼登入已停用，請用 Google 個人帳號登入');
   if (roles && roles.indexOf(ctx.role) === -1 && ctx.role !== 'admin') {
-    throw new Error('🔒 AUTH_FORBIDDEN：權限不足');
+    throw new Error(ctx.role === 'viewer' ? '🔒 AUTH_FORBIDDEN：你的帳號只能查看，不能修改' : '🔒 AUTH_FORBIDDEN：權限不足');
   }
+  // V43.0: Google 登入發的憑證，每次都比對白名單：停用或身分被改掉就立刻失效 (快取 60 秒)
+  if (_isPersonalToken_(ctx)) _checkGoogleAccountStillValid_(ctx);
   // V41.22: 司機 token 長效 (180 天)，白名單「帳號啟用=否」必須能即時撤銷 → 查停用名單 (5 分鐘快取一次)
   if (ctx.role === 'driver' && _isDriverDeactivated_(ctx.name)) {
     throw new Error('🔒 AUTH_REQUIRED：此帳號已停用，請聯繫管理員');
@@ -140,13 +143,15 @@ function _isDriverDeactivated_(name) {
 }
 
 function _requireAdmin_(token) { return _requireAuth_(token, ['admin']); }
+/** V43.0: 後台「只能看」的功能：管理端 + 業務 (viewer) */
+function _requireViewer_(token) { return _requireAuth_(token, ['admin', 'viewer']); }
 /**
  * V41.37 倉庫驗貨頁 (?p=warehouse / bigt.cc QC.html iframe) 專用：
  * 使用者決定驗貨頁「略過後台密碼」。Chrome 在跨網域 iframe 內封鎖 window.prompt()，
  * 所以 QC.html 根本問不到密碼；改由 doGet 在渲染時直接發一枚 role=warehouse 的短效 token 塞進頁面。
  * 這枚 token 只能過 _requireWarehouse_ 守的 5 個驗貨函式，碰不到派車/設定/分析等 admin 功能。
  */
-function _requireWarehouse_(token) { return _requireAuth_(token, ['warehouse', 'admin']); }
+function _requireWarehouse_(token) { return _requireAuth_(token, ['warehouse', 'admin', 'driver']); } // V43.5: 倉管、司機、行政/主管都會驗貨
 function _issueWarehouseToken_() { return _issueToken_({ role: 'warehouse', name: '倉庫驗貨' }, AUTH_TTL.WAREHOUSE_SEC); }
 function _requireDriver_(token) { return _requireAuth_(token, ['driver', 'admin']); }
 
@@ -197,7 +202,17 @@ function _requireSystemContext_(e) {
  * 管理員登入：以 ADMIN_PASSWORD 換發 admin token。
  * 沒有預設密碼；請在 Apps Script 編輯器執行 setAdminPassword('新密碼') 或於「專案設定 → 指令碼屬性」設定。
  */
-function sysVerifyPwd(pwd) {
+/** V43.16: 共用密碼登入開關 (指令碼屬性 PASSWORD_LOGIN=on 才開)；預設關閉，所有管理端都要用 LINE / Google 個人帳號 */
+function _passwordLoginEnabled_() {
+  try { return PropertiesService.getScriptProperties().getProperty('PASSWORD_LOGIN') === 'on'; } catch (e) { return false; }
+}
+/** 共用密碼換發的「管理員」憑證 (不是個人帳號)，密碼登入關閉後一律視為失效 */
+function _isBlockedSharedAdmin_(ctx) {
+  return !!ctx && ctx.role === 'admin' && !_isPersonalToken_(ctx) && !_passwordLoginEnabled_();
+}
+
+function sysVerifyPwd_impl_(pwd) {
+  if (!_passwordLoginEnabled_()) throw new Error('🔒 共用密碼登入已停用，請用 Google 個人帳號登入');
   var correctPwd = PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD');
   if (!correctPwd) {
     throw new Error('⚠️ 尚未設定 ADMIN_PASSWORD，請管理員先在 Apps Script 專案設定中新增指令碼屬性');
@@ -211,7 +226,7 @@ function sysVerifyPwd(pwd) {
 }
 
 /** [編輯器專用] 設定或重設管理員密碼 */
-function setAdminPassword(newPwd) {
+function setAdminPassword_impl_(newPwd) {
   _requireSystemContext_();
   if (!newPwd || String(newPwd).trim().length < 4) throw new Error("密碼至少 4 碼");
   PropertiesService.getScriptProperties().setProperty('ADMIN_PASSWORD', String(newPwd).trim());
@@ -219,15 +234,39 @@ function setAdminPassword(newPwd) {
 }
 
 /** 前端開頁時確認 admin token 是否仍有效 */
+/** V43.1: Google 登入的憑證，使用中超過 1 天就換發新的 (重新計算有效期)，常用的人幾乎不用再登入 */
+function _renewIfOld_(ctx) {
+  try {
+    if (!_isPersonalToken_(ctx) || !ctx.iat || Date.now() - ctx.iat < 86400000) return '';
+    var p = {};
+    for (var k in ctx) if (k !== 'iat' && k !== 'exp') p[k] = ctx[k];
+    return _issueToken_(p, (ACCOUNT_TTL_SEC && ACCOUNT_TTL_SEC[ctx.role]) || 30 * 86400);
+  } catch (e) { return ''; }
+}
+
 function checkAdminSession(token) {
   var ctx = _parseToken_(token);
-  return { valid: !!(ctx && ctx.role === 'admin'), expiresAt: ctx ? ctx.exp : 0 };
+  // V43.0: 業務 (viewer) 也能進後台，只是不能改；Google 帳號要同時確認沒被停用
+  var ok = !!(ctx && (ctx.role === 'admin' || ctx.role === 'viewer')) && !_isBlockedSharedAdmin_(ctx);
+  if (ok && _isPersonalToken_(ctx)) { try { _checkGoogleAccountStillValid_(ctx); } catch (e) { ok = false; } }
+  return { valid: ok, renewed: ok ? _renewIfOld_(ctx) : '', expiresAt: ctx ? ctx.exp : 0, role: ok ? ctx.role : '', name: ok ? (ctx.name || '') : '', title: ok ? (ctx.title || '') : '', branch: ok ? (ctx.branch || '') : '', loginAt: ok ? (ctx.lt || ctx.iat || 0) : 0, via: ok ? (ctx.via || '') : '' };
+}
+
+/** V43.5: 任何角色通用的登入狀態查詢 (驗貨頁用)：回傳是誰、哪家公司、何時登入，Google 帳號順便延長 */
+function checkSession_V43(token) {
+  var ctx = _parseToken_(token);
+  var ok = !!ctx && !_isBlockedSharedAdmin_(ctx);
+  if (ok && _isPersonalToken_(ctx)) { try { _checkGoogleAccountStillValid_(ctx); } catch (e) { ok = false; } }
+  if (!ok) return { valid: false };
+  return { valid: true, renewed: _renewIfOld_(ctx), role: ctx.role, name: ctx.name || '', title: ctx.title || '', branch: ctx.branch || '', email: ctx.email || '', loginAt: ctx.lt || ctx.iat || 0, via: ctx.via || '' };
 }
 
 /** 前端開頁時確認 driver token 是否仍有效 */
 function checkDriverSession(token) {
   var ctx = _parseToken_(token);
-  return { valid: !!(ctx && (ctx.role === 'driver' || ctx.role === 'admin')), name: ctx ? ctx.name : "", car: ctx ? ctx.car : "" };
+  var ok = !!(ctx && (ctx.role === 'driver' || ctx.role === 'admin')) && !_isBlockedSharedAdmin_(ctx);
+  if (ok && _isPersonalToken_(ctx)) { try { _checkGoogleAccountStillValid_(ctx); } catch (e) { ok = false; } }
+  return { valid: ok, renewed: ok ? _renewIfOld_(ctx) : '', name: ctx ? ctx.name : "", car: ctx ? ctx.car : "" };
 }
 
 /** 從白名單找姓名，回傳基本資料或 null */
@@ -272,7 +311,7 @@ function _buildDriverParamUrl_(found, token) {
  * 司機端登入：以白名單姓名換發 driver token (180 天)。
  * V34.16 起司機端即為「選姓名登入」，此函式維持原介面，僅改為無狀態簽章 token。
  */
-function verifyNameAndIssueToken(name) {
+function verifyNameAndIssueToken_impl_(name) {
   try {
     var found = _lookupWhitelistByName_(name);
     if (!found) return { error: '⚠️ 找不到此姓名或帳號已停用，請聯繫管理員確認白名單' };
@@ -296,7 +335,7 @@ function verifyEmailAndIssueToken(email) {
 }
 
 /** 管理員為特定司機產生專屬登入連結 (需 admin token) */
-function generateParamUrlForDriver(name, adminToken) {
+function generateParamUrlForDriver_impl_(name, adminToken) {
   try {
     _requireAdmin_(adminToken);
     var found = _lookupWhitelistByName_(name);

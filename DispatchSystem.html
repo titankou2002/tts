@@ -156,6 +156,9 @@
         .dp-right-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
         .dp-filter-grid { padding: 10px; background: #1e293b; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .dp-mobile-only { display: none; }
+        /* V43.29: 登入者 + 手機版 AI 排車／關閉 */
+        .dp-me { color: #cbd5e1; font-size: 12px; font-weight: 700; white-space: nowrap; margin: 0 14px 0 auto; }
+        .dp-ai-btn, .dp-close-mobile { display: none; }
         .dp-voucher-icon-btn { display: none; }
         .dp-hide-mobile { }
 
@@ -178,10 +181,15 @@
         .status-blink-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #ef4444; animation: blink-dot 1s infinite; flex-shrink: 0; }
 
         @media (max-width: 768px) {
-            .dp-header { flex-wrap: wrap; padding: 8px 12px; gap: 6px; }
-            .dp-header-title { font-size: 14px; }
-            .dp-header-btns { width: 100%; gap: 6px; }
-            .dp-header-btns button { flex: 1; padding: 7px 4px !important; font-size: 11px !important; white-space: nowrap; }
+            /* V43.29 手機版頁首：第一排 標題｜登入者｜✕，第二排 AI 排車（最顯眼）＋其他按鈕 */
+            .dp-header { flex-wrap: wrap; padding: 8px 10px; gap: 8px; }
+            .dp-header-title { font-size: 14px; flex: 1; order: 1; margin-right: 0; }
+            .dp-me { order: 2; margin: 0; font-size: 12px; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+            .dp-close-mobile { order: 3; display: inline-flex; align-items: center; background: #475569; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 900; cursor: pointer; }
+            .dp-close-desktop { display: none !important; }
+            .dp-header-btns { order: 4; width: 100%; gap: 6px; }
+            .dp-header-btns button { flex: 1; padding: 10px 4px !important; font-size: 13px !important; white-space: nowrap; }
+            .dp-ai-btn { display: inline-flex; justify-content: center; align-items: center; flex: 1.4 !important; background: linear-gradient(135deg,#7c3aed,#a855f7); color: #fff; border: 0; border-radius: 8px; font-weight: 900; box-shadow: 0 0 12px rgba(168,85,247,.45); cursor: pointer; }
             .dp-hide-mobile { display: none !important; }
             .dp-left-panel { width: 100% !important; border-right: none; }
             .dp-right-panel { display: none !important; }
@@ -197,11 +205,14 @@
         <!-- Header -->
         <div class="dp-header">
             <div class="dp-header-title">物流派車工作站 V8.8</div>
+            <span id="dpMe" class="dp-me"></span>
+            <button class="dp-close-mobile" onclick="closeDispatchModal()">✕</button>
             <div class="dp-header-btns">
+                <button class="dp-ai-btn" onclick="aiDispatchPlan_V41()" title="依路線熟悉度 + 載重 + 時段，把待指派的單分給司機 (先預覽再套用)">🤖 AI 排車</button>
                 <button id="batchReturnBtn" class="btn-pulse" onclick="openReturnModalFromSelection()" style="display:none; background:#a855f7; color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">🔴 批次退回分公司</button>
                 <button id="copyToLINEBtn" class="btn-pulse" onclick="copyToLINE()" style="background:var(--color-success); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">已勾選清單</button>
                 <button id="copyToWarehouseBtn" class="btn-pulse dp-hide-mobile" onclick="copyToWarehouse()" style="background:var(--color-accent); color:#000; border:none; padding:8px 18px; border-radius:8px; font-weight:900; cursor:pointer;">📸 回鶯歌圖片</button>
-                <button onclick="closeDispatchModal()" style="background:#475569; color:#fff; border:none; padding:8px 18px; border-radius:8px; cursor:pointer; font-weight:900;">✕ 關閉</button>
+                <button class="dp-close-desktop" onclick="closeDispatchModal()" style="background:#475569; color:#fff; border:none; padding:8px 18px; border-radius:8px; cursor:pointer; font-weight:900;">✕ 關閉</button>
             </div>
         </div>
 
@@ -288,17 +299,29 @@
     <!-- V11.20: 退回確認視窗 (多原因支援版) -->
     <div id="returnConfirmModal" class="return-modal-overlay" style="display:none;">
         <div class="return-modal-content" style="width: 550px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h3 style="color:#a855f7; margin:0;">🔴 批次退回分公司</h3>
-                <div style="font-size:12px; color:#94a3b8;">
-                    快速套用：
-                    <select id="globalReasonSelect" onchange="applyGlobalReason()" style="background:#0f172a; color:#fff; border:1px solid #475569; padding:2px 5px; border-radius:4px; font-size:11px;">
-                        <option value="">-- 選擇原因 --</option>
-                        <option value="路線不順">路線不順</option>
-                        <option value="重量過重">重量過重</option>
-                        <option value="業務送比較方便">業務送比較方便</option>
-                        <option value="時間不合">時間不合</option>
-                    </select>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <h3 style="color:#a855f7; margin:0; display:flex; align-items:center; gap:6px;">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2L1 21h22L12 2zm1 16h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                    批次退回分公司
+                </h3>
+                <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#94a3b8;">
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <span>載回司機：</span>
+                        <select id="returnDriverSelect" onchange="updateLinePreview()" style="background:#0f172a; color:#fbbf24; border:1px solid #a855f7; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold;">
+                            <option value="">-- 未指定載回司機 --</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <span>原因：</span>
+                        <select id="globalReasonSelect" onchange="applyGlobalReason()" style="background:#0f172a; color:#fff; border:1px solid #475569; padding:2px 5px; border-radius:4px; font-size:11px;">
+                            <option value="">-- 選擇原因 --</option>
+                            <option value="此單不接，載回鶯歌，請分公司業務自理">此單不接，載回鶯歌，請分公司業務自理 (內部運輸/免運費)</option>
+                            <option value="路線不順">路線不順</option>
+                            <option value="重量過重">重量過重</option>
+                            <option value="業務送比較方便">業務送比較方便</option>
+                            <option value="時間不合">時間不合</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -312,7 +335,10 @@
             </div>
 
             <div style="display:flex; gap:12px;">
-                <button id="execReturnBtn" onclick="executeBatchReturn()" style="flex:1.5; background:#a855f7; color:#fff; padding:12px; border:none; border-radius:10px; font-weight:900; cursor:pointer; transition: transform 0.1s, background 0.2s;" onmousedown="this.style.transform='scale(0.95)'; this.style.background='#9333ea'" onmouseup="this.style.transform='scale(1)'; this.style.background='#a855f7'">🚀 確認退回並發送 LINE</button>
+                <button id="execReturnBtn" onclick="executeBatchReturn()" style="flex:1.5; background:#a855f7; color:#fff; padding:12px; border:none; border-radius:10px; font-weight:900; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition: transform 0.1s, background 0.2s;" onmousedown="this.style.transform='scale(0.95)'; this.style.background='#9333ea'" onmouseup="this.style.transform='scale(1)'; this.style.background='#a855f7'">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                    確認退回並發送 LINE
+                </button>
                 <button onclick="closeReturnModal()" style="flex:1; background:#475569; color:#fff; padding:12px; border:none; border-radius:10px; font-weight:900; cursor:pointer;">取消</button>
             </div>
         </div>
@@ -361,7 +387,7 @@
     // 排車桌機版/手機版共用，司機端(Index.html)、驗貨(Warehouse.html)也各自複製同一套規則以維持一致
     function formatAddrWithCarrierTag(addr) {
         return escapeHTML(scrubAddress(addr)).replace(/\(([^)]*)\)/g, (full, inner) =>
-            `<span style="color:#fbbf24;">(${inner.replace(/貨運/g, '')})</span>`
+            `<span style="color:#fbbf24;">(${inner.replace(/貨運/g, '')})<\/span>`
         );
     }
 
@@ -424,9 +450,9 @@
         if (!rawQty) return '';
         const pieces = Number(rawQty.replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
         const perBox = Number(String(pcsPerBox || '').replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
-        const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${escapeHTML(value)}</span>`;
-        const unit = value => `<span style="color:#94a3b8;font-weight:800;">${escapeHTML(value)}</span>`;
-        const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${escapeHTML(value)}</span>`;
+        const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${escapeHTML(value)}<\/span>`;
+        const unit = value => `<span style="color:#94a3b8;font-weight:800;">${escapeHTML(value)}<\/span>`;
+        const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${escapeHTML(value)}<\/span>`;
         if (!pieces || !perBox) {
             const label = /[片箱包件]/.test(rawQty) ? rawQty : rawQty + '片';
             return colorNum(label.replace(/[^\d.]/g, '') || label, '#fbbf24') + unit(label.replace(/[\d.]/g, ''));
@@ -486,14 +512,19 @@
 
     function openDispatchModal_V3() {
         document.getElementById('dispatchModal').style.display = 'flex';
+        // V43.29: 頁首顯示登入者 (戰情室登入時存在 window.__ME__)
+        try {
+            var me = window.__ME__ || {};
+            document.getElementById('dpMe').textContent = me.name ? ((me.branch ? me.branch + '｜' : '') + me.name) : '';
+        } catch (e) { }
 
         // V39.14: 開啟當下先顯示讀取動畫，避免彈窗只是顯示上一次的舊資料(或空白)，
         // 讓人以為「按了沒反應」，實際上是後端兩支 API 還在跑
         const listEl = document.getElementById('unifiedTaskList');
         if (listEl) {
             listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#94a3b8;">' +
-                '<div style="width:36px; height:36px; margin:0 auto 14px; border:3px solid rgba(56,189,248,0.2); border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite;"></div>' +
-                '載入派車資料中...</div>';
+                '<div style="width:36px; height:36px; margin:0 auto 14px; border:3px solid rgba(56,189,248,0.2); border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite;"><\/div>' +
+                '載入派車資料中...<\/div>';
         }
         google.script.run.withSuccessHandler(res => {
             if (res.success) {
@@ -508,10 +539,10 @@
                     }
                 }).getDrivers_V3(ATOKEN());
             } else {
-                if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 載入失敗，請關閉後重新點擊「阿榮排車」</div>';
+                if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 載入失敗，請關閉後重新點擊「阿榮排車」<\/div>';
             }
         }).withFailureHandler(err => {
-            if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 連線失敗: ' + (err && err.message || err) + '</div>';
+            if (listEl) listEl.innerHTML = '<div style="text-align:center; padding:60px 0; color:#ef4444;">❌ 連線失敗: ' + (err && err.message || err) + '<\/div>';
         }).getUnDispatchedTasks_V3(ATOKEN());
     }
 
@@ -539,9 +570,9 @@
         const d = [...new Set(dispatchAllTasks.map(t => t.date))]
             .filter(x => !x || x >= todayStr)
             .sort();
-        let h = '<option value="all">📅 全部配送日期</option>';
+        let h = '<option value="all">📅 全部配送日期<\/option>';
         d.forEach(x => {
-            h += `<option value="${x}">${x}</option>`;
+            h += `<option value="${x}">${x}<\/option>`;
         });
         s.innerHTML = h;
         s.value = 'all';
@@ -549,9 +580,9 @@
 
     function updateDriverFilter() {
         const s = document.getElementById('filterDriver');
-        let h = '<option value="all">🔍 所有指派狀態</option><option value="unassigned">🔴 待指派訂單</option>';
+        let h = '<option value="all">🔍 所有指派狀態<\/option><option value="unassigned">🔴 待指派訂單<\/option>';
         dispatchDrivers.forEach(d => {
-            h += `<option value="${d.plate}">👤 ${d.name}</option>`;
+            h += `<option value="${d.plate}">👤 ${d.name}<\/option>`;
         });
         s.innerHTML = h;
     }
@@ -583,7 +614,7 @@
         if(returnBtn) returnBtn.style.display = dispatchSelectedIds.size > 0 ? 'flex' : 'none';
 
         const assignedCnt = filtered.filter(t => (!!t.assignedDriver && t.assignedDriver !== "") || (t.status !== '待指派' && t.status !== '')).length;
-        document.getElementById('filterStats').innerHTML = `🔎 篩選顯示：共 <span style="color:#38bdf8;">${filtered.length}</span> 筆 &nbsp;|&nbsp; 🟢 已分配: <span style="color:#22c55e;">${assignedCnt}</span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}</span>`;
+        document.getElementById('filterStats').innerHTML = `🔎 篩選顯示：共 <span style="color:#38bdf8;">${filtered.length}<\/span> 筆 &nbsp;|&nbsp; 🟢 已分配: <span style="color:#22c55e;">${assignedCnt}<\/span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}<\/span>`;
         renderDispatchSections_V7(filtered);
         renderDriverDashboard_V7();
     }
@@ -599,55 +630,67 @@
                     const qtyBox = formatItemQtyBox(item.qty, item.boxQty, item.pcsPerBox);
                     return `
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.08); font-size:13px;">
-                            <span style="color:#fff; font-weight:bold; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.code}</span>
-                            <span style="color:var(--color-primary); opacity:0.85; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}</span>
-                            <span style="color:var(--color-accent); white-space:nowrap;">${qtyBox}</span>
-                            <span style="color:#f472b6; white-space:nowrap;">${item.qty}片</span>
-                        </div>
+                            <span style="color:#fff; font-weight:bold; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.code}<\/span>
+                            <span style="color:var(--color-primary); opacity:0.85; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}<\/span>
+                            <span style="color:var(--color-accent); white-space:nowrap;">${qtyBox}<\/span>
+                            <span style="color:#f472b6; white-space:nowrap;">${item.qty}片<\/span>
+                        <\/div>
                     `;
                 }).join('')}
-            </div>` : '';
+            <\/div>` : '';
+
+    function checkTaskIsFree(gt) {
+        if (!gt) return false;
+        const text = (String(gt.customer || '') + ' ' + String(gt.address || '') + ' ' + String(gt.note || '')).replace(/\s/g, '');
+        if (text.indexOf('加工') !== -1 || text.indexOf('噴砂') !== -1 || text.indexOf('營造') !== -1) return false;
+        if (gt.isSample || gt.sampleTo === 'home' || gt.docType === '樣品免費') return true;
+        if (text.indexOf('指送安帝嘉') !== -1 || text.indexOf('指送喜悅納') !== -1 || text.indexOf('指送高雅瓷') !== -1 || text.indexOf('指送漢樺') !== -1) return true;
+        if (text.indexOf('高職東街13號') !== -1 || text.indexOf('文化路三段535巷98號') !== -1) return true;
+        if (text.indexOf('載回公司') !== -1 || text.indexOf('回公司') !== -1 || text.indexOf('倉內調貨') !== -1 || text.indexOf('轉倉') !== -1) return true;
+        return false;
+    }
 
         // V39.31: 地址裡「(弘昇貨運)」這類貨運行標記，拿掉「貨運」二字、括號內文字改黃色
         const addrHtml = formatAddrWithCarrierTag(gt.address);
 
         // V39.31: 有強制指定時間 或 待指派中 -> 閃爍燈號提醒
         const needsBlink = !!gt.specifiedArrive || !isAssigned;
-        const blinkDotHtml = needsBlink ? '<span class="status-blink-dot" title="' + (gt.specifiedArrive ? '指定時間' : '待指派') + '"></span>' : '';
+        const blinkDotHtml = needsBlink ? '<span class="status-blink-dot" title="' + (gt.specifiedArrive ? '指定時間' : '待指派') + '"><\/span>' : '';
 
         return `
             <div class="task-card-mobile ${isS ? 'selected' : ''} ${isAssigned ? 'is-assigned' : ''} ${gt.status === '退回分公司' ? 'is-returned' : ''}" onclick="toggleSelectionByCheckbox(event,'${gt.id}')">
                 <div style="display:flex; align-items:center; gap:6px;">
-                    <b style="font-size:16px; color:#60a5fa; flex-shrink:0;">${escapeHTML(custShort2)}</b>
-                    <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:700; flex-shrink:0;">${displayId}</span>
-                    ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:900; flex-shrink:0;">${gt.shippingType}</span>` : ''}
-                    ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:11px; flex-shrink:0;">⚠️重複</span>' : ''}
+                    <b style="font-size:16px; color:#60a5fa; flex-shrink:0;">${escapeHTML(custShort2)}<\/b>
+                    <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:700; flex-shrink:0;">${displayId}<\/span>
+                    ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:1px 6px; border-radius:4px; font-size:11px; font-weight:900; flex-shrink:0;">${gt.shippingType}<\/span>` : ''}
+                    ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:11px; flex-shrink:0;">⚠️重複<\/span>' : ''}
                     <span style="margin-left:auto; flex-shrink:0; display:flex; align-items:center; gap:6px;">
-                        ${gt.timeSlot ? `<span class="time-tag">${escapeHTML(gt.timeSlot)}</span>` : ''}
-                        <span style="color:#fbbf24; font-weight:900; font-size:13px;">${gt.date.substring(5)}</span>
-                        <span style="font-size:19px; line-height:1;">${isS ? '✅' : ''}</span>
-                    </span>
-                </div>
+                        ${gt.timeSlot ? `<span class="time-tag">${escapeHTML(gt.timeSlot)}<\/span>` : ''}
+                        <span style="color:#fbbf24; font-weight:900; font-size:13px;">${gt.date.substring(5)}<\/span>
+                        <span style="font-size:19px; line-height:1;">${isS ? '✅' : ''}<\/span>
+                    <\/span>
+                <\/div>
                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; margin-top:5px;">
-                    <div style="color:#cbd5e1; font-size:13px; line-height:1.4; word-break:break-word; flex:1; min-width:0;">${addrHtml}</div>
+                    <div style="color:#cbd5e1; font-size:13px; line-height:1.4; word-break:break-word; flex:1; min-width:0;">${addrHtml}<\/div>
                     <span style="flex-shrink:0; display:flex; align-items:center; gap:6px; margin-top:2px;">
                         ${blinkDotHtml}
-                        ${!isAssigned ? '<span class="unassigned-badge">待指派</span>' : `<span class="driver-name-tag" style="background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};">${escapeHTML(gt.assignedDriver)}</span>`}
-                    </span>
-                </div>
+                        ${!isAssigned ? '<span class="unassigned-badge">待指派<\/span>' : `<span class="driver-name-tag" style="background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};">${escapeHTML(gt.assignedDriver)}<\/span>`}
+                    <\/span>
+                <\/div>
                 <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px;">
-                    <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" title="${gt.isBackYingge ? '回鶯歌' : '留永安'}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">${gt.isBackYingge ? '回鶯歌' : '留永安'}</button>
-                    ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" style="display:inline-flex; background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px;" onclick="openMobileVoucher(event,'${gt.id}')">📷</button>` : ''}
+                    <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" title="${gt.isBackYingge ? '回鶯歌' : '留永安'}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">${gt.isBackYingge ? '回鶯歌' : '留永安'}<\/button>
+                    ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" style="display:inline-flex; background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px;" onclick="openMobileVoucher(event,'${gt.id}')">📷<\/button>` : ''}
                     ${gt.items && gt.items.length > 0 ? `
                     <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;">
-                        明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 9px; transition: transform 0.2s;">▼</span>
-                    </div>` : ''}
-                    <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:15px;">${gt.weight.toFixed(0)}<span style="font-size:10px;">kg</span></span>
-                    ${gt.carrierFlag ? '<span style="background:rgba(249,115,22,0.15); color:#f97316; border:1px solid rgba(249,115,22,0.4); padding:1px 6px; border-radius:4px; font-size:11px; font-weight:bold;">🚛貨運行</span>' : ''}
-                </div>
-                ${gt.note ? `<div style="color:#fbbf24; font-size:12px; margin-top:6px; line-height:1.4; word-break:break-all;">${escapeHTML(gt.note)}</div>` : ''}
+                        明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 9px; transition: transform 0.2s;">▼<\/span>
+                    <\/div>` : ''}
+                    <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:15px;">${gt.weight.toFixed(0)}<span style="font-size:10px;">kg<\/span><\/span>
+                    ${gt.carrierFlag ? '<span style="background:rgba(249,115,22,0.15); color:#f97316; border:1px solid rgba(249,115,22,0.4); padding:1px 5px; border-radius:3px; font-size:10px; font-weight:bold;">貨運<\/span>' : ''}
+                    ${checkTaskIsFree(gt) ? '<span style="background:rgba(234,179,8,0.2); color:#eab308; border:1px solid rgba(234,179,8,0.5); padding:1px 5px; border-radius:3px; font-size:10px; font-weight:bold;">內部<\/span>' : ''}
+                <\/div>
+                ${gt.note ? `<div style="color:#fbbf24; font-size:12px; margin-top:6px; line-height:1.4; word-break:break-all;">${escapeHTML(gt.note)}<\/div>` : ''}
                 ${itemsDropdownHtml}
-            </div>
+            <\/div>
         `;
     }
 
@@ -769,39 +812,39 @@
                 return `
                     <div class="task-card ${isS ? 'selected' : ''} ${isExactDuplicate ? 'same-address' : ''} ${isAssigned ? 'is-assigned' : ''} ${gt.status === '退回分公司' ? 'is-returned' : ''}" onclick="handleCardClick_V7('${gt.id}')">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
-                            <span style="color:var(--color-primary); font-weight:900; min-width:20px;">${globalIdx}.</span>
+                            <span style="color:var(--color-primary); font-weight:900; min-width:20px;">${globalIdx}.<\/span>
                             <input type="checkbox" ${isS ? 'checked' : ''} style="width:16px; height:16px;" onclick="toggleSelectionByCheckbox(event,'${gt.id}')">
-                            <b class="cust-name">${escapeHTML(custShort2)}</b>
-                            ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900; box-shadow: 0 0 8px rgba(245,158,11,0.4); animation: pulse-light 2s infinite; margin-left:4px;">${gt.shippingType}</span>` : ''}
+                            <b class="cust-name">${escapeHTML(custShort2)}<\/b>
+                            ${gt.shippingType && gt.shippingType !== '送貨' ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:900; box-shadow: 0 0 8px rgba(245,158,11,0.4); animation: pulse-light 2s infinite; margin-left:4px;">${gt.shippingType}<\/span>` : ''}
                             <!-- Colored Order ID Box -->
-                            <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-weight: 700; margin-left: 4px;">${displayId}</span>
-                            <span class="addr-text ${gt.isReturn ? 'addr-return' : ''}">${formatAddrWithCarrierTag(gt.address)}</span>
-                            ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜</span>' : ''}
-                            ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:12px; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; margin-left:4px; animation: pulse-light 2s infinite;">重複異常請注意‼️</span>' : ''}
-                            ${isAssigned && gt.status !== '退回分公司' ? `<span style="margin-left:auto; background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};" class="driver-name-tag">${escapeHTML(gt.assignedDriver)}</span>` : ''}
-                        </div>
+                            <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-weight: 700; margin-left: 4px;">${displayId}<\/span>
+                            <span class="addr-text ${gt.isReturn ? 'addr-return' : ''}">${formatAddrWithCarrierTag(gt.address)}<\/span>
+                            ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜<\/span>' : ''}
+                            ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:12px; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; margin-left:4px; animation: pulse-light 2s infinite;">重複異常請注意‼️<\/span>' : ''}
+                            ${isAssigned && gt.status !== '退回分公司' ? `<span style="margin-left:auto; background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};" class="driver-name-tag">${escapeHTML(gt.assignedDriver)}<\/span>` : ''}
+                        <\/div>
                         <div style="display:flex; align-items:center; gap:10px; margin-left:50px; margin-top:6px;">
-                            <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">回鶯歌</button>
+                            <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">回鶯歌<\/button>
                             <!-- V39.26: 手機版看圖小圖示，電腦版隱藏(電腦版點卡片即可看右側面板) -->
-                            ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" onclick="openMobileVoucher(event,'${gt.id}')" style="background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px; cursor:pointer; align-items:center;">📷</button>` : ''}
+                            ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" onclick="openMobileVoucher(event,'${gt.id}')" style="background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px; cursor:pointer; align-items:center;">📷<\/button>` : ''}
 
                             <!-- Expandable Dropdown Trigger instead of static Size/Boxes -->
                             ${gt.items && gt.items.length > 0 ? `
                             <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 3px 8px; border-radius: 6px; font-size: 13px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
-                                明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 10px; transition: transform 0.2s;">▼</span>
-                            </div>
+                                明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 10px; transition: transform 0.2s;">▼<\/span>
+                            <\/div>
                             ` : ''}
 
-                            <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:18px; margin-left: 8px;">${gt.weight.toFixed(0)} <span style="font-size:11px;">kg</span></span>
-                            ${gt.note ? `<span class="note-line-content" style="color: #fbbf24; font-weight: bold; font-size: 13px; line-height: 1.4; word-break: break-all; margin-left:4px;">${gt.note}</span>` : ''}
+                            <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:18px; margin-left: 8px;">${gt.weight.toFixed(0)} <span style="font-size:11px;">kg<\/span><\/span>
+                            ${gt.note ? `<span class="note-line-content" style="color: #fbbf24; font-weight: bold; font-size: 13px; line-height: 1.4; word-break: break-all; margin-left:4px;">${gt.note}<\/span>` : ''}
                             ${(gt.whStatus === '已上車' && gt.date === formatDate(new Date())) ? `
-                                <span style="color:var(--color-success); font-size:12px; margin-left:4px;" title="實載司機: ${gt.whDriver}">✅${(gt.whDriver && gt.whDriver !== gt.assignedDriver) ? `<span style="font-size:10px; opacity:0.8">(載:${gt.whDriver})</span>` : ''}</span>
+                                <span style="color:var(--color-success); font-size:12px; margin-left:4px;" title="實載司機: ${gt.whDriver}">✅${(gt.whDriver && gt.whDriver !== gt.assignedDriver) ? `<span style="font-size:10px; opacity:0.8">(載:${gt.whDriver})<\/span>` : ''}<\/span>
                             ` : ''}
-                            <div style="margin-left:auto;"></div>
-                            ${!isAssigned ? `<span class="unassigned-badge">待指派</span>` : ''}
-                            ${gt.timeSlot ? `<span class="time-tag">${gt.timeSlot}</span>` : ''}
-                            <span style="color:#fbbf24; font-weight:900; font-size:14px; font-family:'Rajdhani';">${gt.date.substring(5)}</span>
-                        </div>
+                            <div style="margin-left:auto;"><\/div>
+                            ${!isAssigned ? `<span class="unassigned-badge">待指派<\/span>` : ''}
+                            ${gt.timeSlot ? `<span class="time-tag">${gt.timeSlot}<\/span>` : ''}
+                            <span style="color:#fbbf24; font-weight:900; font-size:14px; font-family:'Rajdhani';">${gt.date.substring(5)}<\/span>
+                        <\/div>
 
                         <!-- Dropdown Content -->
                         ${gt.items && gt.items.length > 0 ? `
@@ -814,20 +857,20 @@
                                 return `
                                     <div class="item-detail-row" style="display:grid; grid-template-columns:minmax(90px,1fr) minmax(50px,auto) minmax(90px,auto) minmax(50px,auto) minmax(54px,auto) 50px; align-items:center; gap:8px; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); font-size: 14px; font-weight: bold;">
                                         <div style="display:flex; flex-direction:column; min-width:0;">
-                                            <span style="color:#fff;">${item.code}</span>
-                                            ${(item.series || item.originalName) ? `<span style="color:#94a3b8; font-size:11px; font-weight:400;">${item.series ? '<span style="color:#fbbf24;">' + item.series + '</span> ' : ''}${item.originalName || ''}</span>` : ''}
-                                        </div>
-                                        <span class="item-size" style="color:var(--color-primary); opacity:0.85; font-size:13px; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}</span>
-                                        <span class="item-qty" style="color:var(--color-accent); white-space:nowrap;">${qtyBox}</span>
-                                        <span class="item-total-qty" style="color:#f472b6; white-space:nowrap;">${item.qty}片</span>
-                                        <span class="item-weight" style="color:var(--color-success); white-space:nowrap;">${weightText}</span>
-                                        ${item.image ? '<img src="' + item.image.replace(/'/g,"\\'") + '" style="width:44px;height:44px;object-fit:cover;border-radius:4px;cursor:pointer;" onclick="event.stopPropagation();window.open(\'' + item.image.replace(/'/g,"\\'") + '\',\'_blank\')">' : '<span style="width:44px;"></span>'}
-                                    </div>
+                                            <span style="color:#fff;">${item.code}<\/span>
+                                            ${(item.series || item.originalName) ? `<span style="color:#94a3b8; font-size:11px; font-weight:400;">${item.series ? '<span style="color:#fbbf24;">' + item.series + '<\/span> ' : ''}${item.originalName || ''}<\/span>` : ''}
+                                        <\/div>
+                                        <span class="item-size" style="color:var(--color-primary); opacity:0.85; font-size:13px; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}<\/span>
+                                        <span class="item-qty" style="color:var(--color-accent); white-space:nowrap;">${qtyBox}<\/span>
+                                        <span class="item-total-qty" style="color:#f472b6; white-space:nowrap;">${item.qty}片<\/span>
+                                        <span class="item-weight" style="color:var(--color-success); white-space:nowrap;">${weightText}<\/span>
+                                        ${item.image ? '<img src="' + item.image.replace(/'/g,"\\'") + '" style="width:44px;height:44px;object-fit:cover;border-radius:4px;cursor:pointer;" onclick="event.stopPropagation();window.open(\'' + item.image.replace(/'/g,"\\'") + '\',\'_blank\')">' : '<span style="width:44px;"><\/span>'}
+                                    <\/div>
                                 `;
                             }).join('')}
-                        </div>
+                        <\/div>
                         ` : ''}
-                    </div>`;
+                    <\/div>`;
             }).join('');
 
             if (isGroup) {
@@ -835,13 +878,13 @@
                     <div class="address-group">
                         <div class="address-group-header" style="flex-direction:column; align-items:stretch; gap:4px;">
                             <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <span>📍 同地址訂單 (${groupSize}筆)</span>
-                                ${isPartiallySelected ? '<span style="color:#ef4444; font-weight:900;">⚠️ 建議一起勾選</span>' : ''}
-                            </div>
+                                <span>📍 同地址訂單 (${groupSize}筆)<\/span>
+                                ${isPartiallySelected ? '<span style="color:#ef4444; font-weight:900;">⚠️ 建議一起勾選<\/span>' : ''}
+                            <\/div>
                             ${infoMsg ? infoMsg.replace('flex:1; margin-left:10px;', 'width:100%; margin-top:4px;') : ''}
-                        </div>
+                        <\/div>
                         ${groupInnerHtml}
-                    </div>`;
+                    <\/div>`;
             } else {
                 html += groupInnerHtml;
             }
@@ -882,15 +925,15 @@
             return `
                     <div class="driver-weight-card" onclick="handleDriverClick('${escapeHTML(plate)}','${escapeHTML(d.name)}')">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <b style="color:${getDriverColor(d.name)}; font-size:15px;">${escapeHTML(d.name)}</b>
-                            <span style="font-size:10px; color:var(--color-primary); font-family:'Rajdhani';">${escapeHTML(plate)}</span>
-                        </div>
-                    <div class="load-bar-bg"><div class="load-bar-fill" style="width:${pct}%; background:${barColor};"></div></div>
+                            <b style="color:${getDriverColor(d.name)}; font-size:15px;">${escapeHTML(d.name)}<\/b>
+                            <span style="font-size:10px; color:var(--color-primary); font-family:'Rajdhani';">${escapeHTML(plate)}<\/span>
+                        <\/div>
+                    <div class="load-bar-bg"><div class="load-bar-fill" style="width:${pct}%; background:${barColor};"><\/div><\/div>
                     <div style="display:flex; justify-content:space-between; margin-top:5px; font-weight:900; font-size:13px;">
-                        <span style="color:${barColor};">${currentLoad.toFixed(0)} <span style="font-size:10px;">kg</span></span>
-                        <span style="color:#94a3b8;">${pct.toFixed(0)}%</span>
-                    </div>
-                </div>`;
+                        <span style="color:${barColor};">${currentLoad.toFixed(0)} <span style="font-size:10px;">kg<\/span><\/span>
+                        <span style="color:#94a3b8;">${pct.toFixed(0)}%<\/span>
+                    <\/div>
+                <\/div>`;
         }).join('');
 
         const externalDrivers = [
@@ -908,18 +951,18 @@
 
             return `
                 <div class="external-sub-row" onclick="handleDriverClick('${escapeHTML(d.plate)}','${escapeHTML(d.name)}')">
-                    <b>${escapeHTML(d.plate)}</b>
-                    <span style="color:#94a3b8; font-size:11px;">${currentLoad.toFixed(0)} kg</span>
-                </div>`;
+                    <b>${escapeHTML(d.plate)}<\/b>
+                    <span style="color:#94a3b8; font-size:11px;">${currentLoad.toFixed(0)} kg<\/span>
+                <\/div>`;
         }).join('');
 
         const extH = `
             <div class="driver-weight-card" style="padding:0; border-color:#a855f7; display:flex; flex-direction:column; min-width:135px; overflow:hidden;">
-                <div style="background:#a855f7; color:#fff; font-size:10px; font-weight:900; text-align:center; padding:2px 0;">外車</div>
+                <div style="background:#a855f7; color:#fff; font-size:10px; font-weight:900; text-align:center; padding:2px 0;">外車<\/div>
                 ${subRowsHtml}
-            </div>`;
+            <\/div>`;
 
-        document.getElementById('driverLoadDashboard').innerHTML = (h + extH) || '<div style="color:#475569; padding:20px; text-align:center;">載入中...</div>';
+        document.getElementById('driverLoadDashboard').innerHTML = (h + extH) || '<div style="color:#475569; padding:20px; text-align:center;">載入中...<\/div>';
     }
 
     function handleDriverClick(n, name) {
@@ -939,14 +982,14 @@
         const allDriverTasks = dispatchAllTasks.filter(t => t.assignedDriver === driverName || t.vehicle === n);
         const tasks = allDriverTasks.filter(t => dv === 'all' || t.date === dv).sort((a, b) => (a.order || 999) - (b.order || 999));
         const dragTip = isTouchDevice()
-            ? '<span style="color:#94a3b8; font-size:13px;">點 ▲▼ 調整順序</span>'
-            : '<span style="color:#94a3b8; font-size:13px;">拖曳卡片以前後排序</span>';
+            ? '<span style="color:#94a3b8; font-size:13px;">點 ▲▼ 調整順序<\/span>'
+            : '<span style="color:#94a3b8; font-size:13px;">拖曳卡片以前後排序<\/span>';
         modal.innerHTML = `
             <div style="background:#1e293b; padding:25px; border-radius:15px; width:650px; border:3px solid #334155; display:flex; flex-direction:column; max-height:92vh;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-                    <h3 style="color:#38bdf8; margin:0;">【${driverName}】 清單排序 ${dv !== 'all' ? '(' + dv + ')' : ''}</h3>
+                    <h3 style="color:#38bdf8; margin:0;">【${driverName}】 清單排序 ${dv !== 'all' ? '(' + dv + ')' : ''}<\/h3>
                     ${dragTip}
-                </div>
+                <\/div>
                 <div id="sortableTaskList" class="custom-scroll" style="flex:1; overflow-y:auto; padding-right:10px; margin-bottom:20px;">
                     ${tasks.map((t, idx) => {
                         const displayId = formatDisplayOrderId(t.id, t.branch);
@@ -954,42 +997,42 @@
                         // V39.26: 手機版(觸控)用▲▼按鈕排序取代拖曳，避免在可捲動清單裡跟滑動手勢打架
                         const reorderCtrl = isTouchDevice()
                             ? `<div style="display:flex; flex-direction:column; align-items:center; line-height:1;">
-                                 <button onclick="moveDispatchTask(event,'${t.id}',-1)" ${idx === 0 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === 0 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === 0 ? 'default' : 'pointer'}; padding:2px 6px;">▲</button>
-                                 <button onclick="moveDispatchTask(event,'${t.id}',1)" ${idx === tasks.length - 1 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === tasks.length - 1 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === tasks.length - 1 ? 'default' : 'pointer'}; padding:2px 6px;">▼</button>
-                               </div>`
-                            : `<div class="drag-handle" style="color:#475569; font-size:12px; cursor:move;">☰</div>`;
+                                 <button onclick="moveDispatchTask(event,'${t.id}',-1)" ${idx === 0 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === 0 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === 0 ? 'default' : 'pointer'}; padding:2px 6px;">▲<\/button>
+                                 <button onclick="moveDispatchTask(event,'${t.id}',1)" ${idx === tasks.length - 1 ? 'disabled' : ''} style="background:transparent; border:none; color:${idx === tasks.length - 1 ? '#334155' : '#38bdf8'}; font-size:14px; cursor:${idx === tasks.length - 1 ? 'default' : 'pointer'}; padding:2px 6px;">▼<\/button>
+                               <\/div>`
+                            : `<div class="drag-handle" style="color:#475569; font-size:12px; cursor:move;">☰<\/div>`;
                         return `
                         <div data-id="${t.id}" style="background:#0f172a; padding:10px 15px; margin-bottom:10px; border-radius:10px; border:1px solid #334155; display:flex; flex-direction:column; gap:4px; ${isTouchDevice() ? '' : 'cursor:move;'}">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
-                            <span style="color:#475569; font-size:12px;">${idx + 1}.</span>
+                            <span style="color:#475569; font-size:12px;">${idx + 1}.<\/span>
                             ${reorderCtrl}
                             <b style="font-size:16px; color:#60a5fa;">${(function () {
                                 var raw = String(t.customer || '');
                                 var cleaned = raw.replace(/(股份有限公司|有限公司|實業|設計|建材|工程|工作室|公司|商行|企業|磁磚|五金)/g, '').trim();
                                 return cleaned.length > 0 ? cleaned.substring(0, 2) : raw.substring(0, 2);
-                            })()}</b>
+                            })()}<\/b>
                                 ${t.items && t.items.length > 0 ? `
                                 <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${t.id}', 'driver-items-', 'driver-arrow-')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">
-                                    明細 <span class="arrow-icon" id="driver-arrow-${t.id}" style="font-size: 8px; transition: transform 0.2s;">▼</span>
-                                </div>
+                                    明細 <span class="arrow-icon" id="driver-arrow-${t.id}" style="font-size: 8px; transition: transform 0.2s;">▼<\/span>
+                                <\/div>
                                 ` : ''}
-                                <span style="color:#cbd5e1; font-size:13px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${formatAddrWithCarrierTag(t.address)}</span>
+                                <span style="color:#cbd5e1; font-size:13px; font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;">${formatAddrWithCarrierTag(t.address)}<\/span>
                                 <!-- Colored Order ID Box -->
-                                <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 4px;">${displayId}</span>
-                                ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜</span>' : ''}
-                                ${t.isReturn ? '<span class="return-text" style="font-size:12px;">(退)</span>' : ''}
-                            ${t.shippingType ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:900; margin-left:4px;">${t.shippingType}</span>` : ''}
-                            <button onclick="cancelDispatchAction('${t.id}'); document.getElementById('driverDispatchModal').remove();" style="background:var(--color-danger); color:#fff; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:11px;">撤回</button>
-                        </div>
+                                <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-left: 4px;">${displayId}<\/span>
+                                ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜<\/span>' : ''}
+                                ${t.isReturn ? '<span class="return-text" style="font-size:12px;">(退)<\/span>' : ''}
+                            ${t.shippingType ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:900; margin-left:4px;">${t.shippingType}<\/span>` : ''}
+                            <button onclick="cancelDispatchAction('${t.id}'); document.getElementById('driverDispatchModal').remove();" style="background:var(--color-danger); color:#fff; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:11px;">撤回<\/button>
+                        <\/div>
                             <div style="display:flex; align-items:center; gap:10px; margin-left:38px;">
-                                ${t.isBackYingge ? '<span style="background:var(--color-accent); color:#000; padding:1px 6px; border-radius:4px; font-weight:900; font-size:11px;">回鶯歌</span>' : ''}
+                                ${t.isBackYingge ? '<span style="background:var(--color-accent); color:#000; padding:1px 6px; border-radius:4px; font-weight:900; font-size:11px;">回鶯歌<\/span>' : ''}
 
-                                <span style="color:${getWeightColor(t.weight)}; font-weight:900; font-size:16px;">${t.weight.toFixed(0)} <span style="font-size:10px;">kg</span></span>
-                                ${t.note ? `<span style="color: #fbbf24; font-weight:bold; font-size:11px; margin-left:4px; word-break:break-all;">${t.note}</span>` : ''}
-                                <div style="margin-left:auto;"></div>
-                                ${t.timeSlot ? `<span class="time-tag">${t.timeSlot}</span>` : ''}
-                                <span style="color:#fbbf24; font-weight:900; font-size:13px; font-family:'Rajdhani';">${t.date.substring(5)}</span>
-                            </div>
+                                <span style="color:${getWeightColor(t.weight)}; font-weight:900; font-size:16px;">${t.weight.toFixed(0)} <span style="font-size:10px;">kg<\/span><\/span>
+                                ${t.note ? `<span style="color: #fbbf24; font-weight:bold; font-size:11px; margin-left:4px; word-break:break-all;">${t.note}<\/span>` : ''}
+                                <div style="margin-left:auto;"><\/div>
+                                ${t.timeSlot ? `<span class="time-tag">${t.timeSlot}<\/span>` : ''}
+                                <span style="color:#fbbf24; font-weight:900; font-size:13px; font-family:'Rajdhani';">${t.date.substring(5)}<\/span>
+                            <\/div>
 
                             <!-- Dropdown Content -->
                             ${t.items && t.items.length > 0 ? `
@@ -1002,27 +1045,27 @@
                                     return `
                                         <div class="item-detail-row" style="display:grid; grid-template-columns:minmax(80px,1fr) minmax(40px,auto) minmax(80px,auto) minmax(45px,auto) minmax(50px,auto) 44px; align-items:center; gap:6px; padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,0.08); font-size: 12px; font-weight: bold;">
                                             <div style="display:flex; flex-direction:column; min-width:0;">
-                                                <span style="color:#fff;">${item.code}</span>
-                                                ${(item.series || item.originalName) ? `<span style="color:#94a3b8; font-size:10px; font-weight:400;">${item.series ? '<span style="color:#fbbf24;">' + item.series + '</span> ' : ''}${item.originalName || ''}</span>` : ''}
-                                            </div>
-                                            <span class="item-size" style="color:var(--color-primary); opacity:0.85; font-size:11px; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}</span>
-                                            <span class="item-qty" style="color:var(--color-accent); white-space:nowrap;">${qtyBox}</span>
-                                            <span class="item-total-qty" style="color:#f472b6; white-space:nowrap;">${item.qty}片</span>
-                                            <span class="item-weight" style="color:var(--color-success); white-space:nowrap;">${weightText}</span>
-                                            ${item.image ? '<img src="' + item.image.replace(/'/g,"\\'") + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" onclick="event.stopPropagation();window.open(\'' + item.image.replace(/'/g,"\\'") + '\',\'_blank\')">' : '<span style="width:40px;"></span>'}
-                                        </div>
+                                                <span style="color:#fff;">${item.code}<\/span>
+                                                ${(item.series || item.originalName) ? `<span style="color:#94a3b8; font-size:10px; font-weight:400;">${item.series ? '<span style="color:#fbbf24;">' + item.series + '<\/span> ' : ''}${item.originalName || ''}<\/span>` : ''}
+                                            <\/div>
+                                            <span class="item-size" style="color:var(--color-primary); opacity:0.85; font-size:11px; white-space:nowrap;">${String(item.size || itemSize || '-').replace(/cm/gi, '')}<\/span>
+                                            <span class="item-qty" style="color:var(--color-accent); white-space:nowrap;">${qtyBox}<\/span>
+                                            <span class="item-total-qty" style="color:#f472b6; white-space:nowrap;">${item.qty}片<\/span>
+                                            <span class="item-weight" style="color:var(--color-success); white-space:nowrap;">${weightText}<\/span>
+                                            ${item.image ? '<img src="' + item.image.replace(/'/g,"\\'") + '" style="width:40px;height:40px;object-fit:cover;border-radius:4px;cursor:pointer;" onclick="event.stopPropagation();window.open(\'' + item.image.replace(/'/g,"\\'") + '\',\'_blank\')">' : '<span style="width:40px;"><\/span>'}
+                                        <\/div>
                                     `;
                                 }).join('')}
-                            </div>
+                            <\/div>
                             ` : ''}
-                        </div>`;
-                    }).join('') || '<div style="color:#64748b; text-align:center; padding:20px;">無行程</div>'}
-                </div>
+                        <\/div>`;
+                    }).join('') || '<div style="color:#64748b; text-align:center; padding:20px;">無行程<\/div>'}
+                <\/div>
                 <div style="display:flex; gap:12px; flex-shrink:0;">
-                    <button onclick="generateDriverImage('${n}','${driverName}')" style="flex:1.5; background:var(--color-success); color:#fff; padding:15px; border:none; border-radius:12px; font-weight:900; cursor:pointer;">📸 生成圖片</button>
-                    <button onclick="document.getElementById('driverDispatchModal').remove()" style="flex:1; background:#475569; color:#fff; padding:15px; border:none; border-radius:12px; font-weight:900; cursor:pointer;">返回</button>
-                </div>
-            </div>`;
+                    <button onclick="generateDriverImage('${n}','${driverName}')" style="flex:1.5; background:var(--color-success); color:#fff; padding:15px; border:none; border-radius:12px; font-weight:900; cursor:pointer;">📸 生成圖片<\/button>
+                    <button onclick="document.getElementById('driverDispatchModal').remove()" style="flex:1; background:#475569; color:#fff; padding:15px; border:none; border-radius:12px; font-weight:900; cursor:pointer;">返回<\/button>
+                <\/div>
+            <\/div>`;
         document.body.appendChild(modal);
         if (!isTouchDevice()) {
             new Sortable(document.getElementById('sortableTaskList'), {
@@ -1161,7 +1204,7 @@
             triggerBtn = document.getElementById(opts.triggerBtnId);
             if (triggerBtn) {
                 oldHtml = triggerBtn.innerHTML;
-                triggerBtn.innerHTML = '<span class="loading-spinner"></span> 處理中...';
+                triggerBtn.innerHTML = '<span class="loading-spinner"><\/span> 處理中...';
                 triggerBtn.disabled = true;
             }
         }
@@ -1179,7 +1222,7 @@
         tpl.style.visibility = "visible";
         tpl.innerHTML = `
             <div id="captureArea" style="background:${bg}; padding:18px; border-radius:12px; width:600px; border:4px solid ${bc}; font-family:'Noto Sans TC', 'Microsoft JhengHei', sans-serif; box-sizing: border-box; color: #fff;">
-                <h3 style="color:${bc}; text-align:center; border-bottom:2px solid rgba(56, 189, 248, 0.3); padding-bottom:10px; margin:0 0 12px 0; font-size:22px; letter-spacing: 2px;">${title}</h3>
+                <h3 style="color:${bc}; text-align:center; border-bottom:2px solid rgba(56, 189, 248, 0.3); padding-bottom:10px; margin:0 0 12px 0; font-size:22px; letter-spacing: 2px;">${title}<\/h3>
                 ${items.map((t, i) => {
                     const tKey = norm(t.address) + '_' + (t.size || '') + '_' + (t.boxes || '') + '_' + (t.branch || '');
                     const isDuplicate = addrCounts[tKey] > 1;
@@ -1189,40 +1232,40 @@
 
                     let drvHtml = '';
                     if (opts.showDriver && (t.assignedDriver || t.vehicle)) {
-                        drvHtml = `<span style="background:${getDriverColor(t.assignedDriver || t.vehicle)}; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:auto; font-weight:900;">${escapeHTML(t.assignedDriver || t.vehicle)}</span>`;
+                        drvHtml = `<span style="background:${getDriverColor(t.assignedDriver || t.vehicle)}; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; margin-left:auto; font-weight:900;">${escapeHTML(t.assignedDriver || t.vehicle)}<\/span>`;
                     }
                     let yinggeHtml = '';
                     if (opts.highlightYingge && t.isBackYingge) {
-                        yinggeHtml = `<span style="background:var(--color-accent); color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px;">[回]</span>`;
+                        yinggeHtml = `<span style="background:var(--color-accent); color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px;">[回]<\/span>`;
                     }
-                    let shippingHtml = t.shippingType ? `<span style="background:#f59e0b; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px;">${escapeHTML(t.shippingType)}</span>` : '';
-                    let dupHtml = isDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:10px; border:1px solid #ef4444; padding:0 3px; border-radius:4px; margin-left:4px;">重</span>' : '';
+                    let shippingHtml = t.shippingType ? `<span style="background:#f59e0b; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px;">${escapeHTML(t.shippingType)}<\/span>` : '';
+                    let dupHtml = isDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:10px; border:1px solid #ef4444; padding:0 3px; border-radius:4px; margin-left:4px;">重<\/span>' : '';
                     return `
                     <div style="background:linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border-radius:8px; padding:10px; margin-bottom:6px; border:1px solid rgba(255,255,255,0.05); display:flex; flex-direction:column; gap:6px;">
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap: wrap;">
-                            <span style="font-weight:900; color:rgba(255,255,255,0.3); font-size:14px; min-width:20px;">${i + 1}.</span>
+                            <span style="font-weight:900; color:rgba(255,255,255,0.3); font-size:14px; min-width:20px;">${i + 1}.<\/span>
                             <span style="font-weight:900; color:#38bdf8; font-size:16px;">${(function () {
                                 var raw = String(t.customer || '');
                                 var cleaned = raw.replace(/(股份有限公司|有限公司|實業|設計|建材|工程|工作室|公司|商行|企業|磁磚|五金)/g, '').trim();
                                 return cleaned.length > 0 ? cleaned.substring(0, 2) : raw.substring(0, 2);
-                            })()}</span>
+                            })()}<\/span>
                             ${shippingHtml}
                             <!-- Colored Order ID Box -->
-                            <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 1px 5px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 4px; display:inline-block;">${tDisplayId}</span>
-                            <span style="color:#e2e8f0; font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; margin-left:4px;">${formatAddrWithCarrierTag(t.address)}</span>
-                            ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span style="background:#22c55e; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">[膠]</span>' : ''}
-                            ${t.isReturn ? '<span style="color:#ef4444; font-weight:900; font-size:13px; border:1px solid #ef4444; padding:0 4px; border-radius:4px;">退</span>' : ''}
+                            <span class="id-box-disp" style="background:${brObj.color}; color:${brObj.textColor}; padding: 1px 5px; border-radius: 4px; font-size: 11px; font-weight: bold; margin-left: 4px; display:inline-block;">${tDisplayId}<\/span>
+                            <span style="color:#e2e8f0; font-size:15px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; margin-left:4px;">${formatAddrWithCarrierTag(t.address)}<\/span>
+                            ${(String(t.wrapSeal || '').includes('封') || String(t.note || '').includes('膠膜')) ? '<span style="background:#22c55e; color:#000; padding:1px 5px; border-radius:4px; font-size:10px; font-weight:900; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">[膠]<\/span>' : ''}
+                            ${t.isReturn ? '<span style="color:#ef4444; font-weight:900; font-size:13px; border:1px solid #ef4444; padding:0 4px; border-radius:4px;">退<\/span>' : ''}
                             ${dupHtml}
                             ${drvHtml}
-                        </div>
+                        <\/div>
                         <div style="display:flex; align-items:center; gap:12px; margin-left:32px; white-space:nowrap;">
                             ${yinggeHtml}
-                            <b style="color:${getWeightColor(t.weight)}; font-size:20px; font-family:'Rajdhani';">${t.weight.toFixed(0)}kg</b>
-                            ${t.note ? `<span style="color:#fbbf24; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(t.note)}</span>` : ''}
-                            <div style="margin-left:auto;"></div>
-                            ${t.timeSlot ? `<span class="time-tag" style="margin-right:2px;">${t.timeSlot}</span>` : ''}
-                            <span style="color:#fbbf24; font-weight:900; font-size:13px; font-family:'Rajdhani';">${t.date.substring(5)}</span>
-                        </div>
+                            <b style="color:${getWeightColor(t.weight)}; font-size:20px; font-family:'Rajdhani';">${t.weight.toFixed(0)}kg<\/b>
+                            ${t.note ? `<span style="color:#fbbf24; font-size:12px; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHTML(t.note)}<\/span>` : ''}
+                            <div style="margin-left:auto;"><\/div>
+                            ${t.timeSlot ? `<span class="time-tag" style="margin-right:2px;">${t.timeSlot}<\/span>` : ''}
+                            <span style="color:#fbbf24; font-weight:900; font-size:13px; font-family:'Rajdhani';">${t.date.substring(5)}<\/span>
+                        <\/div>
 
                         <!-- Flat Printed Items Details in Static Image -->
                         ${t.items && t.items.length > 0 ? `
@@ -1234,19 +1277,19 @@
                                 const weightText = formatItemWeight(item.itemWeight) || (itemIdx === 0 ? formatItemWeight(t.weight) : '');
                                 return `
                                     <div style="display:grid; grid-template-columns:minmax(84px,1fr) auto auto minmax(54px,auto); align-items:center; gap:8px; padding:2px 0; border-bottom:1px dashed rgba(255,255,255,0.04);">
-                                        <span style="color:#cbd5e1;">${escapeHTML(item.code)}</span>
-                                        <span style="color:#94a3b8; font-size:11px; white-space:nowrap;">${escapeHTML(item.size || itemSize || '-')}</span>
-                                        <span style="color:#fbbf24; font-weight:bold; white-space:nowrap;">${qtyBox}</span>
-                                        <span style="color:#22c55e; font-weight:bold; white-space:nowrap;">${escapeHTML(weightText)}</span>
-                                    </div>
+                                        <span style="color:#cbd5e1;">${escapeHTML(item.code)}<\/span>
+                                        <span style="color:#94a3b8; font-size:11px; white-space:nowrap;">${escapeHTML(item.size || itemSize || '-')}<\/span>
+                                        <span style="color:#fbbf24; font-weight:bold; white-space:nowrap;">${qtyBox}<\/span>
+                                        <span style="color:#22c55e; font-weight:bold; white-space:nowrap;">${escapeHTML(weightText)}<\/span>
+                                    <\/div>
                                 `;
                             }).join('')}
-                        </div>
+                        <\/div>
                         ` : ''}
 
-                    </div>`
+                    <\/div>`
                 }).join('')}
-            </div>`;
+            <\/div>`;
         setTimeout(() => {
             const area = tpl.firstElementChild;
             if (!area) return;
@@ -1316,15 +1359,15 @@
                             return;
                         }
                         w.document.write(`
-                            <title>出車清單複製頁面</title>
+                            <title>出車清單複製頁面<\/title>
                             <body style="margin:0; background:#0f172a; display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:100vh; font-family:sans-serif; color:#fff; padding:20px; box-sizing:border-box;">
                                 <div style="margin-bottom:20px; background:rgba(56,189,248,0.1); padding:15px 25px; border-radius:12px; border:1px solid #38bdf8; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,0.3); max-width:400px;">
-                                    <div style="font-size:18px; font-weight:900; color:#38bdf8; margin-bottom:8px;">📋 準備複製到 LINE</div>
-                                    <div style="font-size:14px; color:#cbd5e1;">對下方圖片「按右鍵」或「長按」 ➔ 選擇「複製圖片」</div>
-                                </div>
+                                    <div style="font-size:18px; font-weight:900; color:#38bdf8; margin-bottom:8px;">📋 準備複製到 LINE<\/div>
+                                    <div style="font-size:14px; color:#cbd5e1;">對下方圖片「按右鍵」或「長按」 ➔ 選擇「複製圖片」<\/div>
+                                <\/div>
                                 <img src="${blobUrl}" style="max-width:100%; max-height:80vh; box-shadow:0 10px 40px rgba(0,0,0,0.5); border-radius:12px; border:1px solid rgba(255,255,255,0.1); object-fit:contain;">
-                                <div style="margin-top:20px; color:#64748b; font-size:12px;">小提示：也可以直接右鍵另存圖片喔！</div>
-                            </body>
+                                <div style="margin-top:20px; color:#64748b; font-size:12px;">小提示：也可以直接右鍵另存圖片喔！<\/div>
+                            <\/body>
                         `);
                         w.document.close();
                     };
@@ -1402,16 +1445,16 @@
                 return isMatched && !isFinished;
             }).reduce((sum, tk) => sum + (Number(tk.weight) || 0), 0);
             return `<div onclick="handleMobileDriverTap('${escapeHTML(plate)}','${escapeHTML(d.name)}')" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-                <b style="color:${getDriverColor(d.name)}; font-size:16px;">${escapeHTML(d.name)}</b>
-                <span style="color:#94a3b8; font-size:13px;">${escapeHTML(plate)} · ${currentLoad.toFixed(0)}kg</span>
-            </div>`;
+                <b style="color:${getDriverColor(d.name)}; font-size:16px;">${escapeHTML(d.name)}<\/b>
+                <span style="color:#94a3b8; font-size:13px;">${escapeHTML(plate)} · ${currentLoad.toFixed(0)}kg<\/span>
+            <\/div>`;
         }).join('');
         const externalDrivers = [
             { plate: "外車-1", name: "外車 1" }, { plate: "外車-2", name: "外車 2" }, { plate: "外車-3", name: "外車 3" }
         ];
         const extRows = externalDrivers.map(d => `<div onclick="handleMobileDriverTap('${d.plate}','${d.name}')" style="background:#0f172a; border:1px solid #a855f7; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-            <b style="color:#a855f7; font-size:16px;">${d.name}</b><span style="color:#94a3b8; font-size:13px;">${d.plate}</span>
-        </div>`).join('');
+            <b style="color:#a855f7; font-size:16px;">${d.name}<\/b><span style="color:#94a3b8; font-size:13px;">${d.plate}<\/span>
+        <\/div>`).join('');
         listEl.innerHTML = rows + extRows;
     }
     function handleMobileDriverTap(n, name) {
@@ -1503,6 +1546,7 @@
             const gList = Object.keys(groups).map(d => ({ d, tasks: groups[d], w: groups[d].reduce((s, t) => s + (parseFloat(t.weight) || 0), 0), timed: groups[d].some(t => t.specifiedArrive || /上午|中午前/.test(t.timeSlot || '')) }))
                 .sort((a, b) => (b.timed - a.timed) || (b.w - a.w));   // 有指定時段的區先排、重的先排
             const plan = {}; fleet.forEach(d => plan[d.plate] = { d, tasks: [], w: 0, why: [] });
+            const taskWhy = {};
             gList.forEach(g => {
                 const fam = fleet.map(d => ({ d, n: (bd[g.d] && bd[g.d][d.plate]) || 0 })).sort((a, b) => b.n - a.n || (load[a.d.plate] + plan[a.d.plate].w) - (load[b.d.plate] + plan[b.d.plate].w));
                 let pick = fam.find(f => load[f.d.plate] + plan[f.d.plate].w + g.w <= cap(f.d));
@@ -1511,43 +1555,349 @@
                 else if (pick) reason = `${g.d} 無歷史，給目前最空的車`;
                 else { pick = fam.sort((a, b) => (load[a.d.plate] + plan[a.d.plate].w) - (load[b.d.plate] + plan[b.d.plate].w))[0]; reason = `⚠ 全部都超載，先給最空的車 (${g.d})`; }
                 plan[pick.d.plate].tasks.push(...g.tasks); plan[pick.d.plate].w += g.w; plan[pick.d.plate].why.push(reason);
+                g.tasks.forEach(t => taskWhy[t.id] = reason);
             });
-            showAiPlanPreview_V41(plan, load, cap, todo.length);
+            showAiPlanPreview_V41(plan, load, cap, todo.length, fleet, taskWhy);
         });
     }
-    function showAiPlanPreview_V41(plan, load, cap, total) {
+    // ===== V42.54 / V42.55 AI 排車學習 第一階段：預覽可以換車、套用時問換車原因、每張單寫進「AI排車學習記錄」 =====
+    // 以「車」為主 (司機會換人，車不會)。「車今天不能用」是一次性狀況，標記不納入學習，避免污染之後的規則。
+    // V42.55: 使用者反映資訊太多看不懂 → 畫面只留「車、單子、換車按鈕」，AI 理由/規則說明/載重拆解都拿掉。
+    const AI_ADJUST_REASONS = [
+        { k: '路線順路', learn: '是' },
+        { k: '指定時間衝突', learn: '是' },
+        { k: '車型限制', learn: '是' },
+        { k: '載重太重', learn: '是' },
+        { k: '車今天不能用', learn: '否' },
+        { k: '其他', learn: '是' }
+    ];
+    let aiPlanState = null;
+    const aiDistOf_ = t => (String((t && t.address) || '').match(/[\u4e00-\u9fff]{2,3}區/) || [''])[0];
+    const aiDistShow_ = t => aiDistOf_(t).replace(/^[市縣]/, '');
+    const aiBtnCss_ = (bg, fg, bd) => `background:${bg};color:${fg};border:1px solid ${bd};border-radius:8px;cursor:pointer;font-weight:900;`;
+
+    function showAiPlanPreview_V41(plan, load, cap, total, fleet, taskWhy) {
         document.querySelectorAll('#aiPlanModal').forEach(el => el.remove());
+        const tasks = [], ai = {}, cur = {};
+        Object.values(plan).forEach(p => p.tasks.forEach(t => { tasks.push(t); ai[t.id] = p.d.plate; cur[t.id] = p.d.plate; }));
+        aiPlanState = { tasks, ai, cur, why: taskWhy || {}, fleet: fleet || Object.values(plan).map(p => p.d), load, cap, total, openId: null, itemsOpen: new Set(), reasons: {}, reasonOpen: null };
+
         const m = document.createElement('div'); m.id = 'aiPlanModal';
         m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:10000;padding:16px;';
-        const cols = Object.values(plan).filter(p => p.tasks.length).map(p => {
-            const c = cap(p.d), tot = load[p.d.plate] + p.w, over = tot > c;
-            return `<div style="background:#0f172a;border:1px solid ${over ? '#ef4444' : '#334155'};border-radius:12px;padding:12px;min-width:230px;flex:1;">
-                <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;"><b style="color:${getDriverColor(p.d.name)};font-size:16px;">${escapeHTML(p.d.name)}</b><span style="font-size:11px;color:#94a3b8;">${escapeHTML(p.d.plate)}</span></div>
-                <div style="font-size:12px;color:${over ? '#f87171' : '#22c55e'};margin-bottom:6px;">載重 ${Math.round(tot)} / ${c} kg${load[p.d.plate] ? `（已派 ${Math.round(load[p.d.plate])} + 新 ${Math.round(p.w)}）` : ''}</div>
-                <div style="font-size:11px;color:#a78bfa;margin-bottom:8px;">${p.why.map(escapeHTML).join('<br>')}</div>
-                ${p.tasks.map(t => `<div style="font-size:12px;padding:4px 0;border-top:1px dashed rgba(255,255,255,.08);display:flex;gap:6px;"><span style="color:#e2e8f0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(t.customer)}</span><span style="color:#94a3b8;">${escapeHTML((String(t.address||'').match(/[\u4e00-\u9fff]{2,3}區/)||[''])[0])}</span><span style="color:#fbbf24;">${Math.round(parseFloat(t.weight)||0)}kg</span>${t.specifiedArrive ? `<span style="color:#38bdf8;">${escapeHTML(t.specifiedArrive)}</span>` : ''}</div>`).join('')}
-            </div>`;
-        }).join('');
-        m.innerHTML = `<div style="background:#1e293b;border:3px solid #7c3aed;border-radius:16px;padding:20px;max-width:1100px;width:100%;max-height:92vh;display:flex;flex-direction:column;">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;"><h3 style="margin:0;color:#c4b5fd;">🤖 AI 排車建議</h3><span style="color:#94a3b8;font-size:13px;">${total} 張待指派 ｜ 規則：路線熟悉度 → 載重 → 時段（不看客戶）</span>
-                <span style="flex:1"></span>
-                <button onclick="document.getElementById('aiPlanModal').remove()" style="background:#334155;color:#fff;border:0;padding:8px 14px;border-radius:8px;cursor:pointer;">取消</button>
-                <button id="aiPlanApplyBtn" style="background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:0;padding:8px 16px;border-radius:8px;font-weight:900;cursor:pointer;">✅ 套用全部</button></div>
-            <div class="custom-scroll" style="display:flex;gap:12px;overflow:auto;flex-wrap:wrap;align-content:flex-start;">${cols}</div>
-        </div>`;
+        m.innerHTML = `<div style="background:#1e293b;border:3px solid #7c3aed;border-radius:16px;padding:20px;max-width:1700px;width:100%;max-height:94vh;display:flex;flex-direction:column;">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+                <h3 style="margin:0;color:#e9d5ff;font-size:20px;">🤖 AI 排好了，請確認<\/h3>
+                <span id="aiPlanStats" style="font-size:12px;color:#94a3b8;"><\/span>
+                <span style="flex:1"><\/span>
+                <button id="aiPlanCancelBtn" style="${aiBtnCss_('#334155', '#fff', '#334155')}padding:10px 16px;font-size:14px;">取消<\/button>
+                <button id="aiPlanApplyBtn" style="${aiBtnCss_('#7c3aed', '#fff', '#a855f7')}padding:10px 20px;font-size:15px;">✅ 沒問題，套用<\/button>
+            <\/div>
+            <div style="font-size:15px;color:#fde68a;margin-bottom:12px;">排錯了？按單子右邊的 <b style="color:#fff;background:#4f46e5;padding:1px 8px;border-radius:6px;">換車<\/b> 就好<\/div>
+            <div id="aiPlanCols" class="custom-scroll" style="display:flex;gap:12px;overflow:auto;flex-wrap:wrap;align-content:flex-start;"><\/div>
+        <\/div>`;
         document.body.appendChild(m);
-        document.getElementById('aiPlanApplyBtn').onclick = () => {
-            const btn = document.getElementById('aiPlanApplyBtn'); btn.disabled = true; btn.textContent = '寫入中…';
-            const batches = Object.values(plan).filter(p => p.tasks.length);
-            let i = 0;
-            const next = () => {
-                if (i >= batches.length) { m.remove(); showToast('✅ AI 排車完成'); openDispatchModal_V3(); return; }
-                const p = batches[i++];
-                google.script.run.withSuccessHandler(next).withFailureHandler(err => { showToast('❌ ' + p.d.name + ' 寫入失敗：' + (err && err.message || err)); next(); })
-                    .recordDispatch_V3(p.tasks, { plate: p.d.plate, name: p.d.name, shift: '1', source: 'AI排車' }, ATOKEN());
-            };
-            next();
+
+        const colsEl = document.getElementById('aiPlanCols');
+        colsEl.addEventListener('click', e => {
+            const mv = e.target.closest('[data-move]');
+            if (mv) { aiPlanMove_V42(mv.dataset.tid, mv.dataset.move); return; }
+            const rv = e.target.closest('[data-revert]');
+            if (rv) { aiPlanMove_V42(rv.dataset.revert, aiPlanState.ai[rv.dataset.revert]); return; }
+            const rs = e.target.closest('[data-rsn]');
+            if (rs) {
+                const k = rs.dataset.tid, st = aiPlanState;
+                st.reasons[k] = { reason: rs.dataset.rsn, note: (st.reasons[k] && st.reasons[k].note) || '' };
+                if (rs.dataset.rsn !== '其他') st.reasonOpen = null;
+                renderAiPlanCols_V42();
+                if (rs.dataset.rsn === '其他') { const inp = document.querySelector('[data-rnote="' + CSS.escape(k) + '"]'); if (inp) inp.focus(); }
+                return;
+            }
+            const rd = e.target.closest('[data-rdone]');
+            if (rd) { aiPlanState.reasonOpen = null; renderAiPlanCols_V42(); return; }
+            const ro = e.target.closest('[data-rsnopen]');
+            if (ro) { aiPlanState.reasonOpen = aiPlanState.reasonOpen === ro.dataset.rsnopen ? null : ro.dataset.rsnopen; renderAiPlanCols_V42(); return; }
+            const it = e.target.closest('[data-items]');
+            if (it) { const k = it.dataset.items; aiPlanState.itemsOpen.has(k) ? aiPlanState.itemsOpen.delete(k) : aiPlanState.itemsOpen.add(k); renderAiPlanCols_V42(); return; }
+            const vc = e.target.closest('[data-voucher]');
+            if (vc) {
+                // 貨單檢視器原本圖層 (9700) 比 AI 視窗 (10000) 低，會被蓋住
+                const ov = document.getElementById('mobileVoucherOverlay');
+                if (ov) ov.style.zIndex = '10005';
+                openMobileVoucher(e, vc.dataset.voucher);
+                return;
+            }
+            const op = e.target.closest('[data-open]');
+            if (op) { aiPlanState.openId = aiPlanState.openId === op.dataset.open ? null : op.dataset.open; renderAiPlanCols_V42(); }
+        });
+        colsEl.addEventListener('input', e => {
+            const inp = e.target.closest('[data-rnote]');
+            if (inp && aiPlanState.reasons[inp.dataset.rnote]) aiPlanState.reasons[inp.dataset.rnote].note = inp.value.trim();
+        });
+        colsEl.addEventListener('dragstart', e => {
+            const row = e.target.closest('.ai-task-row');
+            if (row) { e.dataTransfer.setData('text/plain', row.dataset.tid); e.dataTransfer.effectAllowed = 'move'; }
+        });
+        colsEl.addEventListener('dragover', e => {
+            const col = e.target.closest('.ai-plan-col');
+            if (!col) return;
+            e.preventDefault();
+            colsEl.querySelectorAll('.ai-plan-col').forEach(c => c.style.outline = c === col ? '2px dashed #a78bfa' : '');
+        });
+        colsEl.addEventListener('dragleave', e => { if (!colsEl.contains(e.relatedTarget)) colsEl.querySelectorAll('.ai-plan-col').forEach(c => c.style.outline = ''); });
+        colsEl.addEventListener('drop', e => {
+            const col = e.target.closest('.ai-plan-col');
+            colsEl.querySelectorAll('.ai-plan-col').forEach(c => c.style.outline = '');
+            if (!col) return;
+            e.preventDefault();
+            const tid = e.dataTransfer.getData('text/plain');
+            if (tid) aiPlanMove_V42(tid, col.dataset.plate);
+        });
+        document.getElementById('aiPlanCancelBtn').onclick = () => { m.remove(); aiPlanState = null; };
+        document.getElementById('aiPlanApplyBtn').onclick = aiPlanApply_V42;
+        renderAiPlanCols_V42();
+
+        google.script.run.withSuccessHandler(renderAiPlanStats_V42).withFailureHandler(() => { })
+            .getAiDispatchLearningStats_V42(30, ATOKEN());
+    }
+
+    function aiPlanMovedIds_V42() {
+        const s = aiPlanState;
+        return s ? s.tasks.filter(t => s.cur[t.id] !== s.ai[t.id]).map(t => t.id) : [];
+    }
+
+    function aiPlanMove_V42(tid, plate) {
+        const s = aiPlanState;
+        const t = s && s.tasks.find(x => String(x.id) === String(tid));
+        if (!t || !plate) return;
+        s.cur[t.id] = plate;
+        s.openId = null;
+        // V42.57: 換完車當下就問原因（原本要等按套用才問，主管以為沒有問）
+        if (plate === s.ai[t.id]) { delete s.reasons[t.id]; s.reasonOpen = null; }
+        else s.reasonOpen = String(t.id);
+        renderAiPlanCols_V42();
+    }
+
+    function renderAiPlanCols_V42() {
+        const s = aiPlanState, colsEl = document.getElementById('aiPlanCols');
+        if (!s || !colsEl) return;
+        const byPlate = {};
+        s.fleet.forEach(d => byPlate[d.plate] = []);
+        s.tasks.forEach(t => (byPlate[s.cur[t.id]] = byPlate[s.cur[t.id]] || []).push(t));
+
+        colsEl.innerHTML = s.fleet.map(d => {
+            const list = byPlate[d.plate] || [];
+            const w = list.reduce((a, t) => a + (parseFloat(t.weight) || 0), 0);
+            const c = s.cap(d), tot = (s.load[d.plate] || 0) + w, over = tot > c;
+            const pct = Math.min(100, Math.round(tot / c * 100));
+            const rows = list.map(t => {
+                const moved = s.ai[t.id] !== d.plate, open = s.openId === String(t.id), itemsOpen = s.itemsOpen.has(String(t.id));
+                const tid = escapeHTML(t.id);
+                const tint = getOrderTint(t.id, t.branch);
+                const w = parseFloat(t.weight) || 0;
+                const cust = String(t.customer || '').replace(/(股份有限公司|有限公司)/g, '').trim() || String(t.customer || '');
+                const items = Array.isArray(t.items) ? t.items : [];
+                const picker = open ? `<div style="background:#1e1b4b;border:1px solid #6366f1;border-radius:10px;padding:10px;margin:6px 0 2px;">
+                    <div style="font-size:13px;color:#c7d2fe;margin-bottom:8px;">要換到哪台車？<\/div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">${s.fleet.filter(x => x.plate !== d.plate).map(x =>
+                        `<button data-move="${escapeHTML(x.plate)}" data-tid="${tid}" style="${aiBtnCss_('#4f46e5', '#fff', '#818cf8')}padding:8px 12px;font-size:14px;">${escapeHTML(x.plate)} <span style="font-weight:400;opacity:.8;">${escapeHTML(x.name)}<\/span><\/button>`).join('')}
+                        <button data-open="${tid}" style="${aiBtnCss_('transparent', '#94a3b8', '#475569')}padding:8px 12px;font-size:14px;font-weight:400;">不換了<\/button><\/div>
+                <\/div>` : '';
+                const itemsBox = itemsOpen && items.length ? `<div style="margin-top:6px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:4px 10px;">${items.map((it, i) => {
+                    const sizeArr = String(t.size || '').split(/[,，、；;\/]+/);
+                    const size = String(it.size || (sizeArr[i] || sizeArr[0] || '').trim() || '-').replace(/cm/gi, '');
+                    const iw = formatItemWeight(it.itemWeight) || (i === 0 && items.length === 1 ? formatItemWeight(w) : '');
+                    return `<div style="display:grid;grid-template-columns:minmax(80px,1fr) auto auto auto;gap:10px;align-items:center;padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.08);font-size:13px;font-weight:700;">
+                        <div style="min-width:0;"><div style="color:#fff;">${escapeHTML(it.code)}<\/div>${(it.series || it.originalName) ? `<div style="color:#94a3b8;font-size:11px;font-weight:400;">${it.series ? '<span style="color:#fbbf24;">' + escapeHTML(it.series) + '<\/span> ' : ''}${escapeHTML(it.originalName || '')}<\/div>` : ''}<\/div>
+                        <span style="color:var(--color-primary);white-space:nowrap;">${escapeHTML(size)}<\/span>
+                        <span style="white-space:nowrap;">${formatItemQtyBox(it.qty, it.boxQty, it.pcsPerBox)}<\/span>
+                        <span style="color:var(--color-success);white-space:nowrap;">${escapeHTML(iw)}<\/span>
+                    <\/div>`;
+                }).join('')}<\/div>` : '';
+                return `<div class="ai-task-row" draggable="true" data-tid="${tid}" style="padding:10px 8px;margin:0 -8px;border-top:1px solid rgba(255,255,255,.06);border-radius:8px;user-select:none;-webkit-user-select:none;${moved ? 'background:rgba(251,191,36,.14);box-shadow:inset 4px 0 0 #fbbf24;' : ''}">
+                    <div style="display:flex;gap:6px;align-items:flex-start;">
+                        <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;font-size:14px;">
+                            <span style="background:${tint.color};color:${tint.textColor};padding:1px 6px;border-radius:4px;font-size:12px;font-weight:700;white-space:nowrap;">${escapeHTML(formatDisplayOrderId(t.id, t.branch))}<\/span>
+                            <b style="color:#f1f5f9;">${escapeHTML(cust)}<\/b>
+                            ${t.shippingType && t.shippingType !== '送貨' ? `<span style="background:#f59e0b;color:#000;padding:1px 6px;border-radius:4px;font-size:12px;font-weight:900;">${escapeHTML(t.shippingType)}<\/span>` : ''}
+                            <span style="color:#cbd5e1;font-size:13px;">${formatAddrWithCarrierTag(t.address)}<\/span>
+                        <\/div>
+                        ${t.thumbnail ? `<button data-voucher="${tid}" title="看貨單" style="${aiBtnCss_('transparent', '#38bdf8', '#38bdf8')}padding:4px 8px;font-size:13px;">📷<\/button>` : ''}
+                        ${moved ? `<button data-revert="${tid}" style="${aiBtnCss_('transparent', '#fbbf24', '#fbbf24')}padding:4px 8px;font-size:13px;">復原<\/button>` : ''}
+                        <button data-open="${tid}" style="${aiBtnCss_(open ? '#312e81' : '#4f46e5', '#fff', '#818cf8')}padding:5px 12px;font-size:13px;white-space:nowrap;">換車<\/button>
+                    <\/div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:6px;">
+                        ${items.length ? `<button data-items="${tid}" style="${aiBtnCss_('rgba(56,189,248,.15)', '#38bdf8', 'rgba(56,189,248,.4)')}padding:2px 8px;font-size:12px;">明細 ${itemsOpen ? '▲' : '▼'}<\/button>` : ''}
+                        <span style="color:${getWeightColor(w)};font-weight:900;font-size:17px;white-space:nowrap;">${Math.round(w)} <span style="font-size:11px;">kg<\/span><\/span>
+                        ${t.note ? `<span style="color:#fbbf24;font-weight:700;font-size:13px;word-break:break-all;">${escapeHTML(t.note)}<\/span>` : ''}
+                        ${t.specifiedArrive ? `<span style="color:#38bdf8;font-weight:700;font-size:13px;white-space:nowrap;">⏰${escapeHTML(t.specifiedArrive)}<\/span>` : ''}
+                        ${t.timeSlot ? `<span class="time-tag">${escapeHTML(t.timeSlot)}<\/span>` : ''}
+                        ${moved ? `<span style="color:#fbbf24;font-size:12px;white-space:nowrap;">原本 ${escapeHTML(s.ai[t.id])}<\/span>` : ''}
+                        ${moved ? (s.reasons[t.id] && s.reasons[t.id].reason
+                            ? `<button data-rsnopen="${tid}" title="點一下可以改原因" style="${aiBtnCss_('#fbbf24', '#111827', '#fbbf24')}padding:2px 8px;font-size:12px;">原因：${escapeHTML(s.reasons[t.id].reason)}<\/button>`
+                            : `<button data-rsnopen="${tid}" style="${aiBtnCss_('#7f1d1d', '#fecaca', '#ef4444')}padding:2px 8px;font-size:12px;">⚠ 還沒選原因<\/button>`) : ''}
+                    <\/div>
+                    ${itemsBox}
+                    ${moved && s.reasonOpen === String(t.id) ? `<div style="margin-top:8px;background:#422006;border:1px solid #f59e0b;border-radius:10px;padding:10px;">
+                        <div style="font-size:14px;color:#fde68a;font-weight:900;margin-bottom:8px;">為什麼換到 ${escapeHTML(d.plate)}？<span style="font-size:12px;color:#fcd34d;font-weight:400;">（點一個，AI 會記下來）<\/span><\/div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;">${AI_ADJUST_REASONS.map(r => {
+                            const on = s.reasons[t.id] && s.reasons[t.id].reason === r.k;
+                            return `<button data-rsn="${escapeHTML(r.k)}" data-tid="${tid}" style="${aiBtnCss_(on ? '#fbbf24' : '#0f172a', on ? '#111827' : '#fde68a', on ? '#fbbf24' : '#b45309')}border-radius:999px;padding:6px 12px;font-size:13px;">${escapeHTML(r.k)}<\/button>`;
+                        }).join('')}<\/div>
+                        ${s.reasons[t.id] && s.reasons[t.id].reason === '其他' ? `<div style="display:flex;gap:6px;margin-top:8px;"><input data-rnote="${tid}" value="${escapeHTML(s.reasons[t.id].note || '')}" placeholder="請簡單說明原因" maxlength="200" style="flex:1;background:#1e293b;border:1px solid #b45309;border-radius:8px;color:#e2e8f0;padding:6px 10px;font-size:13px;"><button data-rdone="${tid}" style="${aiBtnCss_('#f59e0b', '#111827', '#fbbf24')}padding:6px 12px;font-size:13px;">好了<\/button><\/div>` : ''}
+                    <\/div>` : ''}
+                <\/div>${picker}`;
+            }).join('');
+            return `<div class="ai-plan-col" data-plate="${escapeHTML(d.plate)}" style="background:#0f172a;border:1px solid ${over ? '#ef4444' : '#334155'};border-radius:12px;padding:12px 14px;min-width:340px;flex:1;">
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:6px;"><b style="color:${getDriverColor(d.name)};font-size:18px;">${escapeHTML(d.plate)}<\/b><span style="font-size:13px;color:#94a3b8;">${escapeHTML(d.name)}<\/span><\/div>
+                <div style="height:8px;background:#1e293b;border-radius:4px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${pct}%;background:${over ? '#ef4444' : pct > 85 ? '#fbbf24' : '#22c55e'};transition:width .2s;"><\/div><\/div>
+                <div style="font-size:12px;color:${over ? '#f87171' : '#94a3b8'};margin-bottom:6px;">${Math.round(tot)} / ${c} kg${over ? '　⚠ 超載' : ''}<\/div>
+                ${rows || '<div style="font-size:13px;color:#475569;padding:12px 0;text-align:center;">目前沒有單<\/div>'}
+            <\/div>`;
+        }).join('');
+
+        const n = aiPlanMovedIds_V42().length;
+        const btn = document.getElementById('aiPlanApplyBtn');
+        if (btn && !btn.disabled) btn.textContent = n ? `✅ 套用（換了 ${n} 張）` : '✅ 沒問題，套用';
+    }
+
+    function renderAiPlanStats_V42(st) {
+        const el = document.getElementById('aiPlanStats');
+        if (!el || !st || st.success === false || !st.total) return;
+        el.textContent = `AI 近 30 天被修改 ${Math.round(st.adjusted / st.total * 100)}%`;
+        el.title = `近 ${st.days} 天共 ${st.total} 張，修改 ${st.adjusted} 張`;
+    }
+
+    function aiPlanApply_V42() {
+        const moved = aiPlanMovedIds_V42();
+        const s = aiPlanState;
+        const missing = moved.filter(id => !(s.reasons[id] && s.reasons[id].reason));
+        if (!missing.length) { aiPlanCommit_V42(Object.assign({}, s.reasons)); return; }
+        showAiReasonModal_V42(missing);
+    }
+
+    function showAiReasonModal_V42(moved) {
+        const s = aiPlanState;
+        document.querySelectorAll('#aiReasonModal').forEach(el => el.remove());
+        const picked = {};
+        const chipsHtml = (tid) => AI_ADJUST_REASONS.map(r => `<button data-reason="${escapeHTML(r.k)}" ${tid ? `data-tid="${escapeHTML(tid)}"` : 'data-all="1"'} style="border-radius:999px;padding:8px 14px;font-size:14px;font-weight:900;cursor:pointer;border:1px solid #475569;background:#0f172a;color:#cbd5e1;">${escapeHTML(r.k)}<\/button>`).join('');
+        const rows = moved.map(id => {
+            const t = s.tasks.find(x => String(x.id) === String(id));
+            return `<div style="border:1px solid #334155;border-radius:12px;padding:12px;margin-bottom:10px;background:#0f172a;">
+                <div style="font-size:15px;color:#f1f5f9;margin-bottom:10px;"><b>${escapeHTML(t.customer)}<\/b>　<span style="color:#fbbf24;">${escapeHTML(s.ai[t.id])} → ${escapeHTML(s.cur[t.id])}<\/span><\/div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">${chipsHtml(t.id)}<\/div>
+                <input data-note="${escapeHTML(t.id)}" placeholder="請簡單說明原因" maxlength="200" style="display:none;margin-top:10px;width:100%;box-sizing:border-box;background:#1e293b;border:1px solid #475569;border-radius:8px;color:#e2e8f0;padding:8px 10px;font-size:14px;">
+            <\/div>`;
+        }).join('');
+
+        const m = document.createElement('div'); m.id = 'aiReasonModal';
+        m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:10001;padding:16px;';
+        m.innerHTML = `<div style="background:#1e293b;border:3px solid #fbbf24;border-radius:16px;padding:20px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;">
+            <h3 style="margin:0 0 14px;color:#fde68a;font-size:19px;">還有 ${moved.length} 張沒選換車原因<span style="font-size:13px;color:#94a3b8;font-weight:400;">（選一個，AI 會記下來）<\/span><\/h3>
+            ${moved.length > 1 ? `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #334155;"><span style="font-size:14px;color:#cbd5e1;">全部一樣：<\/span>${chipsHtml(null)}<\/div>` : ''}
+            <div class="custom-scroll" style="overflow:auto;flex:1;">${rows}<\/div>
+            <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center;">
+                <button id="aiReasonBack" style="${aiBtnCss_('#334155', '#fff', '#334155')}padding:10px 14px;font-size:14px;font-weight:400;">回去修改<\/button>
+                <span style="flex:1"><\/span>
+                <button id="aiReasonSkip" style="${aiBtnCss_('transparent', '#94a3b8', '#475569')}padding:10px 14px;font-size:14px;font-weight:400;">不選了，直接套用<\/button>
+                <button id="aiReasonOk" style="${aiBtnCss_('#f59e0b', '#111827', '#fbbf24')}padding:10px 20px;font-size:15px;">✅ 確定套用<\/button>
+            <\/div>
+        <\/div>`;
+        document.body.appendChild(m);
+
+        const noteOf = id => Array.from(m.querySelectorAll('[data-note]')).find(x => x.dataset.note === String(id));
+        const paint = () => {
+            m.querySelectorAll('[data-reason]').forEach(b => {
+                const on = b.dataset.tid ? picked[b.dataset.tid] === b.dataset.reason : moved.every(id => picked[id] === b.dataset.reason);
+                b.style.background = on ? '#fbbf24' : '#0f172a';
+                b.style.color = on ? '#111827' : '#cbd5e1';
+                b.style.borderColor = on ? '#fbbf24' : '#475569';
+            });
+            moved.forEach(id => { const inp = noteOf(id); if (inp) inp.style.display = picked[id] === '其他' ? 'block' : 'none'; });
         };
+        m.addEventListener('click', e => {
+            const b = e.target.closest('[data-reason]');
+            if (!b) return;
+            if (b.dataset.all) moved.forEach(id => picked[id] = b.dataset.reason);
+            else picked[b.dataset.tid] = picked[b.dataset.tid] === b.dataset.reason ? undefined : b.dataset.reason;
+            paint();
+        });
+        const collect = () => {
+            const out = {};
+            moved.forEach(id => {
+                const inp = noteOf(id);
+                out[id] = { reason: picked[id] || '', note: inp && picked[id] === '其他' ? inp.value.trim() : '' };
+            });
+            return out;
+        };
+        document.getElementById('aiReasonBack').onclick = () => m.remove();
+        document.getElementById('aiReasonSkip').onclick = () => { const r = collect(); moved.forEach(id => { r[id].reason = ''; r[id].note = ''; }); m.remove(); aiPlanCommit_V42(Object.assign({}, s.reasons, r)); };
+        document.getElementById('aiReasonOk').onclick = () => { const r = collect(); m.remove(); aiPlanCommit_V42(Object.assign({}, s.reasons, r)); };
+    }
+
+    function aiPlanCommit_V42(reasons) {
+        const s = aiPlanState;
+        if (!s) return;
+        const btn = document.getElementById('aiPlanApplyBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '寫入中…'; }
+        const byPlate = {};
+        s.tasks.forEach(t => (byPlate[s.cur[t.id]] = byPlate[s.cur[t.id]] || []).push(t));
+        const plates = Object.keys(byPlate);
+        const result = {};
+        const nameOf = plate => ((s.fleet.find(x => x.plate === plate) || {}).name || '');
+        let i = 0;
+        const next = () => {
+            if (i >= plates.length) { writeLearning(); return; }
+            const plate = plates[i++];
+            const adjusted = byPlate[plate].some(t => s.ai[t.id] !== plate);
+            google.script.run
+                .withSuccessHandler(res => {
+                    result[plate] = (res && res.success === false) ? '失敗' : '成功';
+                    if (res && res.success === false) showToast('❌ ' + plate + ' 寫入失敗：' + (res.error || ''));
+                    next();
+                })
+                .withFailureHandler(err => { result[plate] = '失敗'; showToast('❌ ' + plate + ' 寫入失敗：' + (err && err.message || err)); next(); })
+                .recordDispatch_V3(byPlate[plate], { plate: plate, name: nameOf(plate), source: adjusted ? 'AI排車+人工調整' : 'AI排車' }, ATOKEN());
+        };
+        const writeLearning = () => {
+            const learnOf = r => { const f = AI_ADJUST_REASONS.find(x => x.k === r); return f ? f.learn : '未填'; };
+            let adjustedCount = 0;
+            const rows = s.tasks.map(t => {
+                const aiP = s.ai[t.id], fin = s.cur[t.id], adjusted = aiP !== fin;
+                if (adjusted) adjustedCount++;
+                const r = (reasons && reasons[t.id]) || {};
+                const same = byPlate[fin].filter(x => x.id !== t.id);
+                const aiTimed = s.tasks.filter(x => x.id !== t.id && s.ai[x.id] === aiP && x.specifiedArrive).map(x => x.id + '@' + x.specifiedArrive);
+                return {
+                    date: t.date || '', id: t.id, customer: t.customer || '', address: t.address || '', district: aiDistOf_(t),
+                    weight: parseFloat(t.weight) || 0, specifiedArrive: t.specifiedArrive || '', timeSlot: t.timeSlot || '',
+                    aiPlate: aiP, aiDriver: nameOf(aiP), aiWhy: s.why[t.id] || '',
+                    finalPlate: fin, finalDriver: nameOf(fin),
+                    adjusted: adjusted ? '是' : '否',
+                    reason: adjusted ? (r.reason || '未填') : '',
+                    learn: adjusted ? learnOf(r.reason) : '',
+                    note: r.note || '',
+                    sameCarIds: same.map(x => x.id).join('、'),
+                    sameCarDistricts: Array.from(new Set(same.map(aiDistOf_).filter(Boolean))).join('、'),
+                    aiCarTimed: aiTimed.join('、'),
+                    writeResult: result[fin] || ''
+                };
+            });
+            const finish = (msg) => {
+                document.querySelectorAll('#aiPlanModal').forEach(el => el.remove());
+                aiPlanState = null;
+                showToast(msg);
+                openDispatchModal_V3();
+            };
+            const nd = new Date(), p2 = v => String(v).padStart(2, '0');
+            const batchId = 'AI' + nd.getFullYear() + p2(nd.getMonth() + 1) + p2(nd.getDate()) + p2(nd.getHours()) + p2(nd.getMinutes()) + p2(nd.getSeconds());
+            google.script.run
+                .withSuccessHandler(res => finish(res && res.success === false
+                    ? '✅ 排車完成，但學習記錄寫入失敗：' + (res.error || '')
+                    : '✅ AI 排車完成' + (adjustedCount ? `（已記錄 ${adjustedCount} 張調整）` : '')))
+                .withFailureHandler(err => finish('✅ 排車完成，但學習記錄寫入失敗：' + (err && err.message || err)))
+                .logAiDispatchLearning_V42(batchId, rows, ATOKEN());
+        };
+        next();
     }
 
     function quickDispatch_V7(plate, name) {
@@ -1561,8 +1911,7 @@
             showToast("✅ 分派成功");
         }).recordDispatch_V3(tasks, {
             plate: plate,
-            name: name,
-            shift: "1"
+            name: name
         }, ATOKEN());
     }
 
@@ -1611,24 +1960,33 @@
         const modal = document.getElementById('returnConfirmModal');
         const list = document.getElementById('returnItemsList');
         modal.style.display = 'flex';
+
+        // 動態填充載回司機下拉選單
+        const drvSel = document.getElementById('returnDriverSelect');
+        if (drvSel) {
+            const curVal = drvSel.value;
+            const drivers = (window.vInfo?.whiteList || []).filter(u => String(u.role || '').includes('司機')).map(u => u.name);
+            drvSel.innerHTML = '<option value="">-- 未指定載回司機 --<\/option>' + drivers.map(d => `<option value="${d}" ${d === curVal ? 'selected' : ''}>${d}<\/option>`).join('');
+        }
         
         const tasks = Array.from(pendingReturnSet).map(id => dispatchAllTasks.find(t => t.id === id)).filter(Boolean);
         list.innerHTML = tasks.map(t => `
             <div style="display:flex; flex-direction:column; border-bottom:1px solid #1e293b; padding:8px; gap:5px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color:#fff; font-weight:bold; font-size:13px;">${t.customer} (${t.id})</span>
-                    <span style="color:#94a3b8; cursor:pointer; font-size:16px;" onclick="removeFromPendingReturn('${t.id}')">✕</span>
-                </div>
+                    <span style="color:#fff; font-weight:bold; font-size:13px;">${t.customer} (${t.id})<\/span>
+                    <span style="color:#94a3b8; cursor:pointer; font-size:16px;" onclick="removeFromPendingReturn('${t.id}')">✕<\/span>
+                <\/div>
                 <div style="display:flex; gap:5px;">
                     <select class="item-reason-select" data-id="${t.id}" onchange="updateLinePreview()" style="flex:1; background:#020617; color:#fff; border:1px solid #475569; padding:4px; border-radius:4px; font-size:12px;">
-                        <option value="路線不順">路線不順</option>
-                        <option value="重量過重">重量過重</option>
-                        <option value="時間不合">時間不合</option>
-                        <option value="其它">其它 (手動輸入)</option>
-                    </select>
+                        <option value="此單不接，載回鶯歌，請分公司業務自理">此單不接，載回鶯歌，請分公司業務自理 (內部運輸/免運費)<\/option>
+                        <option value="路線不順">路線不順<\/option>
+                        <option value="重量過重">重量過重<\/option>
+                        <option value="時間不合">時間不合<\/option>
+                        <option value="其它">其它 (手動輸入)<\/option>
+                    <\/select>
                     <input type="text" class="item-other-input" data-id="${t.id}" oninput="updateLinePreview()" placeholder="輸入原因..." style="display:none; flex:1; background:#020617; color:#fff; border:1px solid #475569; padding:4px; border-radius:4px; font-size:12px;">
-                </div>
-            </div>
+                <\/div>
+            <\/div>
         `).join('');
 
         // 初始化「其它」輸入框的顯示邏輯
@@ -1701,7 +2059,8 @@
                 lines.push(`${color} ${t.customer}`);
                 lines.push(`${color} ${t.id}`);
                 lines.push(`${color} ${displayAddr}`);
-                lines.push(`${color} 原因：${t._tempReason}`);
+                const drvName = document.getElementById('returnDriverSelect')?.value || '';
+                lines.push(`${color} 原因：${t._tempReason}` + (drvName ? ` (由${drvName}載回)` : ''));
                 if(t.thumbnail) {
                     lines.push(`${color} ${t.thumbnail}`); // V11.24: 直接秀網址
                 }
@@ -1717,11 +2076,13 @@
         const tasks = Array.from(pendingReturnSet).map(id => dispatchAllTasks.find(t => t.id === id)).filter(Boolean);
         if(tasks.length === 0) return;
 
+        const drvName = document.getElementById('returnDriverSelect')?.value || '';
         const updates = tasks.map(t => {
             const sel = document.querySelector(`.item-reason-select[data-id="${t.id}"]`);
             const other = document.querySelector(`.item-other-input[data-id="${t.id}"]`);
             const reason = (sel && sel.value === '其它') ? (other ? other.value : '其它') : (sel ? sel.value : '路線不順');
-            return { id: t.id, reason: reason };
+            if (drvName) t.assignedDriver = drvName; // 指派載回司機
+            return { id: t.id, reason: reason, assignedDriver: drvName };
         });
 
         const msg = document.getElementById('linePreviewText').innerText;

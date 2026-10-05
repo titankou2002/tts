@@ -3,6 +3,74 @@
 <html lang="zh-TW">
 
 <head>
+<script>
+  /* V43.25 登入資料保管 (本檔內容直接寫在 Index/Dashboard/WebDashboard/Warehouse 的 <head>：<head> 裡的 include 會被 HtmlService 移除，改這段要四頁一起改)
+     iPhone 主畫面 App／LINE 會清掉這個 iframe (第三方) 的儲存，關掉 App 再開就要重登。
+     → 登入相關的 localStorage 一寫入就同步一份到 bigt.cc 外殼頁 (第一方，不會被清)；
+       打開時先向外殼頁拿回來，頁面的 window.onload 等拿到 (最多 0.4 秒) 才開始跑 → 只載入一次就是已登入。
+       萬一超過 0.4 秒才拿到，才蓋住畫面請外殼頁重新載入一次。注意：網址拆開寫 (GAS 會截斷兩個斜線)。 */
+  (function () {
+    var KEYS = /^(titan_driver_token|titan_driver_name|titan_driver_car|titan_vinfo_cache|v11_car|ttsAdminTokenV41|ttsWhPersonTokenV43)$/;
+    var ORIGIN = 'https:' + '/' + '/bigt.cc';
+    var embedded = window.top !== window;
+    function post(m) { try { if (embedded) window.top.postMessage(m, ORIGIN); } catch (e) { } }
+
+    var ready = !embedded, waiters = [];
+    window.ttsVaultReady = function (cb) { if (ready) cb(); else waiters.push(cb); };
+    function markReady() {
+      if (ready) return;
+      ready = true;
+      var w = waiters; waiters = [];
+      w.forEach(function (f) { try { f(); } catch (e) { setTimeout(function () { throw e; }); } });
+    }
+    if (!ready) setTimeout(markReady, 400);
+
+    /* 頁面設定的 window.onload 改成「等登入資料拿回來」再執行 */
+    try {
+      var od = Object.getOwnPropertyDescriptor(window, 'onload') || Object.getOwnPropertyDescriptor(Window.prototype, 'onload');
+      if (embedded && od && od.set && od.get) {
+        Object.defineProperty(window, 'onload', {
+          configurable: true,
+          get: function () { return od.get.call(window); },
+          set: function (fn) { od.set.call(window, typeof fn === 'function' ? function (ev) { var self = this; window.ttsVaultReady(function () { fn.call(self, ev); }); } : fn); }
+        });
+      }
+    } catch (e) { }
+
+    var S, oset, odel;
+    try {
+      S = Storage.prototype; oset = S.setItem; odel = S.removeItem;
+      S.setItem = function (k, v) { oset.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-set', k: k, v: String(v) }); } catch (e) { } };
+      S.removeItem = function (k) { odel.apply(this, arguments); try { if (this === window.localStorage && KEYS.test(k)) post({ type: 'tts-vault-del', k: k }); } catch (e) { } };
+    } catch (e) { markReady(); return; }
+
+    window.addEventListener('message', function (ev) {
+      if (ev.origin !== ORIGIN) return;
+      var d = ev.data || {};
+      if (d.type !== 'tts-vault' || !d.data) return;
+      var restored = false;
+      Object.keys(d.data).forEach(function (k) {
+        if (!KEYS.test(k) || !d.data[k]) return;
+        var cur = null;
+        try { cur = window.localStorage.getItem(k); } catch (e) { return; }
+        if (!cur) { try { oset.call(window.localStorage, k, d.data[k]); restored = true; } catch (e) { } }
+      });
+      var late = ready;
+      markReady();
+      if (restored && late) {
+        /* 太晚拿到 (頁面已經開始跑)：蓋住畫面再請外殼頁重新載入一次，避免跳出「連線失敗 HTTP 0」 */
+        try {
+          var cv = document.createElement('div');
+          cv.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#020617';
+          (document.body || document.documentElement).appendChild(cv);
+        } catch (e) { }
+        window.alert = function () { };
+        post({ type: 'tts-vault-reload' });
+      }
+    });
+    post({ type: 'tts-vault-get' });
+  })();
+</script>
     <base target="_top">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -63,6 +131,14 @@
         :root[data-theme="light"] .completed-card { background: #EAE4D6 !important; border: 1px dashed #C9BFA9 !important; }
         :root[data-theme="light"] .tabbar { background: rgba(58, 52, 43, 0.05); }
         :root[data-theme="light"] .tab-btn.active { color: var(--text-primary); }
+        /* V42.43: 日間模式下 --primary-soft 是淺卡其色，這幾顆按鈕原本寫死白字，日間模式下幾乎看不見 */
+        :root[data-theme="light"] .btn-submit,
+        :root[data-theme="light"] .btn-view-img { color: var(--text-primary) !important; }
+        /* V42.48: 品項明細展開區塊原本寫死黑色半透明底，日間模式下疊出一塊看不清楚的灰底，改用主題色 */
+        :root[data-theme="light"] .items-dropdown-content {
+            background: rgba(58, 52, 43, 0.05) !important;
+            border-color: var(--border-soft) !important;
+        }
         :root[data-theme="light"] .btn-nav-sub { background: rgba(58, 52, 43, 0.04); }
         :root[data-theme="light"] .btn-photo { color: #fff; }
         :root[data-theme="light"] .btn-redo { background: rgba(58, 52, 43, 0.12); color: var(--text-primary); }
@@ -100,6 +176,30 @@
         .driver-select-tile {
             border-color: var(--cyan) !important;
             color: var(--text-primary) !important;
+            transition: background 0.15s ease, transform 0.1s ease;
+        }
+        /* V42.45: 上次登入的名字 - 特殊標記，方便快速找到 */
+        .driver-tile-last {
+            border-color: #22c55e !important;
+            border-width: 2px !important;
+        }
+        .driver-tile-last-badge {
+            position: absolute;
+            top: -8px;
+            right: -6px;
+            background: #22c55e;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 999px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        /* V42.45: 點下去立即給明確的選取回饋，不用等後端驗證回來才有反應 */
+        .driver-select-tile.tile-selected {
+            background: var(--cyan) !important;
+            color: #fff !important;
+            transform: scale(0.96);
         }
         .switch-person-btn {
             color: var(--text-secondary) !important;
@@ -179,8 +279,17 @@
             to { transform: rotate(360deg); }
         }
 
-        /* V37.18: Modern tactile active response for buttons */
-        .nav-btn:active, button:active, .btn-close-suc:active, .btn-cancel:active {
+        /* V37.18 / V42.50: Modern tactile active response for buttons - 涵蓋所有可點擊元素，
+           包含非 <button> 的 div/span 點擊區(tab-btn、photo-slot、items-dropdown-trigger...)。
+           .tap-pressed 是 JS 用 touchstart/touchend 手動加/拿掉的，確保 iOS 真機上一定看得到按下的回饋。 */
+        .nav-btn:active, button:active, .btn-close-suc:active, .btn-cancel:active,
+        .tab-btn:active, .photo-slot:active, .driver-select-tile:active, .sign-choice-btn:active,
+        .items-dropdown-trigger:active, .btn-view-img:active, .btn-redo:active, .theme-toggle-btn:active,
+        .btn-nav-sub:active, .btn-photo:active, .hdr-util-btn:active, [role="button"]:active,
+        .nav-btn.tap-pressed, button.tap-pressed, .btn-close-suc.tap-pressed, .btn-cancel.tap-pressed,
+        .tab-btn.tap-pressed, .photo-slot.tap-pressed, .driver-select-tile.tap-pressed, .sign-choice-btn.tap-pressed,
+        .items-dropdown-trigger.tap-pressed, .btn-view-img.tap-pressed, .btn-redo.tap-pressed, .theme-toggle-btn.tap-pressed,
+        .btn-nav-sub.tap-pressed, .btn-photo.tap-pressed, .hdr-util-btn.tap-pressed, [role="button"].tap-pressed {
             transform: scale(0.95);
             filter: brightness(1.2);
             transition: transform 0.05s cubic-bezier(0.1, 0.8, 0.2, 1);
@@ -247,10 +356,7 @@
             opacity: 0.5;
         }
 
-        .photo-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
-        .photo-slot { width: 90px; height: 90px; border: 2px dashed #475569; border-radius: 12px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; font-size: 12px; color: #94a3b8; cursor: pointer; transition: 0.3s; }
         .photo-slot:hover { border-color: var(--cyan); background: rgba(34, 211, 238, 0.05); color: var(--cyan); }
-        .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
 
         /* V6.6: Next Station Selection Button */
         .next-station-btn {
@@ -476,6 +582,12 @@
             padding: 10px 14px;
             flex: 1
         }
+        /* V42.51: 切換車輛時的閃爍動畫回饋 */
+        .car-switch-flash { animation: carSwitchFlash 0.6s ease; }
+        @keyframes carSwitchFlash {
+            0% { background: rgba(56, 189, 248, 0.35); border-color: var(--cyan); }
+            100% { background: rgba(15, 23, 42, .5); border-color: var(--border-soft); }
+        }
 
         .info-title {
             font-size: 15px;
@@ -590,7 +702,35 @@
             padding: 20px;
             margin-bottom: 18px;
             position: relative;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, .35)
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+            animation: cardFadeIn 0.35s ease both;
+        }
+        /* V42.50: 任務卡片一開始載入時淡入+輕微上移，逐張卡片有前後差(靠 inline animation-delay) */
+        @keyframes cardFadeIn {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* V42.53: 骨架式載入畫面 - 取代空白的「載入中...」文字，讓司機一打開就看到畫面在動 */
+        .skeleton-card {
+            background: rgba(28, 42, 60, .95);
+            border: 1px solid var(--border-soft);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 18px;
+        }
+        .skeleton-bar {
+            height: 14px;
+            border-radius: 7px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.06) 25%, rgba(255,255,255,0.14) 37%, rgba(255,255,255,0.06) 63%);
+            background-size: 400% 100%;
+            animation: skeletonShimmer 1.4s ease infinite;
+        }
+        :root[data-theme="light"] .skeleton-card { background: rgba(255, 255, 255, 0.75); box-shadow: 0 4px 16px rgba(58, 52, 43, 0.08); }
+        :root[data-theme="light"] .skeleton-bar { background: linear-gradient(90deg, rgba(58,52,43,0.06) 25%, rgba(58,52,43,0.13) 37%, rgba(58,52,43,0.06) 63%); background-size: 400% 100%; }
+        @keyframes skeletonShimmer {
+            0% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
         .completed-card {
@@ -1027,6 +1167,113 @@
             font-weight: 700
         }
 
+        /* V42.48: 狀況/異常回報合併成一個可收合區塊，平時收折省空間 */
+        .issue-report-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: rgba(249, 115, 22, 0.08);
+            border: 1px solid rgba(249, 115, 22, 0.25);
+            color: #f97316;
+            font-size: 13px;
+            font-weight: 900;
+            user-select: none;
+        }
+
+        /* V42.51: 結案確認彈窗的「有簽/沒簽」改成佔畫面近一半寬、高度也拉大，方便司機開車手套/匆忙時好按 */
+        .sign-choice-btn {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 28px 8px;
+            min-height: 34vh;
+            border-radius: 20px;
+            border: 3px solid var(--border-soft);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+            font-size: 22px;
+            font-weight: 900;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .sign-choice-icon { font-size: 56px; line-height: 1; font-weight: 900; }
+        /* V42.52: 預設就用綠框/紅框區分「有簽/沒簽」，不用等點下去才看得出來是哪顆 */
+        .sign-choice-btn.sign-choice-yes { border-color: #22c55e; color: #22c55e; }
+        .sign-choice-btn.sign-choice-no { border-color: #ef4444; color: #ef4444; }
+        .sign-choice-btn.active.sign-choice-yes {
+            background: rgba(34, 197, 94, 0.18);
+            border-color: #22c55e;
+            color: #22c55e;
+        }
+        .sign-choice-btn.active.sign-choice-no {
+            background: rgba(239, 68, 68, 0.18);
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+        .sign-choice-btn:active { transform: scale(0.96); }
+
+        /* V42.47 / V42.52: 送出前確認彈窗 - 點一下「亮燈」(armed)，點第二下才「已確認」(confirmed) 並送出。
+           按鈕要佔滿整個手機寬度，所以彈窗跟外層都不留多餘留白。 */
+        .sign-confirm-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
+        }
+        .sign-confirm-box {
+            background: var(--surface);
+            border-radius: 18px;
+            padding: 20px 6px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+        }
+        .sign-confirm-title { font-size: 17px; font-weight: 900; color: var(--text-primary); text-align: center; }
+        .sign-confirm-hint { font-size: 13px; color: var(--text-tertiary); margin-top: 14px; text-align: center; }
+        .sign-choice-btn.armed.sign-choice-yes {
+            background: #22c55e;
+            border-color: #22c55e;
+            color: #fff;
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.3);
+            animation: signPulse 0.9s ease-in-out infinite;
+        }
+        .sign-choice-btn.armed.sign-choice-no {
+            background: #ef4444;
+            border-color: #ef4444;
+            color: #fff;
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.3);
+            animation: signPulse 0.9s ease-in-out infinite;
+        }
+        .sign-choice-btn.confirmed {
+            animation: none !important;
+            transform: scale(1.06);
+        }
+        @keyframes signPulse {
+            0%, 100% { box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.3); }
+            50% { box-shadow: 0 0 0 9px rgba(34, 197, 94, 0.12); }
+        }
+        .sign-choice-btn.armed.sign-choice-no { animation-name: signPulseRed; }
+        @keyframes signPulseRed {
+            0%, 100% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.3); }
+            50% { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0.12); }
+        }
+
         .btn-submit {
             width: 100%;
             background: var(--primary-soft);
@@ -1039,6 +1286,22 @@
             font-weight: 900;
             cursor: pointer;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-submit:active {
+            transform: scale(0.96);
+            opacity: 0.85;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-submit:disabled, .btn-submit.loading {
+            opacity: 0.65;
+            cursor: not-allowed;
+            pointer-events: none;
+            filter: grayscale(30%);
         }
 
         .btn-cancel {
@@ -1085,14 +1348,25 @@
             object-fit: cover
         }
 
+        /* V42.46 / V42.51: 相機/相簿按鈕改用 SVG 圖示取代 emoji，圖示疊文字上下排列，並放大方便手滑點按 */
+        .photo-slot-label {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+            font-weight: 700;
+        }
+        .photo-slot-label svg { flex-shrink: 0; width: 34px; height: 34px; }
+
         .photo-2col {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px
+            gap: 12px
         }
 
         .photo-2col .photo-slot {
-            height: 110px
+            height: 140px
         }
 
         /* Maint grid */
@@ -1603,6 +1877,8 @@
             <div style="font-size:26px;font-weight:900;color:var(--cyan);letter-spacing:2px">身分驗證</div>
             <div style="font-size:14px;color:var(--text-tertiary);margin-top:5px">請點選您的姓名以進入系統</div>
         </div>
+        <!-- V43.0: Google 登入 (個人帳號)；點名字登入是過渡期保留 -->
+        <div id="gLoginSlot" style="max-width:400px;margin:0 auto 18px;display:flex;justify-content:center"></div>
         <div id="driverGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:400px;margin:0 auto">
             <!-- 動態產生按鈕 -->
             <div style="grid-column: span 2; color:var(--text-tertiary); padding:40px">名單讀取中...</div>
@@ -1725,13 +2001,16 @@
             </div>
             <div style="display:flex; align-items:center;">
                 <button class="hdr-util-btn" onclick="jumpToWarehouse()">驗貨</button>
-                <button class="hdr-util-btn" onclick="openLeaveRequest()">請假</button>
                 <button class="hdr-util-btn" onclick="App.refreshTasks(true)">重整 <span id="newTaskBadge"
                         style="display:none;position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:50%;width:14px;height:14px;font-size:10px;line-height:14px;text-align:center">!</span></button>
                 <button class="hdr-util-btn" id="reorderBtn" onclick="toggleReorderMode()">排序</button>
             </div>
         </div>
-        <div id="taskList" class="task-list">載入中...</div>
+        <div id="taskList" class="task-list">
+            <div class="skeleton-card"><div class="skeleton-bar" style="width:35%;margin-bottom:14px"></div><div class="skeleton-bar" style="width:70%;margin-bottom:10px"></div><div class="skeleton-bar" style="width:50%"></div></div>
+            <div class="skeleton-card"><div class="skeleton-bar" style="width:35%;margin-bottom:14px"></div><div class="skeleton-bar" style="width:70%;margin-bottom:10px"></div><div class="skeleton-bar" style="width:50%"></div></div>
+            <div class="skeleton-card"><div class="skeleton-bar" style="width:35%;margin-bottom:14px"></div><div class="skeleton-bar" style="width:70%;margin-bottom:10px"></div><div class="skeleton-bar" style="width:50%"></div></div>
+        </div>
         <div id="saveOrderBar"
             style="padding:12px;display:none;background:var(--surface);border-top:1px solid var(--border-soft);position:sticky;bottom:0">
             <button class="btn-submit" style="margin-top:0" onclick="saveNewOrder()">儲存並更新順序</button>
@@ -1755,15 +2034,13 @@
                     <label>車輛內裝 (選填)</label>
                     <div class="photo-2col">
                         <div class="photo-slot" onclick="document.getElementById('inp-int-cam').click()"><img
-                                id="img-int" style="display:none"><span id="txt-int">📷 拍攝內裝</span></div>
-                        <div class="photo-slot" onclick="document.getElementById('inp-int-lib').click()"><span>🎞️
-                                內裝相簿</span></div>
+                                id="img-int" style="display:none"><span id="txt-int" class="photo-slot-label" data-icon="camera">拍攝內裝</span></div>
+                        <div class="photo-slot" onclick="document.getElementById('inp-int-lib').click()"><span class="photo-slot-label" data-icon="album">內裝相簿</span></div>
                     </div>
                     <div class="photo-row" style="margin-top:8px">
                         <div class="photo-slot" onclick="document.getElementById('inp-ext-cam').click()"><img
-                                id="img-ext" style="display:none"><span id="txt-ext">📷 拍攝外觀</span></div>
-                        <div class="photo-slot" onclick="document.getElementById('inp-ext-lib').click()"><span>🎞️
-                                外觀相簿</span></div>
+                                id="img-ext" style="display:none"><span id="txt-ext" class="photo-slot-label" data-icon="camera">拍攝外觀</span></div>
+                        <div class="photo-slot" onclick="document.getElementById('inp-ext-lib').click()"><span class="photo-slot-label" data-icon="album">外觀相簿</span></div>
                     </div>
                     <input type="file" id="inp-int-cam" accept="image/*" capture="camera" hidden
                         onchange="handleFile(this,'q_int')">
@@ -1830,9 +2107,8 @@
                 <label>相關照片 (選填)</label>
                 <div class="photo-2col">
                     <div class="photo-slot" onclick="document.getElementById('inp-temp-cam').click()"><img id="img-temp"
-                            style="display:none"><span id="txt-temp">📷 拍攝照片</span></div>
-                    <div class="photo-slot" onclick="document.getElementById('inp-temp-lib').click()"><span>🎞️
-                            相簿選取</span>
+                            style="display:none"><span id="txt-temp" class="photo-slot-label" data-icon="camera">拍攝照片</span></div>
+                    <div class="photo-slot" onclick="document.getElementById('inp-temp-lib').click()"><span class="photo-slot-label" data-icon="album">相簿選取</span>
                     </div>
                 </div>
                 <input type="file" id="inp-temp-cam" accept="image/*" capture="camera" hidden
@@ -1861,9 +2137,9 @@
                     <label>加油發票照片</label>
                     <div class="photo-2col">
                         <div class="photo-slot" onclick="document.getElementById('inp-fuel-cam').click()"><img
-                                id="img-fuel" style="display:none"><span id="txt-fuel">📷 拍攝發票</span></div>
+                                id="img-fuel" style="display:none"><span id="txt-fuel" class="photo-slot-label" data-icon="camera">拍攝發票</span></div>
                         <div class="photo-slot" onclick="document.getElementById('inp-fuel-lib').click()">
-                            <span>🎞️ 相簿選取</span>
+                            <span class="photo-slot-label" data-icon="album">相簿選取</span>
                         </div>
                     </div>
                     <input type="file" id="inp-fuel-cam" accept="image/*" capture="camera" hidden
@@ -1915,20 +2191,13 @@
             <div class="ov-head" id="reportTitle">結案回報</div>
             <input type="hidden" id="orderId"><input type="hidden" id="orderBranch"><input type="hidden"
                 id="taskAddr"><input type="hidden" id="taskIdx">
-            <div class="fg">
-                <label>結案類型</label>
-                <select id="signType" class="fi">
-                    <option value="本人親簽">本人親簽</option>
-                    <option value="無人簽收（放置指定位置）">無人簽收（放置指定位置）</option>
-                </select>
-            </div>
+            <input type="hidden" id="signType" value="">
             <div class="fg">
                 <label>拍攝簽收照片 (選填)</label>
                 <div class="photo-2col">
                     <div class="photo-slot" onclick="document.getElementById('inp-sign-cam').click()"><img id="img-sign"
-                            style="display:none"><span id="txt-sign">📷 相機拍攝</span></div>
-                    <div class="photo-slot" onclick="document.getElementById('inp-sign-lib').click()"><span>🎞️
-                            相簿選取</span>
+                            style="display:none"><span id="txt-sign" class="photo-slot-label" data-icon="camera">相機拍攝</span></div>
+                    <div class="photo-slot" onclick="document.getElementById('inp-sign-lib').click()"><span class="photo-slot-label" data-icon="album">相簿選取</span>
                     </div>
                 </div>
                 <input type="file" id="inp-sign-cam" accept="image/*" capture="camera" hidden
@@ -1946,22 +2215,67 @@
                 <label>拍攝破損照片</label>
                 <div class="photo-2col">
                     <div class="photo-slot" onclick="document.getElementById('inp-dmg-cam').click()"><img id="img-dmg"
-                            style="display:none"><span id="txt-dmg">📷 拍攝破損</span></div>
-                    <div class="photo-slot" onclick="document.getElementById('inp-dmg-lib').click()"><span>🎞️
-                            相簿選取</span>
+                            style="display:none"><span id="txt-dmg" class="photo-slot-label" data-icon="camera">拍攝破損</span></div>
+                    <div class="photo-slot" onclick="document.getElementById('inp-dmg-lib').click()"><span class="photo-slot-label" data-icon="album">相簿選取</span>
                     </div>
                 </div>
                 <input type="file" id="inp-dmg-cam" accept="image/*" capture="camera" hidden
                     onchange="handleFile(this,'damage')">
                 <input type="file" id="inp-dmg-lib" accept="image/*" hidden onchange="handleFile(this,'damage')">
             </div>
-            <div class="fg"><label>狀況回報（選填，可複選）</label>
-                <div id="issueChips" style="display:flex;flex-wrap:wrap;gap:6px;">
-                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">根本不需指定時間</span>
-                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">電話都沒人接</span>
-                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">貨夠了多的要退回</span>
-                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">要搬超過5步的距離</span>
-                    <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">退貨數量與單子差距很大</span>
+            <div class="fg">
+                <div class="issue-report-header" onclick="toggleIssueReportPanel()">
+                    <span style="display:flex; align-items:center; gap:5px;">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2L1 21h22L12 2zm1 16h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                        狀況/異常回報（選填）
+                    </span>
+                    <svg id="issueReportArrow" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" style="transition:transform 0.2s;"><path d="M6 9l6 6 6-6"/></svg>
+                </div>
+                <div id="issueReportPanel" style="display:none; margin-top:8px;">
+                    <div id="issueChips" style="display:flex;flex-wrap:wrap;gap:6px;">
+                        <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">根本不需指定時間</span>
+                        <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">電話都沒人接</span>
+                        <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">貨夠了多的要退回</span>
+                        <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">要搬超過5步的距離</span>
+                        <span onclick="toggleIssueChip(this)" data-selected="0" style="display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:var(--text-secondary);font-size:12px;font-weight:700;cursor:pointer;line-height:1.3;">退貨數量與單子差距很大</span>
+                    </div>
+                    <div style="background:rgba(249,115,22,0.1); border:1px solid rgba(249,115,22,0.3); padding:10px; border-radius:8px; margin-top:10px;">
+                        <label style="color:#f97316; font-weight:900; font-size:13px; display:flex; align-items:center; gap:5px;">
+                            運費連動與通報
+                        </label>
+                        <div style="display:flex; flex-direction:column; gap:6px; margin-top:6px;">
+                            <label style="display:flex; align-items:center; gap:6px; color:#f1f5f9; font-size:12px; cursor:pointer;">
+                                <input type="checkbox" id="chk-surcharge-qty" style="width:16px; height:16px; accent-color:#f97316;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="#f97316"><path d="M20 3H4a2 2 0 00-2 2v14a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2zm-1 9h-4a1 1 0 000 2h4v5H5v-5h4a1 1 0 000-2H5V5h14v7z"/></svg>
+                                數量過多 (運費自動 x2 雙倍)
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; color:#f1f5f9; font-size:12px; cursor:pointer;">
+                                <input type="checkbox" id="chk-surcharge-dist" style="width:16px; height:16px; accent-color:#f97316;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="#f97316"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"/></svg>
+                                距離過遠 (運費自動 x2 雙倍)
+                            </label>
+                            <label style="display:flex; align-items:center; gap:6px; color:#f1f5f9; font-size:12px; cursor:pointer;">
+                                <input type="checkbox" id="chk-surcharge-cancel" style="width:16px; height:16px; accent-color:#f97316;">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="#f97316"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8 0-1.85.63-3.55 1.69-4.9L16.9 18.31C15.55 19.37 13.85 20 12 20zm5.31-3.1L6.09 5.69C7.45 4.63 9.15 4 12 4c4.42 0 8 3.58 8 8 0 1.85-.63 3.55-1.69 4.9z"/></svg>
+                                取消空跑 (計基本趟費)
+                            </label>
+                            <div style="display:flex; align-items:center; gap:6px; color:#f1f5f9; font-size:12px;">
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                                    <input type="checkbox" id="chk-surcharge-wait" style="width:16px; height:16px; accent-color:#f97316;" onchange="document.getElementById('waitHoursWrap').style.display=this.checked?'flex':'none'">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="#f97316"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+                                    等候過久
+                                </label>
+                                <div id="waitHoursWrap" style="display:none; align-items:center; gap:4px; margin-left:auto;">
+                                    <select id="sel-wait-hours" style="background:#0f172a; color:#fbbf24; border:1px solid #f97316; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold;">
+                                        <option value="1">超時 1 小時</option>
+                                        <option value="2">超時 2 小時</option>
+                                        <option value="3">超時 3 小時</option>
+                                        <option value="4">超時 4+ 小時</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="fg"><label>備註</label><textarea id="finalNote" class="fi" rows="2"
@@ -1969,6 +2283,25 @@
             </div>
             <button class="btn-submit" onclick="submitFinal()">完成配送結案</button>
             <button class="btn-cancel" onclick="closeOv('report-overlay')">返回主畫面</button>
+        </div>
+
+        <!-- V42.47: 送出前再次確認有簽/沒簽的彈窗，點兩下(同一顆)才會真的送出 -->
+        <div id="sign-confirm-overlay" class="sign-confirm-overlay">
+            <div class="sign-confirm-box">
+                <div class="sign-confirm-title">請再次確認客戶簽收狀況</div>
+                <div style="display:flex; gap:14px; margin-top:16px;">
+                    <button type="button" id="confirmYesBtn" class="sign-choice-btn sign-choice-yes" onclick="handleSignConfirmTap('本人親簽', this)">
+                        <span class="sign-choice-icon">○</span>
+                        <span>有簽</span>
+                    </button>
+                    <button type="button" id="confirmNoBtn" class="sign-choice-btn sign-choice-no" onclick="handleSignConfirmTap('無人簽收（放置指定位置）', this)">
+                        <span class="sign-choice-icon">✕</span>
+                        <span>沒簽</span>
+                    </button>
+                </div>
+                <div id="signConfirmHint" class="sign-confirm-hint">點一下選取，再點同一顆才會送出</div>
+                <button type="button" class="btn-cancel" style="margin-top:6px;" onclick="closeSignConfirm()">取消，我再檢查一下</button>
+            </div>
         </div>
 
         <!-- V6.6: Next Station Selection Overlay -->
@@ -2043,6 +2376,7 @@
             <div id="batchTaskList" style="display:flex; flex-direction:column; gap:10px; margin-bottom:15px;"></div>
             <button class="btn-submit" onclick="confirmBatchSelect()">📷 一起拍照結案（<span id="batchCount">0</span>筆）</button>
             <button class="btn-cancel" onclick="skipBatchSelect()">僅處理本筆，不合併</button>
+            <button class="btn-cancel" onclick="cancelBatchSelect()">返回主畫面</button>
         </div>
 
         <!-- V34.26: Cyberpunk Smart Loading Overlay (取代原 loader) -->
@@ -2111,22 +2445,38 @@
         }
         applyThemeIcon();
 
-        // 請假串到倉庫工作日誌系統的員工端。司機端是「選姓名」登入、不是 LINE LIFF，所以不能
-        // 靠 liff.init() 辨識身分（試過會卡在 access.line.me 拒絕連線）。改成：伺服器端拿目前
-        // 選定的司機姓名，跟倉庫工作日誌系統換一條該司機的專屬連結，前端直接開那條連結。
-        function openLeaveRequest() {
-            if (!currentDriverName) { webAlert('請先選擇司機姓名'); return; }
-            google.script.run
-                .withSuccessHandler(function (res) {
-                    if (res && res.success && res.url) window.open(res.url, '_blank');
-                    else webAlert((res && res.error) || '無法取得請假連結，請聯絡主管');
-                })
-                .withFailureHandler(function (err) {
-                    webAlert('無法取得請假連結：' + (err && err.message || err));
-                })
-                .getLeaveLinkForDriver(currentDriverName, DTOKEN());
-        }
+        // V42.50: iOS Safari 有個經典雷 - 頁面上沒有任何 touchstart 監聽器時，
+        // 所有 :active 偽類樣式(按下變色/縮小的動畫)在真實手機上完全不會觸發，只有桌機滑鼠點擊看得到。
+        // 這行是空的監聽器，只為了「喚醒」iOS 對 :active 的支援，讓全站按鈕按下去真的有反應。
+        document.addEventListener('touchstart', function () {}, { passive: true });
+        // 幫沒有原生 :active 動畫的按鈕class統一補上「按下縮小」效果，涵蓋全站找得到的按鈕樣式
+        document.addEventListener('touchstart', function (e) {
+            var btn = e.target.closest('.nav-btn, .hdr-util-btn, .tab-btn, .photo-slot, .driver-select-tile, .sign-choice-btn, .btn-submit, .btn-cancel, .items-dropdown-trigger, .btn-view-img, .btn-redo, .theme-toggle-btn, .btn-nav-sub, .btn-photo, [role="button"], button');
+            if (btn) btn.classList.add('tap-pressed');
+        }, { passive: true });
+        ['touchend', 'touchcancel'].forEach(function (evt) {
+            document.addEventListener(evt, function () {
+                document.querySelectorAll('.tap-pressed').forEach(function (el) {
+                    setTimeout(function () { el.classList.remove('tap-pressed'); }, 80);
+                });
+            }, { passive: true });
+        });
+
+        // V42.46: 幫所有 data-icon="camera"/"album" 的標籤補上 SVG 圖示，取代寫死的 emoji
+        (function injectPhotoSlotIcons() {
+            var ICONS = {
+                camera: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V8a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.3"/></svg>',
+                album: '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="15" rx="2"/><circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" stroke="none"/><path d="M3 16l5-5 4 4 3-3 6 6"/></svg>'
+            };
+            document.querySelectorAll('[data-icon]').forEach(function (el) {
+                var svg = ICONS[el.dataset.icon];
+                if (svg && !el.querySelector('svg')) el.insertAdjacentHTML('afterbegin', svg);
+            });
+        })();
+
         function jumpToWarehouse() {
+            // 2026-10-01: 一律走 bigt.cc 的驗貨頁 (LINE／Google 登入只能在 bigt.cc 用)
+            try { window.top.location.href = 'https:' + '/' + '/bigt.cc/tts/QC.html'; return; } catch (e) { }
             if (!SCRIPT_URL) {
                 google.script.run.withSuccessHandler(url => {
                     window.top.location.href = url + "?p=wh";
@@ -2319,13 +2669,13 @@
             if (match) {
                 var base = match[1];
                 var paren = match[2];
-                return escapeHTML_V11(base) + '<span style="color:#38bdf8; font-weight:500; font-size:0.95em; margin-left:2px;">' + escapeHTML_V11(paren) + '</span>';
+                return escapeHTML_V11(base) + '<span style="color:#38bdf8; font-weight:500; font-size:0.95em; margin-left:2px;">' + escapeHTML_V11(paren) + '<\/span>';
             }
             var unclosed = str.match(/^(.*?)([\(\（\[\［].*)$/);
             if (unclosed) {
                 var base = unclosed[1];
                 var paren = unclosed[2];
-                return escapeHTML_V11(base) + '<span style="color:#38bdf8; font-weight:500; font-size:0.95em; margin-left:2px;">' + escapeHTML_V11(paren) + '</span>';
+                return escapeHTML_V11(base) + '<span style="color:#38bdf8; font-weight:500; font-size:0.95em; margin-left:2px;">' + escapeHTML_V11(paren) + '<\/span>';
             }
             return escapeHTML_V11(str);
         }
@@ -2335,9 +2685,9 @@
             if (!text) return '';
             const pieces = Number(text.replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
             const perBox = Number(String(pcsPerBox || '').replace(/,/g, '').match(/[\d.]+/)?.[0] || 0);
-            const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${escapeHTML_V11(String(value))}</span>`;
-            const unit = value => `<span style="color:#94a3b8;font-weight:800;">${escapeHTML_V11(String(value))}</span>`;
-            const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${escapeHTML_V11(String(value))}</span>`;
+            const colorNum = (value, color) => `<span style="color:${color};font-weight:950;font-size:1.12em;line-height:1;">${escapeHTML_V11(String(value))}<\/span>`;
+            const unit = value => `<span style="color:#94a3b8;font-weight:800;">${escapeHTML_V11(String(value))}<\/span>`;
+            const perBoxNum = value => `<span style="color:#cbd5e1;font-weight:900;">${escapeHTML_V11(String(value))}<\/span>`;
             if (!pieces || !perBox) {
                 const label = /[片箱包件]/.test(text) ? text : text + '片';
                 return colorNum(label.replace(/[^\d.]/g, '') || text, '#fbbf24') + unit(label.replace(/[\d.]/g, ''));
@@ -2367,8 +2717,8 @@
                 if (size) fallback.push(`尺寸：${escapeHTML_V11(size)}`);
                 if (boxes) fallback.push(`箱數：${escapeHTML_V11(boxes)}`);
                 if (weight) fallback.push(`重量：${escapeHTML_V11(weight)}`);
-                if (!fallback.length) return '<div style="padding:8px 10px; color:var(--text-tertiary); font-size:12px;">尚無產品明細</div>';
-                return '<div style="display:flex; flex-direction:column; gap:4px; padding:8px 10px; color:var(--text-secondary); font-size:12px; line-height:1.4;">' + fallback.map(x => '<div>' + x + '</div>').join('') + '</div>';
+                if (!fallback.length) return '<div style="padding:8px 10px; color:var(--text-tertiary); font-size:12px;">尚無產品明細<\/div>';
+                return '<div style="display:flex; flex-direction:column; gap:4px; padding:8px 10px; color:var(--text-secondary); font-size:12px; line-height:1.4;">' + fallback.map(x => '<div>' + x + '<\/div>').join('') + '<\/div>';
             }
             return items.map(function (item, idx) {
                 const qtyText = formatDriverItemQty(item.qty, item.boxQty, item.pcsPerBox);
@@ -2377,29 +2727,29 @@
                 var imgHtml = '';
                 if (item.image) {
                     var safeImgUrl = item.image.replace(/'/g, "\\'");
-                    imgHtml = '<img src="' + escapeHTML_V11(item.image) + '" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid rgba(255,255,255,0.15); margin-right:8px; cursor:pointer; flex-shrink:0;" onclick="previewOrderImage(\'' + safeImgUrl + '\')">';
+                    imgHtml = '<img src="' + escapeHTML_V11(item.image) + '" style="width:36px; height:36px; object-fit:cover; border-radius:4px; border:1px solid var(--border-soft); margin-right:8px; cursor:pointer; flex-shrink:0;" onclick="previewOrderImage(\'' + safeImgUrl + '\')">';
                 }
                 var infoHtml = '';
                 if (item.series || item.originalName) {
-                    infoHtml = '<div style="display:flex; gap:8px; font-size:11px; color:#94a3b8; margin-top:2px; padding-left:2px;">'
-                        + (item.series ? '<span style="color:#fbbf24; font-weight:600;">' + escapeHTML_V11(item.series) + '</span>' : '')
-                        + (item.originalName ? '<span>' + escapeHTML_V11(item.originalName) + '</span>' : '')
-                        + '</div>';
+                    infoHtml = '<div style="display:flex; gap:8px; font-size:11px; color:var(--text-secondary); margin-top:2px; padding-left:2px;">'
+                        + (item.series ? '<span style="color:#fbbf24; font-weight:600;">' + escapeHTML_V11(item.series) + '<\/span>' : '')
+                        + (item.originalName ? '<span>' + escapeHTML_V11(item.originalName) + '<\/span>' : '')
+                        + '<\/div>';
                 }
-                return '<div style="display:flex; align-items:center; padding:6px 0; border-bottom:1px dashed rgba(255,255,255,0.08);">'
+                return '<div style="display:flex; align-items:center; padding:6px 0; border-bottom:1px dashed var(--border-soft);">'
                     + imgHtml
                     + '<div style="flex:1; display:flex; flex-direction:column;">'
                     + '  <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:700; color:var(--text-primary);">'
-                    + '    <span>' + formatCodeWithHighlight_V11(item.code) + ' <span style="color:#fbbf24; margin-left:8px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.22); border-radius:4px; padding:1px 5px;">' + escapeHTML_V11(String(item.size || '-').replace(/cm/gi, '')) + '</span></span>'
-                    + '    <span style="color:var(--cyan);">' + escapeHTML_V11(String(item.qty).replace(/[^0-9.]/g, '')) + '片</span>'
-                    + '  </div>'
+                    + '    <span>' + formatCodeWithHighlight_V11(item.code) + ' <span style="color:#fbbf24; margin-left:8px; font-size:12px; background:rgba(251,191,36,0.1); border:1px solid rgba(251,191,36,0.22); border-radius:4px; padding:1px 5px;">' + escapeHTML_V11(String(item.size || '-').replace(/cm/gi, '')) + '<\/span><\/span>'
+                    + '    <span style="color:var(--cyan);">' + escapeHTML_V11(String(item.qty).replace(/[^0-9.]/g, '')) + '片<\/span>'
+                    + '  <\/div>'
                     + '  <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-secondary); margin-top:3px; padding-left:2px;">'
-                    + '    <span>' + qtyText + '</span>'
-                    + '    <span style="color:#22c55e; font-weight:700;">' + escapeHTML_V11(weightText) + '</span>'
-                    + '  </div>'
+                    + '    <span>' + qtyText + '<\/span>'
+                    + '    <span style="color:#22c55e; font-weight:700;">' + escapeHTML_V11(weightText) + '<\/span>'
+                    + '  <\/div>'
                     + infoHtml
-                    + '</div>'
-                    + '</div>';
+                    + '<\/div>'
+                    + '<\/div>';
             }).join('');
         }
 
@@ -2585,6 +2935,25 @@
                 }, 60);
                 setTimeout(() => { document.getElementById('orderCount').textContent = '21'; }, 1000);
 
+                // V43.26 加速：手機上有上次的管理資料 (車輛／名單) 就直接用、馬上進入，背景再更新 (省一次約 2 秒的伺服器往返)
+                let fastV = null;
+                try { fastV = JSON.parse(localStorage.getItem('titan_vinfo_cache') || 'null'); } catch (e) { }
+                if (fastV && fastV.whiteList && fastV.whiteList.length > 0) {
+                    window.vInfo = fastV;
+                    setTimeout(() => {
+                        document.getElementById('layer1-splash').style.display = 'none';
+                        this.showLoginOrMain(localStorage.getItem('titan_driver_name') || '', localStorage.getItem('titan_driver_token') || '');
+                    }, 600);
+                    google.script.run.withSuccessHandler(data => {
+                        if (data && !data.error && data.whiteList && data.whiteList.length > 0) {
+                            window.vInfo = data;
+                            try { localStorage.setItem('titan_vinfo_cache', JSON.stringify(data)); } catch (e) { }
+                        }
+                    }).getManagementData();
+                    OQ.updateBadge();
+                    return;
+                }
+
                 const startTime = Date.now();
                 google.script.run
                     .withSuccessHandler(data => {
@@ -2603,7 +2972,7 @@
                             } catch (e) { }
                         }
                         const elapsed = Date.now() - startTime;
-                        const delay = Math.max(0, 2000 - elapsed);
+                        const delay = Math.max(0, 600 - elapsed); // V43.26 加速：開場最少 2 秒改 0.6 秒
                         setTimeout(() => {
                             document.getElementById('layer1-splash').style.display = 'none';
                             const savedName = localStorage.getItem('titan_driver_name') || '';
@@ -2629,16 +2998,25 @@
             verifySessionThenEnter(name, car, token) {
                 const enter = () => this.enterMain(name, car);
                 if (!token || !navigator.onLine) { enter(); return; }
+                // V43.26 加速：先進主畫面，登入確認改在背景做 (失效才踢回登入)
+                enter();
+                const enterOnce = () => { };
                 google.script.run
                     .withSuccessHandler(r => {
+                        // V43.1: Google 帳號有在使用就自動延長登入
+                        if (r && r.valid && r.renewed) {
+                            localStorage.setItem('titan_driver_token', r.renewed);
+                            try { IDBVault.set('token', r.renewed); saveToCookie(name, car || '', r.renewed); } catch (e) { }
+                        }
                         if (r && r.valid === false) {
                             console.warn("❌ 司機 token 已失效，需重新登入");
+                            document.getElementById('layer3-main').style.display = 'none'; // V43.26: 已先進主畫面，失效要藏起來
                             this.logoutAndSwitch();
                             return;
                         }
-                        enter();
+                        enterOnce();
                     })
-                    .withFailureHandler(() => enter())
+                    .withFailureHandler(() => enterOnce())
                     .checkDriverSession(token);
             },
             async showLoginOrMain() {
@@ -2710,30 +3088,61 @@
                 if (loginLayer) {
                     loginLayer.style.display = 'block';
                     this.renderDriverGrid();
+                    if (window.TTSGoogle) TTSGoogle.autoLine({ app: 'driver', onSuccess: (res) => this.googleLoginDone(res) });
                 }
             },
             renderDriverGrid() {
                 const grid = document.getElementById('driverGrid');
                 const list = (window.vInfo && window.vInfo.whiteList) || [];
                 if (!list.length) {
-                    grid.innerHTML = '<div style="grid-column:span 2; color:var(--danger); padding:40px">⚠️ 權限名單為空，請連網或找管理員</div>';
+                    grid.innerHTML = '<div style="grid-column:span 2; color:var(--danger); padding:40px">⚠️ 權限名單為空，請連網或找管理員<\/div>';
                     return;
                 }
-                grid.innerHTML = list
-                    .filter(function(item) {
-                        const r = String(item.role || '').trim();
-                        // 包含「司機」或「管理」關鍵字的才顯示
-                        return r.indexOf('司機') !== -1 || r.indexOf('管理') !== -1;
-                    })
-                    .map(item => `
-                        <button class="nav-btn driver-select-tile" onclick="App.confirmNameLogin('${item.name}')"
-                             style="height:60px; font-size:18px;">
+                // V42.45: 長久記憶上次登入的名字 - 排到最前面並加上「上次登入」標記，方便快速找到
+                let lastName = '';
+                try { lastName = localStorage.getItem('titan_driver_name') || ''; } catch (e) { }
+                const filtered = list.filter(function(item) {
+                    const r = String(item.role || '').trim();
+                    // 包含「司機」或「管理」關鍵字的才顯示
+                    return r.indexOf('司機') !== -1 || r.indexOf('管理') !== -1;
+                });
+                filtered.sort(function(a, b) {
+                    if (a.name === lastName) return -1;
+                    if (b.name === lastName) return 1;
+                    return 0;
+                });
+                grid.innerHTML = filtered
+                    .map(item => {
+                        const isLast = lastName && item.name === lastName;
+                        return `
+                        <button class="nav-btn driver-select-tile${isLast ? ' driver-tile-last' : ''}" onclick="App.confirmNameLogin('${item.name}', this)"
+                             style="height:60px; font-size:18px; position:relative;">
+                            ${isLast ? '<span class="driver-tile-last-badge">上次登入</span>' : ''}
                             ${item.name}
-                        </button>
-                    `).join('');
+                        <\/button>
+                    `;
+                    }).join('');
             },
-            confirmNameLogin(name) {
+            googleLogin() {
+                TTSGoogle.start({ app: 'driver', onSuccess: (res) => this.googleLoginDone(res) });
+            },
+            googleLoginDone(res) {
+                localStorage.setItem('titan_driver_token', res.token);
+                localStorage.setItem('titan_driver_name', res.name);
+                if (res.car) localStorage.setItem('titan_driver_car', res.car);
+                saveToCookie(res.name, res.car || '', res.token);
+                IDBVault.set('name', res.name);
+                IDBVault.set('token', res.token);
+                if (res.car) IDBVault.set('car', res.car);
+                this.enterMain(res.name, res.car || '');
+            },
+            confirmNameLogin(name, btnEl) {
                 const errEl = document.getElementById('loginError');
+                // V42.45: 立即給明確的「已選取」視覺回饋，避免司機以為沒按到
+                if (btnEl) {
+                    document.querySelectorAll('.driver-select-tile.tile-selected').forEach(b => b.classList.remove('tile-selected'));
+                    btnEl.classList.add('tile-selected');
+                }
                 setLoading(true, "身分核對中...");
                 google.script.run
                     .withSuccessHandler(result => {
@@ -2790,17 +3199,34 @@
                 document.getElementById('dispName').innerText = isDriver ? name : '系統登入';
 
                 const sel = document.getElementById('carSel');
-                let opts = ['<option value="">選擇車牌</option>'];
+                let opts = ['<option value="">選擇車牌<\/option>'];
                 for (let v in (window.vInfo.vehicleMap || {})) {
-                    opts.push('<option value="' + v + '" ' + (v === currentCar ? 'selected' : '') + '>' + v + '</option>');
+                    opts.push('<option value="' + v + '" ' + (v === currentCar ? 'selected' : '') + '>' + v + '<\/option>');
                 }
                 sel.innerHTML = opts.join('');
-                sel.onchange = function(e) { currentCar = e.target.value; localStorage.setItem('titan_driver_car', currentCar); IDBVault.set('car', currentCar); App.checkAttendance(); };
+                sel.onchange = function(e) {
+                    currentCar = e.target.value;
+                    localStorage.setItem('titan_driver_car', currentCar);
+                    IDBVault.set('car', currentCar);
+                    // V42.51: 切換車輛時給明確的動畫回饋，避免司機以為沒切換到
+                    try { if (navigator.vibrate) navigator.vibrate(30); } catch (err) { }
+                    var wrap = sel.closest('.info-card') || sel.parentElement;
+                    if (wrap) {
+                        wrap.classList.remove('car-switch-flash');
+                        void wrap.offsetWidth; // 強制 reflow，讓動畫可以重新觸發
+                        wrap.classList.add('car-switch-flash');
+                    }
+                    App.checkAttendance();
+                    App.refreshTasks();
+                };
 
+                // V42.53: 出勤核對跟任務清單本來就互不依賴，卻被寫成先等出勤核對完才去抓任務清單，
+                // 平白多等一次網路來回。改成同時發出兩個請求，縮短第一次看到任務清單的時間。
                 this.checkAttendance();
+                this.refreshTasks();
             },
             checkAttendance() {
-                if (!currentCar) { document.getElementById('taskList').innerHTML = '<div style="padding:40px;text-align:center">請先選擇車牌</div>'; return; }
+                if (!currentCar) { document.getElementById('taskList').innerHTML = '<div style="padding:40px;text-align:center">請先選擇車牌<\/div>'; return; }
                 setLoading(true, '資料核對中...');
                 google.script.run
                     .withSuccessHandler(function(res) {
@@ -2837,7 +3263,7 @@
                         if (res && res.startTime) {
                             localStorage.setItem('v11_clock_time', res.startTime);
                         }
-                        App.refreshTasks();
+                        // V42.53: 任務清單改由呼叫端(enterMain/切換車輛)並行呼叫，這裡不再重複觸發
                     }).withFailureHandler(function(err) {
                         setLoading(false);
                         webAlert('網路異常，無法核對打卡狀態。');
@@ -2845,7 +3271,7 @@
             },
             redoTask(e, id, branch) {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
-                showConfirm('【確定要重新回報任務嗎？】<br><br><span style="font-size:13px;font-weight:400;color:var(--text-secondary)">狀態將恢復為配送中，您可以重新拍照或更改資訊。</span>', function (yes) {
+                showConfirm('【確定要重新回報任務嗎？】<br><br><span style="font-size:13px;font-weight:400;color:var(--text-secondary)">狀態將恢復為配送中，您可以重新拍照或更改資訊。<\/span>', function (yes) {
                     if (!yes) return;
                     setLoading(true, '處理中...');
                     google.script.run
@@ -2864,9 +3290,9 @@
                     if (silent) {
                         document.getElementById('taskList').innerHTML = `
                             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 0; gap:12px;">
-                                <div class="premium-spinner"></div>
-                                <div style="color:var(--text-secondary); font-size:14px; font-weight:500;">讀取中...</div>
-                            </div>
+                                <div class="premium-spinner"><\/div>
+                                <div style="color:var(--text-secondary); font-size:14px; font-weight:500;">讀取中...<\/div>
+                            <\/div>
                         `;
                     } else {
                         setSmartLoading('同步任務清單', ['正在從伺服器取得資料...', '比對車輛狀態...', '讀取任務清單...'], null);
@@ -2921,7 +3347,7 @@
                 }
                 const list = document.getElementById('taskList');
                 if (!allTasks.length) {
-                    list.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-tertiary)">${currentDateFilter === 'tmr' ? '未來' : '今日'}無待辦任務</div>`;
+                    list.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-tertiary)">${currentDateFilter === 'tmr' ? '未來' : '今日'}無待辦任務<\/div>`;
                     return;
                 }
 
@@ -2945,7 +3371,7 @@
                     // 顯示時貨運二字拿掉、括號內文字改黃字，跟排車/驗貨/司機三端保持一致
                     const _addrTagMatch0 = (t.address || '').trim().match(/(\([^)]*\))\s*$/);
                     const addrCoreForShort = _addrTagMatch0 ? (t.address || '').trim().slice(0, _addrTagMatch0.index).trim() : (t.address || '').trim();
-                    const addrTagHtml = _addrTagMatch0 ? _addrTagMatch0[1].replace(/\(([^)]*)\)/g, (full, inner) => '<span style="color:#fbbf24;">(' + inner.replace(/貨運/g, '') + ')</span>') : '';
+                    const addrTagHtml = _addrTagMatch0 ? _addrTagMatch0[1].replace(/\(([^)]*)\)/g, (full, inner) => '<span style="color:#fbbf24;">(' + inner.replace(/貨運/g, '') + ')<\/span>') : '';
 
                     const clickAttr = needsClockIn ? '' : 'onclick="openReport(\'' + t.id + '\', \'' + safeCust + '\', \'' + safeAddr + '\', ' + idx + ', \'' + (t.branch || '') + '\')"';
 
@@ -2966,8 +3392,8 @@
                     const showShipType = shipType && shipType !== '送貨';
                     const rawNote = String(t.note || "").trim();
                     const highlightNote = rawNote
-                        .replace(/「([^」]+)」/g, '<span style="color:var(--cyan);font-weight:900;">$1</span>')
-                        .replace(/【([^】]+)】/g, '<span style="color:var(--cyan);font-weight:900;">$1</span>');
+                        .replace(/「([^」]+)」/g, '<span style="color:var(--cyan);font-weight:900;">$1<\/span>')
+                        .replace(/【([^】]+)】/g, '<span style="color:var(--cyan);font-weight:900;">$1<\/span>');
                     const hasSeal = String(t.wrapSeal || '').trim().indexOf('封') !== -1;
 
                     const isDebug = (t.id === 'DEBUG');
@@ -2981,10 +3407,10 @@
 
                     let html = '<div class="task-card ' + (t.status === '已完成' ? 'completed-card' : '') + '" data-id="' + t.id + '" style="' + boxStyle + cardStyle + '">';
                     if (t.status === '已完成') {
-                        html += '<div class="completion-stamp">DONE</div>';
+                        html += '<div class="completion-stamp">DONE<\/div>';
                     } else if (t.id !== 'DEBUG') {
                         // V36.9: 右上角取消按鈕
-                        html += '<button class="btn-card-close" onclick="App.cancelTask(\'' + t.id + '\')">✕</button>';
+                        html += '<button class="btn-card-close" onclick="App.cancelTask(\'' + t.id + '\')">✕<\/button>';
                     }
 
                     const isReturn = (shipType === '退貨');
@@ -2995,65 +3421,65 @@
                     html += '<div style="display:flex; flex-direction:column; gap:8px; margin-bottom:10px;">';
                     html += '  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;">';
                     html += '    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; flex:1;">';
-                    html += '      <span style="display:inline-flex;align-items:center;gap:6px;background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:3px 10px; border-radius:999px; font-size:18px; font-weight:900; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + shortCust + '</span>';
-                    if (showShipType) html += '<span style="color:#ef4444; font-weight:900; font-size:12px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">' + shipType + '</span>';
-                    html += '    </div>';
+                    html += '      <span style="display:inline-flex;align-items:center;gap:6px;background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:3px 10px; border-radius:999px; font-size:18px; font-weight:900; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">' + shortCust + '<\/span>';
+                    if (showShipType) html += '<span style="color:#ef4444; font-weight:900; font-size:12px; padding:2px 6px; border-radius:4px; background:rgba(239,68,68,0.1);">' + shipType + '<\/span>';
+                    html += '    <\/div>';
 html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">';
-                    if (hasSeal) html += '<span style="background:rgba(34,197,94,0.14); color:#22c55e; border:1px solid rgba(34,197,94,0.32); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">膠膜</span>';
+                    if (hasSeal) html += '<span style="background:rgba(34,197,94,0.14); color:#22c55e; border:1px solid rgba(34,197,94,0.32); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">膠膜<\/span>';
                     // V41.52: 有填指定到貨時間 → 紅色閃爍「⏰ 14:00! 務必準時!」；只有計費旗標 (備註寫限時/指定、沒填時間) → 一樣紅色閃爍，提醒看備註
-                    if (t.specifiedArrive) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰</span><span>' + escapeHTML_V11(t.specifiedArrive) + '!</span><span style="color:#fca5a5;">務必準時!</span></span>';
-                    else if (t.isTimed) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰</span><span>指定時間</span><span style="color:#fca5a5;">看備註!</span></span>';
-                    html += dateChip ? '<span style="background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + dateChip + '</span>' : '';
-                    html += '<span class="tc-amber-chip" style="background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.25); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + arrivalText + '</span>';
-                    html += '    </div>';
-                    html += '  </div>';
+                    if (t.specifiedArrive) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰<\/span><span>' + escapeHTML_V11(t.specifiedArrive) + '!<\/span><span style="color:#fca5a5;">務必準時!<\/span><\/span>';
+                    else if (t.isTimed) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰<\/span><span>指定時間<\/span><span style="color:#fca5a5;">看備註!<\/span><\/span>';
+                    html += dateChip ? '<span style="background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + dateChip + '<\/span>' : '';
+                    html += '<span class="tc-amber-chip" style="background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.25); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + arrivalText + '<\/span>';
+                    html += '    <\/div>';
+                    html += '  <\/div>';
 
                     html += '  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;">';
                     html += '    <div style="flex:1; min-width:0;">';
-                    html += '      <div class="tc-addr" style="font-size:15px; color:var(--cyan); line-height:1.4; font-weight:bold; word-break:break-all;">' + mainAddr + '</div>';
-                    html += '    </div>';
-                    html += t.contact ? '<div style="flex-shrink:0; max-width:45%;"><div style="font-size:13px; color:var(--cyan); font-weight:900; background:rgba(56,189,248,0.1); padding:3px 8px; border-radius:6px; display:inline-block; text-align:right;">' + t.contact + '</div></div>' : '';
-                    html += '  </div>';
+                    html += '      <div class="tc-addr" style="font-size:15px; color:var(--cyan); line-height:1.4; font-weight:bold; word-break:break-all;">' + mainAddr + '<\/div>';
+                    html += '    <\/div>';
+                    html += t.contact ? '<div style="flex-shrink:0; max-width:45%;"><div style="font-size:13px; color:var(--cyan); font-weight:900; background:rgba(56,189,248,0.1); padding:3px 8px; border-radius:6px; display:inline-block; text-align:right;">' + t.contact + '<\/div><\/div>' : '';
+                    html += '  <\/div>';
 
                     html += '  <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;">';
                     html += '    <div style="flex-shrink:0;">';
                     html += '      <div class="items-dropdown-trigger" onclick="toggleDriverItemsDropdown(event, \'' + t.id + '\')" style="display:inline-flex;align-items:center;gap:6px;background:rgba(56,189,248,0.12);color:#38bdf8;border:1px solid rgba(56,189,248,0.35);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:900;cursor:pointer;">';
-                    html += '        ' + itemsLabel + ' <span class="arrow-icon" id="driver-item-arrow-' + t.id + '" style="font-size:10px;transition:transform 0.2s;">▾</span>';
-                    html += '      </div>';
-                    html += '    </div>';
-                    html += highlightNote && !isDebug ? '<div class="tc-highlight-note" style="flex:1; min-width:0; font-size:12px; color:#fbbf24; font-weight:900; background:rgba(251,191,36,0.06); padding:6px 8px; border-radius:8px; border:1px dashed rgba(251,191,36,0.4); line-height:1.35; text-align:left;">' + highlightNote + '</div>' : '';
-                    html += '  </div>';
-                    html += '</div>';
+                    html += '        ' + itemsLabel + ' <span class="arrow-icon" id="driver-item-arrow-' + t.id + '" style="font-size:10px;transition:transform 0.2s;">▾<\/span>';
+                    html += '      <\/div>';
+                    html += '    <\/div>';
+                    html += highlightNote && !isDebug ? '<div class="tc-highlight-note" style="flex:1; min-width:0; font-size:12px; color:#fbbf24; font-weight:900; background:rgba(251,191,36,0.06); padding:6px 8px; border-radius:8px; border:1px dashed rgba(251,191,36,0.4); line-height:1.35; text-align:left;">' + highlightNote + '<\/div>' : '';
+                    html += '  <\/div>';
+                    html += '<\/div>';
 
                     html += '<div style="margin: 0 0 10px 0;">';
                     html += '  <div class="items-dropdown-content" id="driver-item-content-' + t.id + '" style="display:none;margin-top:8px;background:rgba(0,0,0,0.24);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:8px 10px;">';
                     html += buildDriverItemsDropdownHTML(t);
-                    html += '  </div>';
-                    html += '</div>';
+                    html += '  <\/div>';
+                    html += '<\/div>';
 
-                    // [DISABLED] if (needsClockIn) html += '<div style="color:var(--warning);font-size:12px;margin:8px 0;text-align:center">⚠️ 請先完成上方「發車登記」</div>';
+                    // [DISABLED] if (needsClockIn) html += '<div style="color:var(--warning);font-size:12px;margin:8px 0;text-align:center">⚠️ 請先完成上方「發車登記」<\/div>';
                     html += '<div class="btn-row">';
                     if (isDebug) {
-                        html += '<button class="btn-nav-sub" style="flex:1" onclick="webAlert(\'診斷單不提供導航功能\')">導航</button>';
-                        html += '<button class="btn-photo" style="flex:2; background:#475569" onclick="openReport(\'DEBUG\')">診斷報修</button>';
-                        html += '<button class="btn-nav-sub" style="flex:1" onclick="webAlert(\'診斷單無電話資訊\')">電話</button>';
+                        html += '<button class="btn-nav-sub" style="flex:1" onclick="webAlert(\'診斷單不提供導航功能\')">導航<\/button>';
+                        html += '<button class="btn-photo" style="flex:2; background:#475569" onclick="openReport(\'DEBUG\')">診斷報修<\/button>';
+                        html += '<button class="btn-nav-sub" style="flex:1" onclick="webAlert(\'診斷單無電話資訊\')">電話<\/button>';
                     } else {
                         // V6.6: 點擊導航引發 ETA 記錄與即時定位更新 (傳遞目標座標)
                         var lat = t.lat || "";
                         var lng = t.lng || "";
-                        html += '<a href="' + navHref + '" class="' + btnClass + '" target="_blank" onclick="handleNavigation(\'' + t.id + '\', \'' + safeAddr + '\', \'' + lat + '\', \'' + lng + '\')">導航</a>';
+                        html += '<a href="' + navHref + '" class="' + btnClass + '" target="_blank" onclick="handleNavigation(\'' + t.id + '\', \'' + safeAddr + '\', \'' + lat + '\', \'' + lng + '\')">導航<\/a>';
                         if (t.status !== '已完成') {
-                            html += '<button class="' + photoBtnClass + '" ' + clickAttr + '>拍照結案</button>';
+                            html += '<button class="' + photoBtnClass + '" ' + clickAttr + '>拍照結案<\/button>';
                         } else {
-                            html += '<div style="flex:1"></div>';
-                            html += '<button class="btn-redo" onclick="App.redoTask(event, \'' + t.id + '\', \'' + (t.branch || '') + '\');">✕ 重新回報</button>';
+                            html += '<div style="flex:1"><\/div>';
+                            html += '<button class="btn-redo" onclick="App.redoTask(event, \'' + t.id + '\', \'' + (t.branch || '') + '\');">✕ 重新回報<\/button>';
                         }
                         if (t.thumbnail) {
-                            html += '<button class="btn-view-img" onclick="previewOrderImage(\'' + t.thumbnail + '\')">圖</button>';
+                            html += '<button class="btn-view-img" onclick="previewOrderImage(\'' + t.thumbnail + '\')">圖<\/button>';
                         }
-                        html += '<a href="' + telHref + '" class="' + btnClass + '">電話</a>';
+                        html += '<a href="' + telHref + '" class="' + btnClass + '">電話<\/a>';
                     }
-                    html += '</div></div>';
+                    html += '<\/div><\/div>';
                     return html;
                 }).join('');
                 // 每次渲染任務後更新導航按鈕
@@ -3064,7 +3490,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 // 從 allTasks 找出對應的分公司
                 const t = allTasks.find(x => String(x.id) === String(id));
                 const branch = t ? (t.branch || '') : '';
-                showConfirm('確定要取消這筆任務嗎？<br><span style="font-size:12px;color:var(--text-tertiary)">取消後將從您的清單移除。</span>', function(yes) {
+                showConfirm('確定要取消這筆任務嗎？<br><span style="font-size:12px;color:var(--text-tertiary)">取消後將從您的清單移除。<\/span>', function(yes) {
                     if (!yes) return;
                     setLoading(true, '取消任務中...');
                     google.script.run
@@ -3306,8 +3732,8 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 
                 grid.innerHTML = PARTS.map(p => {
                     const checked = lastItems.includes(p) ? 'checked' : '';
-                    const lastText = lastDates[p] ? `<span style="color:#4ade80; font-weight:bold;">上次: ${lastDates[p]}</span>` : '無紀錄';
-                    return `<label class="maint-item"><div class="maint-row"><input type="checkbox" name="mItem" value="${p}" ${checked} style="transform:scale(1.3)"><span style="font-size:14px">${p}</span></div><div class="maint-last">${lastText}</div></label>`;
+                    const lastText = lastDates[p] ? `<span style="color:#4ade80; font-weight:bold;">上次: ${lastDates[p]}<\/span>` : '無紀錄';
+                    return `<label class="maint-item"><div class="maint-row"><input type="checkbox" name="mItem" value="${p}" ${checked} style="transform:scale(1.3)"><span style="font-size:14px">${p}<\/span><\/div><div class="maint-last">${lastText}<\/div><\/label>`;
                 }).join('');
             }).getVehicleMaintContext_V11(currentCar, DTOKEN());
             maintFiles = { m1: null, m2: null, m3: null };[1, 2, 3].forEach(n => { document.getElementById('img-m' + n).style.display = 'none'; document.getElementById('txt-m' + n).style.display = 'block'; });
@@ -3365,7 +3791,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             files.sign = null; files.damage = null;
             document.getElementById('img-dmg').style.display = 'none'; document.getElementById('txt-dmg').style.display = 'block';
             document.getElementById('isDamaged').value = '否'; document.getElementById('damageGrp').style.display = 'none';
-            document.getElementById('signType').value = '本人親簽'; document.getElementById('finalNote').value = '';
+            document.getElementById('signType').value = ''; document.getElementById('finalNote').value = '';
             resetIssueChips();
             document.getElementById('report-overlay').style.display = 'block';
         }
@@ -3383,8 +3809,8 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 return '<label style="display:flex;align-items:center;gap:12px;padding:12px;background:rgba(255,255,255,0.05);border-radius:10px;border:1px solid rgba(255,255,255,0.1);cursor:' + (t.isPrimary ? 'default' : 'pointer') + ';">'
                     + '<input type="checkbox" id="batchChk_' + i + '" ' + (t.isPrimary ? 'disabled ' : '') + 'checked onchange="updateBatchCount()" style="width:20px;height:20px;accent-color:var(--cyan);">'
                     + '<div><div style="font-size:14px;font-weight:600;color:' + (t.isPrimary ? 'var(--cyan)' : 'var(--text-primary)') + '">'
-                    + t.customer + (t.isPrimary ? '（本筆）' : '') + '</div>'
-                    + '<div style="font-size:12px;color:var(--text-secondary);">' + t.id + '</div></div></label>';
+                    + t.customer + (t.isPrimary ? '（本筆）' : '') + '<\/div>'
+                    + '<div style="font-size:12px;color:var(--text-secondary);">' + t.id + '<\/div><\/div><\/label>';
             }).join('');
             updateBatchCount();
             document.getElementById('batch-select-overlay').style.display = 'block';
@@ -3410,8 +3836,59 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             var b = pendingBatchBase;
             proceedOpenReport(b.id, b.cust, b.addr, b.idx, b.branch);
         }
+        // V42.49: 這頁原本沒有真正的「返回主畫面」，兩顆按鈕都會直接開結案表單，
+        // 誤按進來就出不去；加一顆單純關閉、不開任何表單的返回鍵
+        function cancelBatchSelect() {
+            window.batchTasks = null;
+            pendingBatchBase = null;
+            document.getElementById('batch-select-overlay').style.display = 'none';
+        }
 
         function toggleDamage(v) { document.getElementById('damageGrp').style.display = v === '是' ? 'block' : 'none'; }
+
+        // V42.47: 結案類型改成按「完成配送結案」時才跳出的確認彈窗，點一下亮燈選取、
+        // 再點同一顆才會真的送出，避免手滑按錯「有簽/沒簽」
+        var _signConfirmArmed = null; // 'yes' | 'no' | null，記錄目前亮燈的是哪一顆
+        function openSignConfirmModal() {
+            _signConfirmArmed = null;
+            document.getElementById('confirmYesBtn').classList.remove('armed');
+            document.getElementById('confirmNoBtn').classList.remove('armed');
+            document.getElementById('sign-confirm-overlay').style.display = 'flex';
+        }
+        function closeSignConfirm() {
+            document.getElementById('sign-confirm-overlay').style.display = 'none';
+        }
+        function handleSignConfirmTap(val, btnEl) {
+            var key = (val === '本人親簽') ? 'yes' : 'no';
+            if (_signConfirmArmed === key) {
+                // 第二次點同一顆才算數：正式確定簽收狀態並送出
+                document.getElementById('signType').value = val;
+                try { if (navigator.vibrate) navigator.vibrate([25, 40, 25]); } catch (e) { }
+                btnEl.classList.add('confirmed');
+                var hint = document.getElementById('signConfirmHint');
+                if (hint) hint.textContent = '✅ 已確認，送出中...';
+                setTimeout(function () {
+                    closeSignConfirm();
+                    btnEl.classList.remove('confirmed');
+                    doFinalSubmitFlow();
+                }, 350);
+            } else {
+                // 第一次點：先亮燈，不送出
+                _signConfirmArmed = key;
+                document.getElementById('confirmYesBtn').classList.toggle('armed', key === 'yes');
+                document.getElementById('confirmNoBtn').classList.toggle('armed', key === 'no');
+                try { if (navigator.vibrate) navigator.vibrate(15); } catch (e) { }
+            }
+        }
+
+        // V42.48: 狀況回報+異常回報合併成一區，平時收合，點標題才展開
+        function toggleIssueReportPanel() {
+            const panel = document.getElementById('issueReportPanel');
+            const arrow = document.getElementById('issueReportArrow');
+            const isOpen = panel.style.display !== 'none';
+            panel.style.display = isOpen ? 'none' : 'block';
+            arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
 
         // V40: 狀況回報 chips
         function toggleIssueChip(el) {
@@ -3428,6 +3905,11 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 el.style.background = 'rgba(255,255,255,0.05)';
                 el.style.color = 'var(--text-secondary)';
             });
+            // V42.48: 每次開新的一筆結案，狀況/異常回報面板收合回去
+            var panel = document.getElementById('issueReportPanel');
+            var arrow = document.getElementById('issueReportArrow');
+            if (panel) panel.style.display = 'none';
+            if (arrow) arrow.style.transform = 'rotate(0deg)';
         }
         function getSelectedIssues() {
             var out = [];
@@ -3438,7 +3920,13 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
         }
         
         function submitFinal() {
-            // [DISABLED] if (!hasClockedIn) return webAlert('⚠️ 請先完成上方「發車登記」，才能進行結案回報！');
+            if (window._isSubmittingFinal) {
+                console.log('防雙擊：正在處理結案中，阻擋重複點擊');
+                return;
+            }
+            // 觸感震動回饋 (行動裝置)
+            try { if (navigator.vibrate) navigator.vibrate(40); } catch(e) {}
+
             const isDmg = document.getElementById('isDamaged').value === '是';
             if (isDmg) {
                 if ((!files.sign || !files.sign.contents) && (!files.damage || !files.damage.contents)) {
@@ -3448,6 +3936,20 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 if (!files.sign || !files.sign.contents) {
                     return webAlert('⚠️ 請先完成「拍照」或「簽名」，才能送出結案！');
                 }
+            }
+
+            // V42.47: 照片/破損檢查通過後，先跳確認彈窗請司機再次確認有簽/沒簽，
+            // 點兩下(同一顆)確認後才會真的進到 doFinalSubmitFlow() 送出
+            openSignConfirmModal();
+        }
+
+        function doFinalSubmitFlow() {
+            const isDmg = document.getElementById('isDamaged').value === '是';
+            window._isSubmittingFinal = true;
+            var submitBtn = document.querySelector('.btn-submit');
+            if (submitBtn) {
+                submitBtn.classList.add('loading');
+                submitBtn.innerText = '傳送結案中，請稍候...';
             }
 
             setLoading(true, '產生美化結案單...');
@@ -3578,17 +4080,33 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             });
         }
 
+        function resetSubmitBtn() {
+            window._isSubmittingFinal = false;
+            var submitBtn = document.querySelector('.btn-submit');
+            if (submitBtn) {
+                submitBtn.classList.remove('loading');
+                submitBtn.innerText = '完成配送結案';
+            }
+        }
+
         function doSubmitFinal(payload) {
             console.log("Submitting Final Payload:", payload);
             setSmartLoading('上傳結案資料', ['準備壓縮照片...', '正在上傳簽收照片...', '正在傳送破損照片...', '同步配送紀錄...', '寫入 Google Sheet...'], null);
             google.script.run.withSuccessHandler(function(res) {
+                resetSubmitBtn();
                 console.log('Server Response:', res);
                 setLoading(false);
                 if (res.success) {
                     if (res.duplicated) { webAlert('此任務已結案，不會重複提交！'); closeOv('report-overlay'); App.refreshTasks(); }
                     else { showSuccess(res); }
                 } else webAlert('錯誤: ' + res.error);
-            }).withFailureHandler(function(err) { setLoading(false); OQ.add({ _fn: 'final', payload }); webAlert('目前無網路，已離線暫存，上樓後自動同步。'); closeOv('report-overlay'); }).submitFinalDelivery(payload);
+            }).withFailureHandler(function(err) {
+                resetSubmitBtn();
+                setLoading(false);
+                OQ.add({ _fn: 'final', payload });
+                webAlert('目前無網路，已離線暫存，上樓後自動同步。');
+                closeOv('report-overlay');
+            }).submitFinalDelivery(payload);
         }
 
         function showSuccess(res) {
@@ -3744,7 +4262,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     if (rTasks.length === 1) {
                         var t = rTasks[0];
                         var shortAddr = String(t.address || '').replace(/^[^\u4e00-\u9fff]+/, '').replace(/(\d+號).*/, '$1');
-                        btnNav.innerHTML = `前往下一站<div style="font-size:12px;font-weight:400;margin-top:2px">${t.customer} | ${shortAddr}</div>`;
+                        btnNav.innerHTML = `前往下一站<div style="font-size:12px;font-weight:400;margin-top:2px">${t.customer} | ${shortAddr}<\/div>`;
                         btnNav.onclick = function() { goToTaskBySelected(t); };
                     } else {
                         btnNav.innerHTML = `選擇下一站（還有 ${rTasks.length} 站待完成）`;
@@ -3768,16 +4286,16 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 return '<button onclick="goToTaskBySelected(allTasks.find(function(x){return x.id===\'' + t.id + '\';})); closeConfirm(false);" ' +
                     'style="width:100%; padding:14px 12px; margin-bottom:8px; background:rgba(255,255,255,0.05); ' +
                     'border:1px solid var(--border-soft); border-radius:10px; color:#fff; text-align:left; cursor:pointer;">' +
-                    '<div style="font-size:15px; font-weight:900; color:var(--cyan);">' + (i + 1) + '. ' + (t.customer || "未知客戶") + '</div>' +
-                    '<div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">' + shortAddr + '</div>' +
-                '</button>';
+                    '<div style="font-size:15px; font-weight:900; color:var(--cyan);">' + (i + 1) + '. ' + (t.customer || "未知客戶") + '<\/div>' +
+                    '<div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">' + shortAddr + '<\/div>' +
+                '<\/button>';
             }).join('');
 
             showConfirm(
                 `<div style="text-align:left;">` +
-                `<div style="font-size:14px; color:var(--text-tertiary); margin-bottom:12px;">選擇下一個要前往的站點：</div>` +
+                `<div style="font-size:14px; color:var(--text-tertiary); margin-bottom:12px;">選擇下一個要前往的站點：<\/div>` +
                 listHtml +
-                `</div>`,
+                `<\/div>`,
                 function() {},
                 true
             );
@@ -4112,8 +4630,8 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 btn.className = 'next-station-btn';
                 btn.onclick = () => selectNextStation_V6(t.id, t.address);
                 btn.innerHTML = `
-                    <div class="addr-text">${t.address}</div>
-                    <div class="seq-badge">順序 ${t.seq}</div>
+                    <div class="addr-text">${t.address}<\/div>
+                    <div class="seq-badge">順序 ${t.seq}<\/div>
                 `;
                 list.appendChild(btn);
             });
@@ -4225,6 +4743,8 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             if (window.self !== window.top) {
                 document.body.classList.add('embedded-iframe');
             }
+            // V43.25: 登入資料可能剛從外殼頁補回來，重讀一次
+            try { currentCar = localStorage.getItem('titan_driver_car') || localStorage.getItem('v11_car') || currentCar; currentDriverName = localStorage.getItem('titan_driver_name') || currentDriverName; } catch (e) { }
             App.init();
             // 進入網頁時定位一次
             setTimeout(function () {
@@ -4247,6 +4767,20 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     }
                 }
             }, 180000);
+
+            // V42.59: 司機按導航會切到 Google 地圖，司機 App 跑到背景後手機會暫停上面的定時回報，
+            // 戰情室上的位置就停在出發點。切回 App 的那一刻 (例如送達要拍照結案) 立刻補回報一次，最多每分鐘一次。
+            let lastVisiblePing = 0;
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState !== 'visible') return;
+                if (typeof currentCar === 'undefined' || !currentCar || !navigator.geolocation) return;
+                if (Date.now() - lastVisiblePing < 60000) return;
+                lastVisiblePing = Date.now();
+                navigator.geolocation.getCurrentPosition(function (p) {
+                    hideGpsWarning();
+                    google.script.run.updateVehicleLocation(currentCar, p.coords.latitude, p.coords.longitude, DTOKEN());
+                }, function () { }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+            });
         };
 
         // ===== V37.19: Mileage History Query & Correction =====
@@ -4267,21 +4801,21 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             const sel = document.getElementById(selId);
             if (!sel) return;
             const list = (months && months.length) ? months : [currentMonth];
-            sel.innerHTML = list.map(m => `<option value="${m}" ${m === currentMonth ? 'selected' : ''}>${formatYmLabel(m)}</option>`).join('');
+            sel.innerHTML = list.map(m => `<option value="${m}" ${m === currentMonth ? 'selected' : ''}>${formatYmLabel(m)}<\/option>`).join('');
         }
 
         function openMileageHistory(yearMonth) {
             if (!currentCar) return webAlert('請先選擇車牌');
             document.getElementById('histCarNo').innerText = currentCar;
             const listEl = document.getElementById('mileageHistoryList');
-            listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入歷史里程紀錄中...</div>';
+            listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入歷史里程紀錄中...<\/div>';
             document.getElementById('mileage-history-overlay').style.display = 'block';
 
             google.script.run.withSuccessHandler(res => {
                 if (res && res.success) {
                     populateMonthSelect('mileageMonthSel', res.months, res.currentMonth);
                     if (!res.list || res.list.length === 0) {
-                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無出勤里程紀錄</div>';
+                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無出勤里程紀錄<\/div>';
                         return;
                     }
                     listEl.innerHTML = res.list.map(r => {
@@ -4291,33 +4825,33 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                         return `
                             <div class="history-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px;">
-                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}</span>
-                                    <span style="font-size:12px; color:var(--text-tertiary);">行駛里程: ${totalVal}</span>
-                                </div>
+                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}<\/span>
+                                    <span style="font-size:12px; color:var(--text-tertiary);">行駛里程: ${totalVal}<\/span>
+                                <\/div>
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
                                     <div>
-                                        <div style="color:var(--text-secondary); font-size:11px;">上班里程</div>
+                                        <div style="color:var(--text-secondary); font-size:11px;">上班里程<\/div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="startMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${startVal}</span>
-                                            <span onclick="editMileageRecord(${r.rowNum}, 'start', '${r.start}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
-                                        </div>
-                                    </div>
+                                            <span id="startMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${startVal}<\/span>
+                                            <span onclick="editMileageRecord(${r.rowNum}, 'start', '${r.start}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️<\/span>
+                                        <\/div>
+                                    <\/div>
                                     <div>
-                                        <div style="color:var(--text-secondary); font-size:11px;">下班里程</div>
+                                        <div style="color:var(--text-secondary); font-size:11px;">下班里程<\/div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="endMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${endVal}</span>
-                                            <span onclick="editMileageRecord(${r.rowNum}, 'end', '${r.end}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                            <span id="endMileVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${endVal}<\/span>
+                                            <span onclick="editMileageRecord(${r.rowNum}, 'end', '${r.end}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️<\/span>
+                                        <\/div>
+                                    <\/div>
+                                <\/div>
+                            <\/div>
                         `;
                     }).join('');
                 } else {
-                    listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">載入失敗: ' + (res.error || '未知錯誤') + '</div>';
+                    listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">載入失敗: ' + (res.error || '未知錯誤') + '<\/div>';
                 }
             }).withFailureHandler(err => {
-                listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '</div>';
+                listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '<\/div>';
             }).getMileageHistory_V11(currentCar, yearMonth || null, DTOKEN());
         }
 
@@ -4350,7 +4884,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             if (!currentCar) return webAlert('請先選擇車牌');
             document.getElementById('fuelHistCarNo').innerText = currentCar;
             const listEl = document.getElementById('fuelHistoryList');
-            listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入歷史加油紀錄中...</div>';
+            listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">載入歷史加油紀錄中...<\/div>';
             document.getElementById('fuel-history-overlay').style.display = 'block';
             
             google.script.run.withSuccessHandler(res => {
@@ -4363,7 +4897,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     });
 
                     if (filteredList.length === 0) {
-                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無加油紀錄</div>';
+                        listEl.innerHTML = '<div style="text-align:center; color:var(--text-tertiary); padding:20px 0;">此月份尚無加油紀錄<\/div>';
                         return;
                     }
 
@@ -4373,32 +4907,32 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                         return `
                             <div class="history-card" style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:5px;">
-                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}</span>
-                                </div>
+                                    <span style="font-weight:bold; color:var(--cyan);">${formatDateWithWeekday(r.date)}<\/span>
+                                <\/div>
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px;">
                                     <div>
-                                        <div style="color:var(--text-secondary); font-size:11px;">加油金額</div>
+                                        <div style="color:var(--text-secondary); font-size:11px;">加油金額<\/div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="fuelAmtVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${amtVal}</span>
-                                            <span onclick="editFuelRecord(${r.rowNum}, 'amt', '${r.amount}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
-                                        </div>
-                                    </div>
+                                            <span id="fuelAmtVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${amtVal}<\/span>
+                                            <span onclick="editFuelRecord(${r.rowNum}, 'amt', '${r.amount}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️<\/span>
+                                        <\/div>
+                                    <\/div>
                                     <div>
-                                        <div style="color:var(--text-secondary); font-size:11px;">公升數</div>
+                                        <div style="color:var(--text-secondary); font-size:11px;">公升數<\/div>
                                         <div style="display:flex; align-items:center; gap:5px; margin-top:3px;">
-                                            <span id="fuelLitVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${litVal}</span>
-                                            <span onclick="editFuelRecord(${r.rowNum}, 'lit', '${r.litres}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                            <span id="fuelLitVal_${r.rowNum}" class="hist-val" style="font-weight:bold; font-size:15px; color:#fff;">${litVal}<\/span>
+                                            <span onclick="editFuelRecord(${r.rowNum}, 'lit', '${r.litres}')" style="color:var(--cyan); cursor:pointer; font-size:14px; padding:2px 5px;">✏️<\/span>
+                                        <\/div>
+                                    <\/div>
+                                <\/div>
+                            <\/div>
                         `;
                     }).join('');
                 } else {
-                    listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">載入失敗: ' + (res.error || '未知錯誤') + '</div>';
+                    listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">載入失敗: ' + (res.error || '未知錯誤') + '<\/div>';
                 }
             }).withFailureHandler(err => {
-                listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '</div>';
+                listEl.innerHTML = '<div style="text-align:center; color:#ef4444; padding:20px 0;">連線失敗: ' + err.message + '<\/div>';
             }).getMileageHistory_V11(currentCar, yearMonth || null, DTOKEN());
         }
 
@@ -4426,6 +4960,13 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 webAlert('修正失敗: ' + err.message);
             }).updateFuelRecord_V11(rowNum, type, num, DTOKEN());
         }
+    </script>
+    <?!= include('GoogleLogin'); ?>
+    <script>
+        (function () {
+            var s = document.getElementById('gLoginSlot'); if (s && window.TTSGoogle) s.innerHTML = TTSGoogle.buttonHtml('App.googleLogin()');
+            if (window.TTSGoogle) TTSGoogle.resume({ app: 'driver', onSuccess: function (res) { App.googleLoginDone(res); } });
+        })();
     </script>
 </body>
 </html>

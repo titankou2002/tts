@@ -127,22 +127,6 @@ function _isCarrierAddress_(addr) {
         });
     } catch (e) { return false; }
 }
-/** [選單] 把預設指送清單寫進運費管理表 J–L (只在該區空白時) */
-function menuSeedDirectMap() {
-    var ui = SpreadsheetApp.getUi();
-    var ss = getSS_V11();
-    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_FREIGHT);
-    if (!sheet) { ui.alert("找不到「運費管理表」，請先執行 setupFreightRateSheet_V11"); return; }
-    var c = DIRECT_MAP_COLS.key + 1;
-    var existing = sheet.getLastColumn() >= c + 2 ? sheet.getRange(2, c, Math.max(sheet.getLastRow() - 1, 1), 3).getValues().filter(function (r) { return String(r[0] || "").trim(); }) : [];
-    if (existing.length) { ui.alert("運費管理表 J–L 已有 " + existing.length + " 筆指送地點，未覆蓋。要重灌請先清空 J–L。"); return; }
-    var rows = [["指送簡稱(逗號可多個)", "全名", "完整地址"]].concat(getDirectMapDefault_V20().map(function (m) { return [m.key, m.fullName, m.address]; }));
-    sheet.getRange(1, c, rows.length, 3).setValues(rows);
-    sheet.getRange(1, c, 1, 3).setBackground("#8e44ad").setFontColor("#ffffff").setFontWeight("bold");
-    sheet.autoResizeColumns(c, 3);
-    try { CacheService.getScriptCache().remove("direct_map_v41"); } catch (e) { }
-    ui.alert("✅ 已寫入 " + (rows.length - 1) + " 筆指送地點到運費管理表 J–L 欄。之後直接在表上增修即可 (10 分鐘內生效)。");
-}
 /** 預設清單 (運費管理表 J–L 空白時使用) */
 function getDirectMapDefault_V20() {
     return [
@@ -848,7 +832,7 @@ function callVisionAI(base64Data) {
     return "";
 }
 
-function upsertOrderFromOcr_V2(parsedData, token) {
+function upsertOrderFromOcr_V2_impl_(parsedData, token) {
     _requireAdmin_(token);
     if (!parsedData || !parsedData.isValid) {
         return { success: false, error: (parsedData && parsedData.error) || "資料無效" };

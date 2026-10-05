@@ -1,0 +1,207 @@
+<!-- V43.0 共用：Google 登入 + 帳號申請。
+     本頁在 bigt.cc 外殼的 iframe 裡，Google 登入按鈕只能放在 bigt.cc (那是登記給 Google 的網站)，
+     所以這裡用 postMessage 請外殼開 Google 登入，外殼把 Google 簽發的身分證明傳回來，再交給後端驗證。
+     注意：GAS 部署會截斷字串裡的兩個斜線，網址一律拆開寫。 -->
+<style>
+    #ttsG { position: fixed; inset: 0; z-index: 2147483000; background: rgba(2, 6, 23, .92); display: none; align-items: center; justify-content: center; padding: 20px; font-family: 'Noto Sans TC', -apple-system, sans-serif; }
+    #ttsG .g-card { background: #0f172a; border: 1px solid #334155; border-radius: 18px; padding: 24px; width: 100%; max-width: 380px; color: #e2e8f0; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); max-height: 92vh; overflow: auto; }
+    #ttsG h3 { margin: 0 0 6px; font-size: 20px; color: #fff; }
+    #ttsG .g-sub { font-size: 13px; color: #94a3b8; margin-bottom: 16px; line-height: 1.6; }
+    #ttsG .g-msg { font-size: 14px; line-height: 1.7; margin: 8px 0 16px; }
+    #ttsG .g-err { color: #fca5a5; }
+    #ttsG label { display: block; font-size: 13px; color: #cbd5e1; margin: 12px 0 6px; }
+    #ttsG input, #ttsG select { width: 100%; box-sizing: border-box; padding: 11px 12px; border-radius: 10px; border: 1px solid #475569; background: #1e293b; color: #fff; font-size: 16px; }
+    #ttsG .g-btn { width: 100%; padding: 13px; border: 0; border-radius: 12px; font-size: 16px; font-weight: 800; cursor: pointer; margin-top: 16px; }
+    #ttsG .g-primary { background: #2563eb; color: #fff; }
+    #ttsG .g-ghost { background: transparent; color: #94a3b8; border: 1px solid #475569; margin-top: 10px; }
+    #ttsG .g-btn:disabled { opacity: .5; }
+    #ttsG .g-spin { width: 36px; height: 36px; border: 3px solid #334155; border-top-color: #38bdf8; border-radius: 50%; margin: 10px auto 16px; animation: ttsGspin 0.8s linear infinite; }
+    @keyframes ttsGspin { to { transform: rotate(360deg); } }
+    .tts-google-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; max-width: 400px; box-sizing: border-box; padding: 13px 16px; border-radius: 999px; border: 1px solid #dadce0; background: #fff; color: #1f1f1f; font-size: 16px; font-weight: 700; cursor: pointer; }
+    .tts-google-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .tts-me { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; margin-right: 12px; white-space: nowrap; }
+    .tts-me b { font-size: 13px; color: #e2e8f0; }
+    .tts-me span { font-size: 11px; color: #94a3b8; }
+</style>
+<script>
+    window.TTSGoogle = (function () {
+        var WRAP_ORIGIN = 'https:' + '/' + '/bigt.cc';
+        var ALLOWED = { admin: ['admin', 'viewer'], analytics: ['admin', 'viewer'], driver: ['driver', 'admin'], warehouse: ['warehouse', 'driver', 'admin'] };
+        var APP_LABEL = { admin: '戰情室', analytics: '分析中心', driver: '司機端', warehouse: '倉庫驗貨' };
+        var TITLES = ['司機', '行政', '業務', '倉管', '主管'];
+        var BRANCHES = ['高雅瓷', '安帝嘉', '喜悅納', '漢樺', '鈦傳速'];
+        var opts = {}, cred = '';
+        var WRAP_PAGE = { driver: 'DRIVER.html', admin: 'OS.html', analytics: 'Analytics.html', warehouse: 'QC.html' };
+        function goWrap() { var u = WRAP_ORIGIN + '/tts/' + (WRAP_PAGE[opts.app] || 'DRIVER.html'); try { window.top.location.href = u; } catch (e) { window.open(u, '_blank'); } }
+
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
+        function box() {
+            var el = document.getElementById('ttsG');
+            if (!el) { el = document.createElement('div'); el.id = 'ttsG'; document.body.appendChild(el); }
+            el.style.display = 'flex';
+            return el;
+        }
+        function close() { var el = document.getElementById('ttsG'); if (el) el.style.display = 'none'; }
+        function render(html) { box().innerHTML = '<div class="g-card">' + html + '<\/div>'; }
+        function cancelBtn(label) { return '<button class="g-btn g-ghost" onclick="TTSGoogle.cancel()">' + (label || '返回') + '<\/button>'; }
+
+        /* 請 bigt.cc 外殼開 Google 登入；外殼 3 秒內沒回應代表不是從 bigt.cc 開的 */
+        function requestCredential() {
+            return new Promise(function (resolve, reject) {
+                var acked = false;
+                function onMsg(ev) {
+                    if (ev.origin !== WRAP_ORIGIN) return;
+                    var d = ev.data || {};
+                    if (d.type === 'tts-google-ack') { acked = true; return; }
+                    if (d.type === 'tts-google-credential' && d.credential) { window.removeEventListener('message', onMsg); resolve({ credential: d.credential, provider: d.provider === 'line' ? 'line' : 'google' }); }
+                    if (d.type === 'tts-google-cancel') { window.removeEventListener('message', onMsg); reject(new Error('cancel')); }
+                }
+                window.addEventListener('message', onMsg);
+                try { window.top.postMessage({ type: 'tts-google-login', app: opts.app }, WRAP_ORIGIN); } catch (e) { }
+                setTimeout(function () {
+                    if (!acked) { window.removeEventListener('message', onMsg); reject(new Error('not-embedded')); }
+                }, 3000);
+            });
+        }
+
+        var provider = 'google', busy = false;
+        function continueWith(c) {
+            if (busy) return;   /* 自動登入與跳轉回來可能同時送到，只處理一次 */
+            busy = true;
+            cred = c.credential; provider = c.provider;
+            render('<h3>登入中<\/h3><div class="g-spin"><\/div><div class="g-sub" style="text-align:center">正在確認你的帳號…<\/div>');
+            google.script.run
+                .withSuccessHandler(handleLogin)
+                .withFailureHandler(function (err) { busy = false; showError('系統連線錯誤：' + ((err && err.message) || err)); })
+                [provider === 'line' ? 'loginWithLine_V43' : 'loginWithGoogle_V43'](cred, opts.app || '');
+        }
+
+        /* 手機主畫面全螢幕 App 用整頁跳轉登入：跳回來後頁面重新載入，向外殼領取剛才帶回的登入結果 */
+        function resume(o) {
+            var done = false;
+            function onMsg(ev) {
+                if (ev.origin !== WRAP_ORIGIN || done) return;
+                var d = ev.data || {};
+                if (d.type === 'tts-google-credential' && d.credential) { done = true; window.removeEventListener('message', onMsg); opts = o || {}; continueWith({ credential: d.credential, provider: d.provider === 'line' ? 'line' : 'google' }); }
+                else if (d.type === 'tts-google-failed') { done = true; window.removeEventListener('message', onMsg); opts = o || {}; showError('Google 登入沒有完成，請再試一次。'); }
+                else if (d.type === 'tts-google-none') { done = true; window.removeEventListener('message', onMsg); }
+            }
+            window.addEventListener('message', onMsg);
+            try { window.top.postMessage({ type: 'tts-google-pending' }, WRAP_ORIGIN); } catch (e) { }
+            setTimeout(function () { window.removeEventListener('message', onMsg); }, 5000);
+        }
+
+        function start(o) {
+            opts = o || {};
+            render('<h3>登入<\/h3><div class="g-spin"><\/div><div class="g-sub" style="text-align:center">請在跳出的視窗用 Google 登入…<\/div>' + cancelBtn('取消'));
+            requestCredential().then(continueWith).catch(function (e) {
+                if (e && e.message === 'cancel') { close(); if (opts.onCancel) opts.onCancel(); return; }
+                /* 從 Google 程式網址直接開 (舊的個人連結／主畫面圖示) → 給一顆按鈕跳到 bigt.cc 版再登入 */
+                var page = WRAP_PAGE[opts.app] || 'DRIVER.html';
+                render('<h3>請改用 bigt.cc 開啟<\/h3><div class="g-msg">Google 登入只能在 bigt.cc 的網址使用。<br>按下面按鈕會換到 bigt.cc 版，再按一次登入即可。<br><span style="color:#94a3b8;font-size:13px">之後請把這個新頁面加到主畫面，取代舊的圖示。<\/span><\/div>'
+                    + '<button class="g-btn g-primary" onclick="TTSGoogle.goWrap()">改用 bigt.cc 開啟<\/button>' + cancelBtn('返回'));
+            });
+        }
+
+        function showError(msg) {
+            render('<h3>無法登入<\/h3><div class="g-msg g-err">' + msg + '<\/div>' + cancelBtn());
+        }
+
+        function handleLogin(res) {
+            busy = false;
+            res = res || {};
+            if (res.status === 'ok') {
+                var allow = ALLOWED[opts.app] || [];
+                if (allow.length && allow.indexOf(res.role) === -1) {
+                    return showError('你的帳號（' + esc(res.name) + '／' + esc(res.title) + '）不能使用' + esc(APP_LABEL[opts.app] || '這個頁面') + '。');
+                }
+                close();
+                if (opts.onSuccess) opts.onSuccess(res);
+                return;
+            }
+            if (res.status === 'pending') return showPending(res);
+            if (res.status === 'need_apply') return showApply(res);
+            if (res.status === 'disabled') return showError('你的帳號已停用，請聯繫主管。');
+            showError(esc(res.message || '登入失敗'));
+        }
+
+        function showPending(res) {
+            render('<h3>申請審核中<\/h3><div class="g-msg">你的帳號申請已送出' + (res.submittedAt ? '（' + esc(res.submittedAt) + '）' : '') + '，<br>等主管在 Telegram 核准後，重新整理頁面就能登入。<\/div>'
+                + '<div class="g-sub">Google 帳號：' + esc(res.email) + '<\/div>' + cancelBtn('好'));
+        }
+
+        function showApply(res) {
+            var opt = function (list) { return '<option value="">請選擇<\/option>' + list.map(function (x) { return '<option>' + x + '<\/option>'; }).join(''); };
+            render('<h3>申請帳號<\/h3>'
+                + '<div class="g-sub">' + esc(res.email) + ' 還沒有使用權限。<br>填好資料送出後，主管核准就能登入。' + (res.rejected ? '<br><span style="color:#fca5a5">上一次的申請被拒絕了，如有疑問請先聯繫主管。<\/span>' : '') + '<\/div>'
+                + '<label>真實姓名<\/label><input id="ttsGName" maxlength="20" placeholder="請輸入本名（不是 LINE 暱稱）">'
+                + '<label>職位<\/label><select id="ttsGTitle">' + opt(TITLES) + '<\/select>'
+                + '<label>分公司<\/label><select id="ttsGBranch">' + opt(BRANCHES) + '<\/select>'
+                + '<label>手機（選填）<\/label><input id="ttsGPhone" maxlength="20" inputmode="tel">'
+                + '<label>備註（選填）<\/label><input id="ttsGNote" maxlength="100">'
+                + '<div id="ttsGErr" class="g-msg g-err" style="margin:10px 0 0"><\/div>'
+                + '<button class="g-btn g-primary" id="ttsGSubmit" onclick="TTSGoogle.submitApply()">送出申請<\/button>' + cancelBtn('取消'));
+        }
+
+        function submitApply() {
+            var v = function (id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+            var form = { name: v('ttsGName'), title: v('ttsGTitle'), branch: v('ttsGBranch'), phone: v('ttsGPhone'), note: v('ttsGNote') };
+            var err = document.getElementById('ttsGErr');
+            if (!form.name) { err.textContent = '請填寫真實姓名'; return; }
+            if (!form.title) { err.textContent = '請選擇職位'; return; }
+            if (!form.branch) { err.textContent = '請選擇分公司'; return; }
+            var btn = document.getElementById('ttsGSubmit'); btn.disabled = true; btn.textContent = '送出中…';
+            google.script.run
+                .withSuccessHandler(function (res) {
+                    if (res && res.status === 'pending') return showPending(res);
+                    btn.disabled = false; btn.textContent = '送出申請';
+                    err.textContent = (res && res.message) || '送出失敗';
+                })
+                .withFailureHandler(function (e) { btn.disabled = false; btn.textContent = '送出申請'; err.textContent = '系統連線錯誤：' + ((e && e.message) || e); })
+                .applyAccount_V43(cred, form, provider);
+        }
+
+        /* 登入畫面用的「使用 Google 帳戶登入」按鈕 HTML */
+        function buttonHtml(onclick) {
+            return '<button type="button" class="tts-google-btn" onclick="' + onclick + '">'
+                + '<svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/><\/svg>'
+                + '用 Google 登入<\/button>';
+        }
+
+        /* 上方列顯示登入者：公司｜姓名（職位）／登入時間 · 本次停留多久 (每分鐘更新) */
+        var pageOpenedAt = Date.now(), meTimer = null;
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+        function fmtTime(ms) { var d = new Date(ms); return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+        function fmtStay(ms) { var m = Math.floor(ms / 60000); return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm'; }
+        function showMe(el, me) {
+            if (!el || !me) return;
+            var who = (me.via === 'google' || me.via === 'line')
+                ? (me.branch ? esc(me.branch) + '｜' : '') + esc(me.name || '')
+                : '管理員（密碼登入）';
+            var paint = function () {
+                el.innerHTML = '<span class="tts-me" title="' + (me.email ? esc(me.email) : '') + '"><b>' + who + '<\/b><span>'
+                    + (me.loginAt ? '登入 ' + fmtTime(me.loginAt) + ' · ' : '') + '⏱ ' + fmtStay(Date.now() - pageOpenedAt) + '<\/span><\/span>';
+            };
+            paint();
+            clearInterval(meTimer); meTimer = setInterval(paint, 15000);
+        }
+
+        /* V43.12: 在 LINE 裡開啟、又還沒登入 → 請外殼自動用 LINE 登入 (LINE 記得登入狀態就直接完成，不用按按鈕) */
+        function autoLine(o) {
+            var done = false;
+            function onMsg(ev) {
+                if (ev.origin !== WRAP_ORIGIN || done) return;
+                var d = ev.data || {};
+                if (d.type === 'tts-google-credential' && d.provider === 'line' && d.credential) {
+                    done = true; window.removeEventListener('message', onMsg);
+                    opts = o || {}; continueWith({ credential: d.credential, provider: 'line' });
+                }
+            }
+            window.addEventListener('message', onMsg);
+            try { window.top.postMessage({ type: 'tts-line-auto' }, WRAP_ORIGIN); } catch (e) { }
+            setTimeout(function () { window.removeEventListener('message', onMsg); }, 15000);
+        }
+
+        return { goWrap: goWrap, start: start, resume: resume, autoLine: autoLine, showMe: showMe, cancel: function () { close(); if (opts.onCancel) opts.onCancel(); }, submitApply: submitApply, buttonHtml: buttonHtml, requestCredential: requestCredential };
+    })();
+</script>
