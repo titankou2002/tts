@@ -1,5 +1,15 @@
 # 智慧物流系統開發進度日誌
 
+## [2026-10-06] V43.30 帳號申請通知改發高雅瓷私密專區 + 本機 git 修復
+
+### 1. 帳號申請通知 (`Accounts.js`)
+- 新增 `ACCOUNT_NOTIFY_BRANCH = '高雅瓷'` 與 `_accountNotifyChat_()`；`_notifyAccountRequest_`（核准/拒絕按鈕）與 `_notifyAccountEvent_` 一律發高雅瓷群組，不再依分公司分流（鈦傳速、漢樺原本會退回私訊老闆）。
+- 部署：GAS version 751，主 Web App redeploy @751。
+
+### 2. git 修復
+- GAS 現行原始碼補進 GitHub（commit `dca403d`），本機 repo 清鎖檔、對齊 origin/main、還原 0 byte 檔案、重複檔移到 `_重複檔備份_20261006/`。
+- 詳細步驟與注意事項見 `PROGRESS.md` 的 V43.30 段落。
+
 ## [2026-06-01] 結案回傳補強與成功頁資料同步修正
 
 ### 1. `submitFinalDelivery()` 回傳結構補強 (`Code.js`)

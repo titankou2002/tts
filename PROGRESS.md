@@ -9,8 +9,14 @@
 - **需求**：鈦傳速、漢樺沒有自己的 Telegram 群組，帳號申請會退回私訊高弘治，老闆沒空時沒人能按核准。
 - **修法**（Accounts.js）：新增 `ACCOUNT_NOTIFY_BRANCH = '高雅瓷'` 與 `_accountNotifyChat_()`，`_notifyAccountRequest_`（附核准/拒絕按鈕）和 `_notifyAccountEvent_`（核准/停用等異動）全部改發高雅瓷群組（-5590086103，與到貨通知同一群），不再依分公司分流；抓不到群組 ID 才退回私訊（`ACCOUNT_FALLBACK_CHAT`）。審核權限不變：按的人仍須登入且是白名單「主管」。
 - **部署**：`clasp push -f` → version 751 → redeploy 主 Web App `AKfycbz3…` @750→@751。後端單改，bigt.cc 頁面不用動。
-- **git 修復**：這台電腦的 repo 被 Drive 同步弄壞（`.git/refs/remotes/origin/main.lock` 殘留、本機停在 V41.57 未推的 3 個 commit、多個檔案被清成 0 byte、產生大量「X 2.js」重複檔）。改在乾淨 clone 把 GAS 現行原始碼（Code/Auth/DispatchLogic/OcrEngine/Settings/Accounts/AuditLog/GoogleLogin/TtsVault/Index/Dashboard/DispatchSystem/Warehouse/WebDashboard/tracking/appsscript.json/.claspignore）補進 GitHub。
-- **注意**：repo 裡 `DRIVER.html / OS.html / QC.html / Analytics.html / approve.html / index.html` 是 **bigt.cc 外殼頁**，跟 GAS 同名檔（DRIVER/OS/QC/Analytics/Approve/Index）內容不同；Mac 檔名不分大小寫，`index.html` 與 `Index.html`、`approve.html` 與 `Approve.html` 會互撞。本機資料夾保留 GAS 版，這幾個外殼檔在本機 git 設 `skip-worktree`，改外殼頁請在另一份 clone 改。
+- **git 修復（完整過程）**：
+  1. **發現問題**：這台電腦的 repo 被 Drive 同步弄壞——`.git/refs/remotes/origin/main.lock` 從 10/1 殘留（fetch 失敗）、`origin/main` 參照遺失、本機停在 V41.57（3 個沒推的 commit）而 GitHub 已到 V43.x、約 50 個檔案被清成 0 byte（PROGRESS.md、各說明 MD、圖示、deploy.yml 等）、Drive 產生 66 個「X 2.js / X 3.json」重複檔。
+  2. **三邊比對**：`clasp pull` 到暫存區 → 本機 GAS 原始碼與線上 GAS HEAD 完全相同（最新）；GitHub 的 GAS 原始碼停在 V41.53，缺 Accounts.js / AuditLog.js / GoogleLogin.html / TtsVault.html。
+  3. **補進 GitHub**（commit `dca403d`）：在暫存區乾淨 clone 用 `git hash-object` + `update-index` 寫入（避開 Mac 大小寫互撞）GAS 現行原始碼 17 檔（Code/Auth/DispatchLogic/OcrEngine/Settings/Accounts/AuditLog/GoogleLogin/TtsVault/Index/Dashboard/DispatchSystem/Warehouse/WebDashboard/tracking/appsscript.json/.claspignore）；PROGRESS.md 由「PROGRESS 2.md」還原；deploy.yml 排除 GoogleLogin.html / TtsVault.html（GAS 樣板，不上傳 bigt.cc）。推送前已檢查無 Telegram token / API 金鑰。GitHub Actions FTP 部署 bigt.cc 成功。
+  4. **修本機**：舊本機 commit 打 tag `backup-local-V41.57` → 刪殘留鎖檔與壞掉的 `main-r` 參照 → `git fetch` → `git reset --mixed origin/main` → 確認被改的檔全是 0 byte 後 `git checkout -- .` 還原 → `git status` 乾淨、與 origin/main 同步。
+  5. **重複檔**：66 個「X 2 / X 3」移到 `_重複檔備份_20261006/`（未刪，確認不需要可整個刪）。測試用 Excel「鈦傳速物流派車神器 (3).xlsx / (3)_修正版.xlsx」與 `Warehouse.pwa-wrapper.backup.html.bak` 已移到 Mac 垃圾桶。
+  6. **本機防護**：`.git/info/exclude` 排除 `.clasprc.json`（含 OAuth token，絕不可 commit）、`Approve.html`、`_重複檔備份_*/`、`.DS_Store*`。
+- **注意（外殼頁同名檔）**：repo 裡 `DRIVER.html / OS.html / QC.html / Analytics.html / approve.html / index.html` 是 **bigt.cc 外殼頁**，跟 GAS 同名檔（DRIVER/OS/QC/Analytics/Approve/Index）內容不同；Mac 檔名不分大小寫，`index.html`↔`Index.html`、`approve.html`↔`Approve.html` 會互撞。本機資料夾保留 GAS 版，這 6 個外殼檔在本機 git 設 `skip-worktree`——**改外殼頁請在另一份 clone 改再 push，不要直接 `git add` 本機這幾個檔**，否則會用 GAS 版蓋掉 bigt.cc 外殼頁。
 - **缺口**：V42.x ～ V43.29 另一台電腦沒有寫進度紀錄，只有 git log / GAS 版本描述可查。
 
 ---
