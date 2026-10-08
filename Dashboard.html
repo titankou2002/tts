@@ -640,7 +640,9 @@
             align-items: flex-start;
             justify-content: flex-start;
             box-sizing: border-box;
-            padding: 16px;
+            /* 上方多留 55px：bigt.cc 外殼頁 (OS.html) 用 margin-top:-55px 把 iframe 往上推來遮 GAS 提示橫幅，
+               沒有橫幅時 (擁有者登入) 系統畫面最上面 55px 其實在螢幕外，標題列放那裡會看不到 */
+            padding: 71px 16px 16px;
             overflow: auto;
             background: rgba(2, 6, 23, 0.55);
             animation: previewFadeIn 0.15s ease-out;
@@ -5063,7 +5065,7 @@
             const head = overlay.querySelector('.pv-head');
             const headH = head ? head.offsetHeight : 46;
             const maxW = window.innerWidth - 32 - 16 - 2;          // 外距 16×2、內距 8×2、邊框
-            const maxH = window.innerHeight - 32 - headH - 16 - 2;
+            const maxH = window.innerHeight - 71 - 16 - headH - 16 - 2; // 上外距 71 (含外殼頁遮掉的 55)、下外距 16
             const r = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
             img.style.width = Math.max(1, Math.floor(img.naturalWidth * r)) + 'px';
             img.style.height = Math.max(1, Math.floor(img.naturalHeight * r)) + 'px';
