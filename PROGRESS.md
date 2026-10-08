@@ -1,6 +1,18 @@
 # 鈦傳速智慧物流系統 - 開發進度
 
-**最後更新：2026-10-08（V43.31，GAS version 752 / 主 Web App @752）**
+**最後更新：2026-10-08（V43.32，GAS version 753 / 主 Web App @753）**
+
+---
+
+## 2026-10-08 V43.32 — 簽收單預覽：按標題列/拖移不再關閉
+
+- **現象**：V43.31 後框中框已修好，但按預覽視窗上方的標題列（想拖移）視窗就關掉。
+- **根因**：`<div id="imgPreviewOverlay" onclick="closePreview()">`——整個預覽視窗本身綁了關閉，只有圖片和按鈕有 `stopPropagation`，所以點標題列、圖片周圍的深色區都會關閉。
+- **修法**（Dashboard.html）：
+  - 拿掉 overlay 上的 `onclick="closePreview()"`；點視窗外面關閉仍由 `previewImage` 的 `closeOnOutsideClick` 處理，ESC 也照樣關。
+  - 拖移放開那一下的 click 若落在視窗外，用 `__previewJustDragged`（300ms）略過，不誤關。
+  - `initPreviewDraggable` 的 document mousemove/mouseup 只綁一次（原本每開一次預覽就多疊一組監聽）；按下載/關閉鈕不觸發拖移。
+- **部署**：version 753 → redeploy 主 Web App @753；`exec?p=srcline&f=Dashboard` 確認含新碼、overlay 已無 onclick，5 個 `<script>` 皆 `node --check` 通過。
 
 ---
 

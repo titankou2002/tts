@@ -4969,6 +4969,7 @@
                 const closeOnOutsideClick = (e) => {
                     const overlayEl = document.getElementById('imgPreviewOverlay');
                     if (overlayEl && overlayEl.style.display === 'flex') {
+                        if (window.__previewJustDragged) return;
                         if (!overlayEl.contains(e.target)) {
                             closePreview();
                             document.removeEventListener('click', closeOnOutsideClick);
@@ -5023,16 +5024,20 @@
             const handle = document.getElementById('previewDragHandle');
             const overlay = document.getElementById('imgPreviewOverlay');
             if (!handle || !overlay) return;
+            if (window.__previewDragBound) { handle.addEventListener('mousedown', window.__previewDragStart); return; }
+            window.__previewDragBound = true;
 
             let isDragging = false, offset = [0, 0];
-            handle.addEventListener('mousedown', (e) => {
+            window.__previewDragStart = (e) => {
+                if (e.target.closest('button')) return; // 按下載/關閉鈕不算拖移
                 isDragging = true;
                 overlay.style.transform = 'none'; // 移除 transform 改用絕對座標
                 offset = [
                     overlay.offsetLeft - e.clientX,
                     overlay.offsetTop - e.clientY
                 ];
-            });
+            };
+            handle.addEventListener('mousedown', window.__previewDragStart);
 
             document.addEventListener('mousemove', (e) => {
                 if (!isDragging) return;
@@ -5045,6 +5050,9 @@
             document.addEventListener('mouseup', () => {
                 if (isDragging) {
                     isDragging = false;
+                    // 拖完放開的那一下 click 可能落在視窗外，別被當成「點外面關閉」
+                    window.__previewJustDragged = true;
+                    setTimeout(() => { window.__previewJustDragged = false; }, 300);
                     // 記錄位置
                     localStorage.setItem('img_preview_pos', JSON.stringify({
                         top: overlay.offsetTop,
@@ -7980,7 +7988,8 @@
          */
         /* 🚚 派遣系統邏輯已遷移至 DispatchSystem.html */
     </script>
-    <div id="imgPreviewOverlay" onclick="closePreview()">
+    <!-- V43.31: 拿掉 onclick=closePreview()，否則按標題列/拖移都會關閉；點視窗外面關閉由 previewImage 的 closeOnOutsideClick 處理 -->
+    <div id="imgPreviewOverlay">
         <span class="preview-close">&times;</span>
         <img src="" onclick="event.stopPropagation()">
     </div>
