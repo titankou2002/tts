@@ -1,6 +1,22 @@
 # 鈦傳速智慧物流系統 - 開發進度
 
-**最後更新：2026-10-06（V43.30，GAS version 751 / 主 Web App @751）**
+**最後更新：2026-10-08（V43.31，GAS version 752 / 主 Web App @752）**
+
+---
+
+## 2026-10-08 V43.31 — 戰情室簽收單預覽：框中框修復、下載可用並自動命名
+
+- **現象**：戰情室點已完成訂單看簽收單，照片外面被框了兩層（標題/地址/已送達章重複）；「⬇ 下載」按了沒反應，右鍵也存不了。
+- **根因**：
+  - 司機端結案時 `Index.html buildBeautifiedCanvas()` 已經把照片畫成 800×1600 的簽收單才上傳（`photo_sign`），戰情室 `Dashboard.html drawBeautifiedCanvas()` 又把這張「已經框好的圖」當原始照片再框一次。
+  - 下載鈕原本是 `<a href="drive.google.com/uc?export=download…" target="_blank">`，在 GAS iframe（又包在 bigt.cc OS.html 裡）打不開；預覽圖本身是 canvas 產生的 data URL，跟 Drive 連結也對不上。
+- **修法**（Dashboard.html）：
+  - `drawBeautifiedCanvas`：圖片若是 800×1600（司機端已框好）直接顯示，不再重畫；舊的原始照片才照舊加框。
+  - 新增 `downloadPreviewImage()`：data URL 直接轉 blob 存檔；Drive 圖先用 `getSignPhotoBase64` 取內容再存檔（不靠 Drive 下載網址）。
+  - 新增 `receiptFileName(task)`：檔名 `客戶_YYYYMMDD_地址_分公司.jpg`，地址括號改成 `-`、去掉 `\ / : * ? " < > |` 與空白。例：`顧佳_20261008_新北市五股區壟鉤路7-5號-中誌加工_安帝嘉.jpg`。
+  - `previewImage(url, fileName)` 多帶檔名參數；拿掉不再使用的 Drive 下載網址。含 `?` 的 regex 改 `new RegExp()` 字串建構（避開 GAS 精簡器）。
+- **部署**：`clasp push -f` → version 752 → redeploy 主 Web App @752。`exec?p=srcline&f=Dashboard` 抓線上原始碼確認含新函式，5 個 `<script>` 皆 `node --check` 通過（剛部署完約 1 分鐘內還會抓到舊版快取）。
+- **未驗證**：需管理端登入，實際下載未在瀏覽器實測；右鍵另存在 iframe 內仍可能被瀏覽器限制，請用「⬇ 下載」鈕。
 
 ---
 

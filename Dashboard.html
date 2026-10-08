@@ -4916,7 +4916,9 @@
         }
 
         function renderAllTasks() { return; }
-        function previewImage(url) {
+        // V43.31: 預覽視窗目前顯示的圖 (下載用)
+        let __previewImg = { url: '', fileId: null, fileName: '' };
+        function previewImage(url, fileName) {
             if (!url || url.trim() === "" || url === "null") {
                 showToast("⚠️ 此訂單目前沒有關聯的圖片");
                 return;
@@ -4939,20 +4941,18 @@
                 overlay.style.transform = 'translateX(-50%)';
             }
 
-            // V37.20: 產生下載網址（Drive uc export=download 格式）
-            let dlUrl = url;
+            // V43.31: 取 Drive fileId 給下載用 (下載改走 downloadPreviewImage)
             const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/]+)')); // GAS 精簡器會被含 [?& 的 regex 字面值弄亂，改用字串建構
             const ucm  = url.match(new RegExp('[?&]id=([^&]+)'));
             const fileId = lh3m ? lh3m[1] : (ucm ? ucm[1] : null);
-            // 注意：GAS HtmlService 的精簡器會把緊接在 regex 後面、含 "//" 的字串當註解截斷 (實測)，此處刻意拆開避免出現連續兩個斜線
-            if (fileId) dlUrl = 'https:' + '/' + '/drive.google.com/uc?export=download&id=' + fileId;
+            __previewImg = { url: url, fileId: fileId, fileName: fileName || '' };
 
             overlay.innerHTML = `
                 <div id="previewDragHandle" style="width:100%; background:rgba(56,189,248,0.15); padding:8px 15px; border-bottom:1px solid rgba(56,189,248,0.2); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; cursor: move;">
                     <span style="color:#38bdf8; font-size:12px; font-weight:900; letter-spacing:1px; pointer-events:none;">🖼️ 簽收單預覽 (可拖移視窗)<\/span>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <a href="${dlUrl}" target="_blank" onclick="event.stopPropagation()"
-                           style="font-size:12px; font-weight:900; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.5); padding:3px 10px; border-radius:6px; text-decoration:none; cursor:pointer;">⬇ 下載<\/a>
+                        <button onclick="event.stopPropagation(); downloadPreviewImage()"
+                           style="font-size:12px; font-weight:900; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">⬇ 下載<\/button>
                         <button onclick="closePreview()" style="font-size:12px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">✕ 關閉<\/button>
                     <\/div>
                 <\/div>
@@ -4979,6 +4979,44 @@
                 };
                 document.addEventListener('click', closeOnOutsideClick);
             }, 100);
+        }
+
+        // V43.31: 簽收單檔名：客戶_YYYYMMDD_地址_分公司 (地址括號改成 -，去掉檔名不能用的字元)
+        function receiptFileName(task) {
+            const clean = v => String(v || '').trim()
+                .replace(/[（(]/g, '-').replace(/[）)]/g, '')
+                .replace(new RegExp('[\\\\/:*?"<>|\\s]+', 'g'), '-')
+                .replace(/-{2,}/g, '-').replace(/^-|-$/g, ''); // 含 ? 的 regex 用字串建構，避開 GAS 精簡器
+            const ymd = String(task.date || '').replace(/[^0-9]/g, '').substring(0, 8);
+            return [clean(task.customer), ymd, clean(task.address), clean(task.branch)].filter(Boolean).join('_') + '.jpg';
+        }
+
+        // V43.31: 下載預覽中的圖。原本 <a href=Drive 下載網址> 在 GAS iframe 裡打不開；改成拿到圖檔內容後用 blob 存檔，檔名可自訂
+        function downloadPreviewImage() {
+            const cur = __previewImg;
+            const name = cur.fileName || ('簽收單_' + Date.now() + '.jpg');
+            const save = dataUrl => {
+                try {
+                    const parts = dataUrl.split(',');
+                    const mime = (parts[0].match(new RegExp(':(.*?);')) || [])[1] || 'image/jpeg';
+                    const bin = atob(parts[1]);
+                    const arr = new Uint8Array(bin.length);
+                    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                    const blobUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
+                    const a = document.createElement('a');
+                    a.href = blobUrl; a.download = name;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                    showToast('⬇ 已下載：' + name);
+                } catch (e) { showToast('⚠️ 下載失敗：' + e.message); }
+            };
+            if (cur.url.indexOf('data:') === 0) { save(cur.url); return; }
+            if (!cur.fileId) { window.open(cur.url, '_blank'); return; }
+            showToast('⬇ 準備下載…');
+            google.script.run
+                .withSuccessHandler(res => { if (res && res.success) save(res.data); else showToast('⚠️ 下載失敗：' + ((res && res.error) || '')); })
+                .withFailureHandler(err => showToast('⚠️ 下載失敗：' + (err && err.message || err)))
+                .getSignPhotoBase64(cur.fileId, ATOKEN());
         }
 
         function initPreviewDraggable() {
@@ -5435,7 +5473,8 @@
             if (lh3m) fileId = lh3m[1];
             else if (ucm)  fileId = ucm[1];
 
-            if (!fileId) { previewImage(normalizeDriveUrl(url)); return; }
+            const fname = receiptFileName(task);
+            if (!fileId) { previewImage(normalizeDriveUrl(url), fname); return; }
 
             showToast('🎨 載入簽收單中…');
             google.script.run
@@ -5443,10 +5482,10 @@
                     if (res && res.success) {
                         drawBeautifiedCanvas(task, res.data);
                     } else {
-                        previewImage(normalizeDriveUrl(url));
+                        previewImage(normalizeDriveUrl(url), fname);
                     }
                 })
-                .withFailureHandler(function() { previewImage(normalizeDriveUrl(url)); })
+                .withFailureHandler(function() { previewImage(normalizeDriveUrl(url), fname); })
                 .getSignPhotoBase64(fileId, ATOKEN());
         }
 
@@ -5456,7 +5495,11 @@
             const ctx = canvas.getContext('2d');
             const img = new Image();
 
+            const fname = receiptFileName(task);
+
             img.onload = function() {
+                // V43.31: 司機端結案時已經畫好簽收單 (buildBeautifiedCanvas，800x1600) 才上傳，這裡再框一次會變成框中框 → 直接顯示
+                if (img.width === 800 && img.height === 1600) { previewImage(photoDataUrl, fname); return; }
                 try {
                     const branch = String(task.branch || '').trim();
                     let themeColor = '#1e3a5f';
@@ -5543,13 +5586,13 @@
                     ctx.fillText('VERIFIED', 0, 30);
                     ctx.restore();
 
-                    previewImage(canvas.toDataURL('image/jpeg', 0.9));
+                    previewImage(canvas.toDataURL('image/jpeg', 0.9), fname);
                 } catch(e) {
                     console.error('BeautifyCanvas err:', e);
-                    previewImage(normalizeDriveUrl(task.signPhoto));
+                    previewImage(normalizeDriveUrl(task.signPhoto), fname);
                 }
             };
-            img.onerror = function() { previewImage(normalizeDriveUrl(task.signPhoto)); };
+            img.onerror = function() { previewImage(normalizeDriveUrl(task.signPhoto), fname); };
             img.src = photoDataUrl;
         }
 
