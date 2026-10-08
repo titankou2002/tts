@@ -1,6 +1,17 @@
 # 鈦傳速智慧物流系統 - 開發進度
 
-**最後更新：2026-10-08（V43.34，GAS version 755 / 主 Web App @755）**
+**最後更新：2026-10-08（V43.35，GAS version 756 / 主 Web App @756）**
+
+---
+
+## 2026-10-08 V43.35 — 預覽卡片等比例縮小、標題列不再被推出畫面；拿掉「新功能指南」
+
+- **現象**：在 1920×1080 螢幕（戰情室實際可視高度約 850px）看直式簽收單，卡片比畫面高，視窗又是垂直置中 → 上方標題列（切換/下載/關閉）被推到畫面外看不到。
+- **修法**（Dashboard.html）：
+  - 新增 `fitPreviewImg()`：圖載入後依 `innerWidth/innerHeight` 扣掉外距、標題列實際高度，算出縮放比例，直接設定 `<img>` 寬高（等比例，不放大）；視窗大小改變時重算。不再依賴 CSS `calc(100vh …)`（實測在正式頁沒生效）。
+  - `#imgPreviewOverlay` 改 `align-items:flex-start` + `padding:16px` + `overflow:auto`，`.pv-card` 用 `margin:auto` 置中——內容就算比畫面大，標題列也一定留在畫面內。
+  - 拿掉標題列「💡 新功能指南」按鈕，也拿掉第一次進站自動跳出指南（`checkAutoShowNewFeatureGuideModal` 不再掛 DOMContentLoaded）；指南視窗程式碼保留未刪。
+- **驗證**：本機測試頁 1440×853 開 800×1600 簽收單：卡片 top 16px、bottom 837px，標題列在畫面內。部署 version 756 → @756，`srcline` 確認含 `fitPreviewImg`、指南按鈕已移除，5 個 `<script>` `node --check` 通過。
 
 ---
 
