@@ -631,25 +631,105 @@
             border: none !important;
         }
 
+        /* V43.33: 圖片預覽改成置中視窗，大小跟著圖片比例走 (直式簽收單不再留一大片空白) */
         #imgPreviewOverlay {
             position: fixed;
-            top: 60px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 92%;
-            max-width: 900px; /* V41.20: 銷貨單是橫式，520px 會被切 */
-            max-height: 88vh;
-            background: rgba(15, 23, 42, 0.97);
-            backdrop-filter: blur(15px);
-            border: 2px solid rgba(56, 189, 248, 0.6);
-            border-radius: 16px;
+            inset: 0;
             z-index: 99999;
             display: none;
-            flex-direction: column;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-            overflow: hidden;
-            animation: previewFadeIn 0.2s ease-out;
+            align-items: center;
+            justify-content: center;
+            background: rgba(2, 6, 23, 0.55);
+            animation: previewFadeIn 0.15s ease-out;
         }
+        #imgPreviewOverlay .pv-card {
+            display: flex;
+            flex-direction: column;
+            min-width: 320px;
+            max-width: calc(100vw - 32px);
+            max-height: calc(100vh - 32px);
+            background: #0f172a;
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+        }
+        #imgPreviewOverlay .pv-head {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-sizing: border-box;
+            padding: 8px 10px 8px 14px;
+            background: rgba(56, 189, 248, 0.1);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+            flex-shrink: 0;
+        }
+        #imgPreviewOverlay .pv-title {
+            flex: 1;
+            min-width: 0;
+            color: #e2e8f0;
+            font-size: 13px;
+            font-weight: 800;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #imgPreviewOverlay .pv-btn {
+            flex-shrink: 0;
+            font-size: 12px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            background: transparent;
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            color: #cbd5e1;
+        }
+        #imgPreviewOverlay .pv-btn:hover { background: rgba(148, 163, 184, 0.15); }
+        #imgPreviewOverlay .pv-btn.dl { color: #fbbf24; border-color: rgba(251, 191, 36, 0.5); }
+        #imgPreviewOverlay .pv-btn.close { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }
+        #imgPreviewOverlay .pv-body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            min-height: 160px;
+            overflow: auto;
+        }
+        #imgPreviewOverlay .pv-body img {
+            display: block;
+            width: auto;
+            height: auto;
+            max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 32px - 46px - 16px);
+            border-radius: 6px;
+        }
+        #imgPreviewOverlay .pv-loading { color: #94a3b8; font-size: 13px; font-weight: 700; padding: 40px 60px; }
+        .pv-menu {
+            position: fixed;
+            z-index: 100000;
+            background: #1e293b;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 4px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+        }
+        .pv-menu button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            border: 0;
+            color: #e2e8f0;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 7px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .pv-menu button:hover { background: rgba(56, 189, 248, 0.2); }
+        .pv-menu small { display: block; color: #94a3b8; font-weight: 500; margin-top: 2px; }
 
         @keyframes previewFadeIn {
             from {
@@ -661,16 +741,6 @@
             }
         }
 
-        #imgPreviewOverlay img {
-            max-width: 100%;
-            width: auto;
-            height: auto;
-            max-height: calc(88vh - 60px);
-            border-radius: 4px;
-            display: block;
-            object-fit: contain;
-            margin: 0 auto;
-        }
 
 
         .view-tab:hover {
@@ -713,16 +783,6 @@
             font-family: 'Rajdhani', sans-serif;
         }
 
-        #imgPreviewOverlay img {
-            max-width: 100%;
-            width: auto;
-            height: auto;
-            max-height: calc(88vh - 60px);
-            border-radius: 4px;
-            display: block;
-            object-fit: contain;
-            margin: 0 auto;
-        }
 
         .preview-close {
             position: absolute;
@@ -4916,70 +4976,87 @@
         }
 
         function renderAllTasks() { return; }
-        // V43.31: 預覽視窗目前顯示的圖 (下載用)
-        let __previewImg = { url: '', fileId: null, fileName: '' };
-        function previewImage(url, fileName) {
-            if (!url || url.trim() === "" || url === "null") {
-                showToast("⚠️ 此訂單目前沒有關聯的圖片");
+        // V43.33: 圖片預覽重新設計
+        //  - 點站點立刻開視窗 (先顯示「載入中」)，圖片到了再補上；連點別站時，晚回來的舊圖不會蓋掉新的 (seq)
+        //  - 視窗置中、大小跟著圖片比例；點暗色背景 / ESC / 關閉鈕 關閉
+        //  - 標題列：客戶名｜地圖定位｜下載｜關閉；右鍵選單也用同一個檔名下載
+        let __pv = { seq: 0, url: '', fileId: null, fileName: '', taskId: null, openedAt: 0 };
+
+        function openPreviewShell(title, taskId) {
+            const overlay = document.getElementById('imgPreviewOverlay');
+            if (!overlay) return 0;
+            closePreviewMenu();
+            const seq = ++__pv.seq;
+            __pv = { seq: seq, url: '', fileId: null, fileName: '', taskId: taskId || null, openedAt: Date.now() };
+            overlay.innerHTML = `
+                <div class="pv-card">
+                    <div class="pv-head">
+                        <span class="pv-title">${escapeHTML(title || '圖片預覽')}<\/span>
+                        ${taskId ? '<button class="pv-btn" onclick="previewLocate()">地圖定位<\/button>' : ''}
+                        <button class="pv-btn dl" onclick="downloadPreviewImage()">下載<\/button>
+                        <button class="pv-btn close" onclick="closePreview()">關閉<\/button>
+                    <\/div>
+                    <div class="pv-body"><div class="pv-loading">載入中…<\/div><\/div>
+                <\/div>`;
+            overlay.style.display = 'flex';
+            return seq;
+        }
+
+        function setPreviewImage(seq, url, fileName) {
+            if (seq !== __pv.seq) return; // 使用者已經關掉或改看別站
+            const overlay = document.getElementById('imgPreviewOverlay');
+            const body = overlay && overlay.querySelector('.pv-body');
+            if (!body) return;
+            if (!url || String(url).trim() === '' || url === 'null') {
+                body.innerHTML = '<div class="pv-loading">此訂單目前沒有關聯的圖片<\/div>';
                 return;
             }
-
-            const overlay = document.getElementById('imgPreviewOverlay');
-            if (!overlay) return;
-
-            // 恢復上次位置
-            const savedPos = localStorage.getItem('img_preview_pos');
-            if (savedPos) {
-                try {
-                    const pos = JSON.parse(savedPos);
-                    overlay.style.top = pos.top + 'px';
-                    overlay.style.left = pos.left + 'px';
-                } catch (e) { }
-            } else {
-                // 預設置中
-                overlay.style.left = '50%';
-                overlay.style.transform = 'translateX(-50%)';
-            }
-
-            // V43.31: 取 Drive fileId 給下載用 (下載改走 downloadPreviewImage)
             const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/]+)')); // GAS 精簡器會被含 [?& 的 regex 字面值弄亂，改用字串建構
             const ucm  = url.match(new RegExp('[?&]id=([^&]+)'));
-            const fileId = lh3m ? lh3m[1] : (ucm ? ucm[1] : null);
-            __previewImg = { url: url, fileId: fileId, fileName: fileName || '' };
+            __pv.url = url;
+            __pv.fileId = lh3m ? lh3m[1] : (ucm ? ucm[1] : null);
+            __pv.fileName = fileName || '';
+            body.innerHTML = '';
+            const img = document.createElement('img');
+            img.alt = fileName || '';
+            img.oncontextmenu = (e) => { e.preventDefault(); showPreviewMenu(e.clientX, e.clientY); };
+            img.onerror = () => { if (seq === __pv.seq) body.innerHTML = '<div class="pv-loading">圖片載入失敗<\/div>'; };
+            img.src = url;
+            body.appendChild(img);
+        }
 
-            overlay.innerHTML = `
-                <div id="previewDragHandle" style="width:100%; background:rgba(56,189,248,0.15); padding:8px 15px; border-bottom:1px solid rgba(56,189,248,0.2); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; cursor: move;">
-                    <span style="color:#38bdf8; font-size:12px; font-weight:900; letter-spacing:1px; pointer-events:none;">🖼️ 簽收單預覽 (可拖移視窗)<\/span>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        <button onclick="event.stopPropagation(); downloadPreviewImage()"
-                           style="font-size:12px; font-weight:900; color:#fbbf24; background:rgba(251,191,36,0.15); border:1px solid rgba(251,191,36,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">⬇ 下載<\/button>
-                        <button onclick="closePreview()" style="font-size:12px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.5); padding:3px 10px; border-radius:6px; cursor:pointer;">✕ 關閉<\/button>
-                    <\/div>
-                <\/div>
-                <div style="flex:1; width:100%; min-width:0; overflow:auto; background:#0f172a; padding:10px; display:block;">
-                    <img src="${url}" onclick="event.stopPropagation()"
-                         style="width:100%; max-width:100%; height:auto; display:block; border-radius:8px; object-fit:contain;">
-                <\/div>
-            `;
-            overlay.style.display = 'flex';
-            initPreviewDraggable();
+        // 舊呼叫點相容：直接給圖片網址
+        function previewImage(url, fileName) {
+            setPreviewImage(openPreviewShell('圖片預覽', null), url, fileName);
+        }
 
-            // 點擊外圍關閉邏輯
-            setTimeout(() => {
-                const closeOnOutsideClick = (e) => {
-                    const overlayEl = document.getElementById('imgPreviewOverlay');
-                    if (overlayEl && overlayEl.style.display === 'flex') {
-                        if (window.__previewJustDragged) return;
-                        if (!overlayEl.contains(e.target)) {
-                            closePreview();
-                            document.removeEventListener('click', closeOnOutsideClick);
-                        }
-                    } else {
-                        document.removeEventListener('click', closeOnOutsideClick);
-                    }
-                };
-                document.addEventListener('click', closeOnOutsideClick);
-            }, 100);
+        // 開窗後 0.4 秒內點到背景不關 (避免雙擊站點時第二下直接把剛開的視窗關掉)
+        function previewBackdropClick() {
+            if (Date.now() - __pv.openedAt < 400) return;
+            closePreview();
+        }
+
+        function previewLocate() {
+            const id = __pv.taskId;
+            closePreview();
+            if (id) focusTaskOnMap(id);
+        }
+
+        function showPreviewMenu(x, y) {
+            closePreviewMenu();
+            const menu = document.createElement('div');
+            menu.className = 'pv-menu';
+            menu.id = 'pvMenu';
+            menu.innerHTML = `<button onclick="closePreviewMenu(); downloadPreviewImage()">下載圖片<small>${escapeHTML(__pv.fileName || '')}<\/small><\/button>`;
+            document.body.appendChild(menu);
+            const r = menu.getBoundingClientRect();
+            menu.style.left = Math.min(x, window.innerWidth - r.width - 8) + 'px';
+            menu.style.top = Math.min(y, window.innerHeight - r.height - 8) + 'px';
+            setTimeout(() => document.addEventListener('click', closePreviewMenu, { once: true }), 0);
+        }
+        function closePreviewMenu() {
+            const m = document.getElementById('pvMenu');
+            if (m) m.remove();
         }
 
         // V43.31: 簽收單檔名：客戶_YYYYMMDD_地址_分公司 (地址括號改成 -，去掉檔名不能用的字元)
@@ -4992,9 +5069,10 @@
             return [clean(task.customer), ymd, clean(task.address), clean(task.branch)].filter(Boolean).join('_') + '.jpg';
         }
 
-        // V43.31: 下載預覽中的圖。原本 <a href=Drive 下載網址> 在 GAS iframe 裡打不開；改成拿到圖檔內容後用 blob 存檔，檔名可自訂
+        // V43.31: 下載預覽中的圖：拿到圖檔內容後用 blob 存檔 (Drive 下載網址在 GAS iframe 裡打不開)，檔名可自訂
         function downloadPreviewImage() {
-            const cur = __previewImg;
+            const cur = __pv;
+            if (!cur.url) { showToast('圖片還在載入中'); return; }
             const name = cur.fileName || ('簽收單_' + Date.now() + '.jpg');
             const save = dataUrl => {
                 try {
@@ -5008,62 +5086,23 @@
                     a.href = blobUrl; a.download = name;
                     document.body.appendChild(a); a.click(); a.remove();
                     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
-                    showToast('⬇ 已下載：' + name);
-                } catch (e) { showToast('⚠️ 下載失敗：' + e.message); }
+                    showToast('已下載：' + name);
+                } catch (e) { showToast('下載失敗：' + e.message); }
             };
             if (cur.url.indexOf('data:') === 0) { save(cur.url); return; }
             if (!cur.fileId) { window.open(cur.url, '_blank'); return; }
-            showToast('⬇ 準備下載…');
+            showToast('準備下載…');
             google.script.run
-                .withSuccessHandler(res => { if (res && res.success) save(res.data); else showToast('⚠️ 下載失敗：' + ((res && res.error) || '')); })
-                .withFailureHandler(err => showToast('⚠️ 下載失敗：' + (err && err.message || err)))
+                .withSuccessHandler(res => { if (res && res.success) save(res.data); else showToast('下載失敗：' + ((res && res.error) || '')); })
+                .withFailureHandler(err => showToast('下載失敗：' + (err && err.message || err)))
                 .getSignPhotoBase64(cur.fileId, ATOKEN());
         }
 
-        function initPreviewDraggable() {
-            const handle = document.getElementById('previewDragHandle');
-            const overlay = document.getElementById('imgPreviewOverlay');
-            if (!handle || !overlay) return;
-            if (window.__previewDragBound) { handle.addEventListener('mousedown', window.__previewDragStart); return; }
-            window.__previewDragBound = true;
-
-            let isDragging = false, offset = [0, 0];
-            window.__previewDragStart = (e) => {
-                if (e.target.closest('button')) return; // 按下載/關閉鈕不算拖移
-                isDragging = true;
-                overlay.style.transform = 'none'; // 移除 transform 改用絕對座標
-                offset = [
-                    overlay.offsetLeft - e.clientX,
-                    overlay.offsetTop - e.clientY
-                ];
-            };
-            handle.addEventListener('mousedown', window.__previewDragStart);
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                const newLeft = e.clientX + offset[0];
-                const newTop = e.clientY + offset[1];
-                overlay.style.left = newLeft + 'px';
-                overlay.style.top = newTop + 'px';
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (isDragging) {
-                    isDragging = false;
-                    // 拖完放開的那一下 click 可能落在視窗外，別被當成「點外面關閉」
-                    window.__previewJustDragged = true;
-                    setTimeout(() => { window.__previewJustDragged = false; }, 300);
-                    // 記錄位置
-                    localStorage.setItem('img_preview_pos', JSON.stringify({
-                        top: overlay.offsetTop,
-                        left: overlay.offsetLeft
-                    }));
-                }
-            });
-        }
-
         function closePreview() {
-            document.getElementById('imgPreviewOverlay').style.display = 'none';
+            __pv.seq++; // 還在路上的圖片回來也不再顯示
+            closePreviewMenu();
+            const overlay = document.getElementById('imgPreviewOverlay');
+            if (overlay) { overlay.style.display = 'none'; overlay.innerHTML = ''; }
         }
 
         // V11.10: Hover Sync - 懸停任務→地圖高亮
@@ -5415,23 +5454,24 @@
             return !!(na && nb && (na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1));
         }
 
-        // V41.20: 站點 單擊 = 圖片預覽 (已送達→簽收單 / 未送達→銷貨單)，雙擊 = 地圖定位
-        let __itinClickTimer = null;
-        function itinPointClick(id) {
-            if (__itinClickTimer) {
-                clearTimeout(__itinClickTimer); __itinClickTimer = null;
-                focusTaskOnMap(id);
-                return;
-            }
-            __itinClickTimer = setTimeout(() => { __itinClickTimer = null; showTaskPreview(id); }, 260);
-        }
+        // V43.33: 站點 點一下 = 立刻開圖片預覽 (已送達→簽收單 / 未送達→銷貨單)，視窗裡有「地圖定位」；
+        //         沒有圖片的站直接在地圖上定位。拿掉原本「單擊等 0.26 秒判斷是不是雙擊」的延遲
+        function itinPointClick(id) { showTaskPreview(id); }
         function showTaskPreview(id) {
             const task = allTasks.find(t => String(t.id) === String(id));
             if (!task) return;
             closeETABubble();
-            if (task.status === '已完成' && task.signPhoto) { showBeautifiedReceipt(task); return; }
-            if (task.thumbnail) { previewImage(task.thumbnail); return; }
-            showToast("ℹ️ 此訂單暫無圖片資料（雙擊可在地圖上定位）");
+            const fname = receiptFileName(task);
+            if (task.status === '已完成' && task.signPhoto) {
+                showBeautifiedReceipt(task, openPreviewShell((task.customer || '客戶') + '｜簽收單', task.id));
+                return;
+            }
+            if (task.thumbnail) {
+                setPreviewImage(openPreviewShell((task.customer || '客戶') + '｜銷貨單', task.id), task.thumbnail, fname);
+                return;
+            }
+            focusTaskOnMap(id);
+            showToast('此訂單沒有圖片，已在地圖上定位');
         }
         function focusTaskOnMap(id) {
             const task = allTasks.find(t => String(t.id) === String(id));
@@ -5473,7 +5513,7 @@
         }
 
         // V37.22: 取得 fileId → GAS 轉 base64 → Canvas 畫美化框
-        function showBeautifiedReceipt(task) {
+        function showBeautifiedReceipt(task, seq) {
             const url = task.signPhoto || '';
             let fileId = null;
             const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/\\s]+)'));
@@ -5482,23 +5522,22 @@
             else if (ucm)  fileId = ucm[1];
 
             const fname = receiptFileName(task);
-            if (!fileId) { previewImage(normalizeDriveUrl(url), fname); return; }
+            if (!fileId) { setPreviewImage(seq, normalizeDriveUrl(url), fname); return; }
 
-            showToast('🎨 載入簽收單中…');
             google.script.run
                 .withSuccessHandler(function(res) {
                     if (res && res.success) {
-                        drawBeautifiedCanvas(task, res.data);
+                        drawBeautifiedCanvas(task, res.data, seq);
                     } else {
-                        previewImage(normalizeDriveUrl(url), fname);
+                        setPreviewImage(seq, normalizeDriveUrl(url), fname);
                     }
                 })
-                .withFailureHandler(function() { previewImage(normalizeDriveUrl(url), fname); })
+                .withFailureHandler(function() { setPreviewImage(seq, normalizeDriveUrl(url), fname); })
                 .getSignPhotoBase64(fileId, ATOKEN());
         }
 
         // V37.22: Canvas 繪製美化簽收單（到貨時間為主要資訊）
-        function drawBeautifiedCanvas(task, photoDataUrl) {
+        function drawBeautifiedCanvas(task, photoDataUrl, seq) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const img = new Image();
@@ -5507,7 +5546,7 @@
 
             img.onload = function() {
                 // V43.31: 司機端結案時已經畫好簽收單 (buildBeautifiedCanvas，800x1600) 才上傳，這裡再框一次會變成框中框 → 直接顯示
-                if (img.width === 800 && img.height === 1600) { previewImage(photoDataUrl, fname); return; }
+                if (img.width === 800 && img.height === 1600) { setPreviewImage(seq, photoDataUrl, fname); return; }
                 try {
                     const branch = String(task.branch || '').trim();
                     let themeColor = '#1e3a5f';
@@ -5594,13 +5633,13 @@
                     ctx.fillText('VERIFIED', 0, 30);
                     ctx.restore();
 
-                    previewImage(canvas.toDataURL('image/jpeg', 0.9), fname);
+                    setPreviewImage(seq, canvas.toDataURL('image/jpeg', 0.9), fname);
                 } catch(e) {
                     console.error('BeautifyCanvas err:', e);
-                    previewImage(normalizeDriveUrl(task.signPhoto), fname);
+                    setPreviewImage(seq, normalizeDriveUrl(task.signPhoto), fname);
                 }
             };
-            img.onerror = function() { previewImage(normalizeDriveUrl(task.signPhoto), fname); };
+            img.onerror = function() { setPreviewImage(seq, normalizeDriveUrl(task.signPhoto), fname); };
             img.src = photoDataUrl;
         }
 
@@ -7988,11 +8027,8 @@
          */
         /* 🚚 派遣系統邏輯已遷移至 DispatchSystem.html */
     </script>
-    <!-- V43.31: 拿掉 onclick=closePreview()，否則按標題列/拖移都會關閉；點視窗外面關閉由 previewImage 的 closeOnOutsideClick 處理 -->
-    <div id="imgPreviewOverlay">
-        <span class="preview-close">&times;</span>
-        <img src="" onclick="event.stopPropagation()">
-    </div>
+    <!-- V43.33: 圖片預覽 (內容由 openPreviewShell 產生；點暗色背景 / ESC / 關閉鈕 關閉) -->
+    <div id="imgPreviewOverlay" onclick="if (event.target === this) previewBackdropClick()"></div>
     <?!= include('GoogleLogin'); ?>
     <script>
         (function () {
