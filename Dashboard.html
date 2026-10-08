@@ -186,26 +186,32 @@
         }
 
         .cmd-btn {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            width: 36px;
-            height: 36px;
+            color: #94a3b8;
+            min-width: 56px;
+            height: 46px;
+            padding: 4px 6px;
             border-radius: 8px;
             cursor: pointer;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            gap: 3px;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
             transition: 0.2s;
         }
+        .cmd-btn svg { flex-shrink: 0; }
 
-        .cmd-btn:hover,
+        .cmd-btn:hover { background: rgba(255, 255, 255, 0.12); color: #e2e8f0; }
         .cmd-btn.active {
-            background: rgba(56, 189, 248, 0.3);
+            background: rgba(56, 189, 248, 0.22);
             border-color: var(--cyan);
             color: var(--cyan);
-            transform: translateY(-2px);
         }
 
         /* 司機進度列 */
@@ -2714,11 +2720,12 @@
         <div id="map-container">
             <div id="map" style="width:100%; height:100%;"></div>
             <div class="command-strip">
-                <button class="cmd-btn" id="cmdLabels" onclick="toggleMapLabels()" title="標籤">🏷️</button>
-                <button class="cmd-btn" id="cmdAM" onclick="toggleTodayAM()" title="上午">☀️</button>
-                <button class="cmd-btn" id="cmdPM" onclick="toggleTodayPM()" title="下午">🌤️</button>
-                <button class="cmd-btn" id="cmdTmr" onclick="toggleTmr()" title="未來訂單">📅</button>
-                <button class="cmd-btn" id="cmdBatchDl" onclick="toggleBatchDlMenu(event)" title="打包下載簽收單">📦</button>
+                <!-- V43.38: 圖示改 SVG + 下方中文；亮起 = 地圖上有顯示 -->
+                <button class="cmd-btn active" id="cmdLabels" onclick="toggleMapLabels()" title="地圖上每一站旁邊顯示「分公司字母 + 客戶名」小標籤（再按一次隱藏）"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg><span>客戶標籤</span></button>
+                <button class="cmd-btn active" id="cmdAM" onclick="toggleTodayAM()" title="顯示／隱藏今天「上午」時段的訂單"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span>今日上午</span></button>
+                <button class="cmd-btn active" id="cmdPM" onclick="toggleTodayPM()" title="顯示／隱藏今天「下午」時段的訂單"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 18a5 5 0 0 0-10 0"/><path d="M12 2v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/></svg><span>今日下午</span></button>
+                <button class="cmd-btn" id="cmdTmr" onclick="toggleTmr()" title="顯示／隱藏明天以後（未來日期）的訂單"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M10 16h6M13 13l3 3-3 3"/></svg><span>未來訂單</span></button>
+                <button class="cmd-btn" id="cmdBatchDl" onclick="toggleBatchDlMenu(event)" title="選分公司，把今天的簽收單一次打包下載"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8v13H3V8M1 3h22v5H1zM12 11v7M9 15l3 3 3-3"/></svg><span>打包下載</span></button>
             </div>
 
             <!-- V37.21: 打包下載分公司選單 -->
@@ -5599,6 +5606,9 @@
             const isOpen = menu.style.display !== 'none';
             menu.style.display = isOpen ? 'none' : 'block';
             if (!isOpen) {
+                // V43.38: 按鈕條變高了 (圖示+中文)，選單改貼在按鈕條正下方
+                const strip = document.querySelector('.command-strip');
+                if (strip) menu.style.top = (strip.offsetTop + strip.offsetHeight + 6) + 'px';
                 // 點選選單外側自動關閉
                 setTimeout(() => {
                     document.addEventListener('click', function _close() {
