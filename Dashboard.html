@@ -686,6 +686,9 @@
             color: #cbd5e1;
         }
         #imgPreviewOverlay .pv-btn:hover { background: rgba(148, 163, 184, 0.15); }
+        #imgPreviewOverlay .pv-tabs { display: flex; flex-shrink: 0; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; overflow: hidden; }
+        #imgPreviewOverlay .pv-tab { font-size: 12px; font-weight: 800; padding: 4px 10px; background: transparent; border: 0; color: #94a3b8; cursor: pointer; }
+        #imgPreviewOverlay .pv-tab.on { background: rgba(56, 189, 248, 0.25); color: #e0f2fe; }
         #imgPreviewOverlay .pv-btn.dl { color: #fbbf24; border-color: rgba(251, 191, 36, 0.5); }
         #imgPreviewOverlay .pv-btn.close { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }
         #imgPreviewOverlay .pv-body {
@@ -4982,16 +4985,20 @@
         //  - 標題列：客戶名｜地圖定位｜下載｜關閉；右鍵選單也用同一個檔名下載
         let __pv = { seq: 0, url: '', fileId: null, fileName: '', taskId: null, openedAt: 0 };
 
-        function openPreviewShell(title, taskId) {
+        // views: [{ label, url, name }]，多於一張時標題列出現切換鈕 (例：現場照片 / 銷貨單)
+        function openPreviewShell(title, taskId, views) {
             const overlay = document.getElementById('imgPreviewOverlay');
-            if (!overlay) return 0;
+            if (!overlay) return;
             closePreviewMenu();
-            const seq = ++__pv.seq;
-            __pv = { seq: seq, url: '', fileId: null, fileName: '', taskId: taskId || null, openedAt: Date.now() };
+            __pv = { seq: __pv.seq + 1, url: '', fileId: null, fileName: '', taskId: taskId || null, openedAt: Date.now(), views: views || [] };
+            const tabs = __pv.views.length > 1
+                ? '<div class="pv-tabs">' + __pv.views.map((v, i) => `<button class="pv-tab" data-i="${i}" onclick="previewShow(${i})">${escapeHTML(v.label)}<\/button>`).join('') + '<\/div>'
+                : '';
             overlay.innerHTML = `
                 <div class="pv-card">
                     <div class="pv-head">
                         <span class="pv-title">${escapeHTML(title || '圖片預覽')}<\/span>
+                        ${tabs}
                         ${taskId ? '<button class="pv-btn" onclick="previewLocate()">地圖定位<\/button>' : ''}
                         <button class="pv-btn dl" onclick="downloadPreviewImage()">下載<\/button>
                         <button class="pv-btn close" onclick="closePreview()">關閉<\/button>
@@ -4999,11 +5006,27 @@
                     <div class="pv-body"><div class="pv-loading">載入中…<\/div><\/div>
                 <\/div>`;
             overlay.style.display = 'flex';
-            return seq;
+            previewShow(0);
         }
 
+        function previewShow(i) {
+            const v = __pv.views[i];
+            if (!v) return;
+            document.querySelectorAll('#imgPreviewOverlay .pv-tab').forEach(t => t.classList.toggle('on', Number(t.dataset.i) === i));
+            setPreviewImage(++__pv.seq, v.url, v.name);
+        }
+
+        function _driveFileId_(url) {
+            const m = String(url || '').match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/]+)')) // GAS 精簡器會被含 [?& 的 regex 字面值弄亂，改用字串建構
+                || String(url || '').match(new RegExp('[?&]id=([^&]+)'))
+                || String(url || '').match(new RegExp('/file/d/([^/?&]+)'));
+            return m ? m[1] : null;
+        }
+
+        // V43.34: 圖片直接從 Google 圖片網址 (lh3) 載入，瀏覽器幾百毫秒就出來；
+        //         原本先叫伺服器把整張照片轉 base64 再傳回來，要等好幾秒 (「載入中」卡很久)。只有直連失敗才退回伺服器轉檔。
         function setPreviewImage(seq, url, fileName) {
-            if (seq !== __pv.seq) return; // 使用者已經關掉或改看別站
+            if (seq !== __pv.seq) return; // 使用者已經關掉或改看別張
             const overlay = document.getElementById('imgPreviewOverlay');
             const body = overlay && overlay.querySelector('.pv-body');
             if (!body) return;
@@ -5011,23 +5034,31 @@
                 body.innerHTML = '<div class="pv-loading">此訂單目前沒有關聯的圖片<\/div>';
                 return;
             }
-            const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/]+)')); // GAS 精簡器會被含 [?& 的 regex 字面值弄亂，改用字串建構
-            const ucm  = url.match(new RegExp('[?&]id=([^&]+)'));
-            __pv.url = url;
-            __pv.fileId = lh3m ? lh3m[1] : (ucm ? ucm[1] : null);
+            const fileId = _driveFileId_(url);
+            const showUrl = (url.indexOf('data:') === 0 || !fileId) ? url : 'https:/' + '/lh3.googleusercontent.com/d/' + fileId;
+            __pv.url = showUrl;
+            __pv.fileId = fileId;
             __pv.fileName = fileName || '';
-            body.innerHTML = '';
-            const img = document.createElement('img');
+            body.innerHTML = '<div class="pv-loading">載入中…<\/div>';
+            const img = new Image();
             img.alt = fileName || '';
             img.oncontextmenu = (e) => { e.preventDefault(); showPreviewMenu(e.clientX, e.clientY); };
-            img.onerror = () => { if (seq === __pv.seq) body.innerHTML = '<div class="pv-loading">圖片載入失敗<\/div>'; };
-            img.src = url;
-            body.appendChild(img);
+            img.onload = () => { if (seq === __pv.seq) { body.innerHTML = ''; body.appendChild(img); } };
+            img.onerror = () => {
+                if (seq !== __pv.seq) return;
+                if (!fileId || img.dataset.fallback) { body.innerHTML = '<div class="pv-loading">圖片載入失敗<\/div>'; return; }
+                img.dataset.fallback = '1';
+                google.script.run
+                    .withSuccessHandler(res => { if (seq !== __pv.seq) return; if (res && res.success) { __pv.url = res.data; img.src = res.data; } else body.innerHTML = '<div class="pv-loading">圖片載入失敗<\/div>'; })
+                    .withFailureHandler(() => { if (seq === __pv.seq) body.innerHTML = '<div class="pv-loading">圖片載入失敗<\/div>'; })
+                    .getSignPhotoBase64(fileId, ATOKEN());
+            };
+            img.src = showUrl;
         }
 
         // 舊呼叫點相容：直接給圖片網址
         function previewImage(url, fileName) {
-            setPreviewImage(openPreviewShell('圖片預覽', null), url, fileName);
+            openPreviewShell('圖片預覽', null, [{ label: '', url: url, name: fileName }]);
         }
 
         // 開窗後 0.4 秒內點到背景不關 (避免雙擊站點時第二下直接把剛開的視窗關掉)
@@ -5454,24 +5485,33 @@
             return !!(na && nb && (na === nb || na.indexOf(nb) !== -1 || nb.indexOf(na) !== -1));
         }
 
-        // V43.33: 站點 點一下 = 立刻開圖片預覽 (已送達→簽收單 / 未送達→銷貨單)，視窗裡有「地圖定位」；
-        //         沒有圖片的站直接在地圖上定位。拿掉原本「單擊等 0.26 秒判斷是不是雙擊」的延遲
+        // V43.34: 站點 點一下 = 立刻開圖片預覽；已送達預設「現場照片」、可切「銷貨單」，未送達看銷貨單。
+        //         視窗裡有「地圖定位」；沒有任何圖片的站直接在地圖上定位
         function itinPointClick(id) { showTaskPreview(id); }
+        function _isDoneStatus_(st) { return st === '已完成' || st === '結案' || st === '退貨完成'; }
+        // 同地址一起結案 (batch) 時，送貨日誌只有主單記了現場照片 → 找同日、同車、同地址已有照片的單
+        function _findSitePhoto_(task) {
+            if (task.signPhoto) return task.signPhoto;
+            const o = allTasks.find(t => t !== task && t.signPhoto && t.date === task.date && t.vehicle === task.vehicle && addrLooseMatch(t.address, task.address));
+            return o ? o.signPhoto : '';
+        }
         function showTaskPreview(id) {
             const task = allTasks.find(t => String(t.id) === String(id));
             if (!task) return;
             closeETABubble();
-            const fname = receiptFileName(task);
-            if (task.status === '已完成' && task.signPhoto) {
-                showBeautifiedReceipt(task, openPreviewShell((task.customer || '客戶') + '｜簽收單', task.id));
+            const isDone = _isDoneStatus_(task.status);
+            const baseName = receiptFileName(task);
+            const views = [];
+            const photo = isDone ? _findSitePhoto_(task) : '';
+            if (photo) views.push({ label: '現場照片', url: normalizeDriveUrl(photo), name: baseName });
+            if (task.thumbnail) views.push({ label: '銷貨單', url: normalizeDriveUrl(task.thumbnail), name: baseName.replace(new RegExp('\\.jpg$'), '_銷貨單.jpg') });
+            if (!views.length) {
+                focusTaskOnMap(id);
+                showToast('此訂單沒有圖片，已在地圖上定位');
                 return;
             }
-            if (task.thumbnail) {
-                setPreviewImage(openPreviewShell((task.customer || '客戶') + '｜銷貨單', task.id), task.thumbnail, fname);
-                return;
-            }
-            focusTaskOnMap(id);
-            showToast('此訂單沒有圖片，已在地圖上定位');
+            openPreviewShell(task.customer || '客戶', task.id, views);
+            if (isDone && !photo) showToast('此訂單已送達，但找不到現場照片，先顯示銷貨單');
         }
         function focusTaskOnMap(id) {
             const task = allTasks.find(t => String(t.id) === String(id));
@@ -5510,137 +5550,6 @@
             map.flyTo([pos.lat, pos.lng], 15, { duration: 0.8 });
             const drv = getDriverName(vehicle);
             showToast(`📍 ${drv !== vehicle ? drv + ' (' + vehicle + ')' : vehicle}${pos.targetAddr ? ' → ' + formatRoad(pos.targetAddr) : ''}`);
-        }
-
-        // V37.22: 取得 fileId → GAS 轉 base64 → Canvas 畫美化框
-        function showBeautifiedReceipt(task, seq) {
-            const url = task.signPhoto || '';
-            let fileId = null;
-            const lh3m = url.match(new RegExp('lh3\\.googleusercontent\\.com/d/([^?&/\\s]+)'));
-            const ucm  = url.match(new RegExp('[?&]id=([^&\\s]+)'));
-            if (lh3m) fileId = lh3m[1];
-            else if (ucm)  fileId = ucm[1];
-
-            const fname = receiptFileName(task);
-            if (!fileId) { setPreviewImage(seq, normalizeDriveUrl(url), fname); return; }
-
-            google.script.run
-                .withSuccessHandler(function(res) {
-                    if (res && res.success) {
-                        drawBeautifiedCanvas(task, res.data, seq);
-                    } else {
-                        setPreviewImage(seq, normalizeDriveUrl(url), fname);
-                    }
-                })
-                .withFailureHandler(function() { setPreviewImage(seq, normalizeDriveUrl(url), fname); })
-                .getSignPhotoBase64(fileId, ATOKEN());
-        }
-
-        // V37.22: Canvas 繪製美化簽收單（到貨時間為主要資訊）
-        function drawBeautifiedCanvas(task, photoDataUrl, seq) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = new Image();
-
-            const fname = receiptFileName(task);
-
-            img.onload = function() {
-                // V43.31: 司機端結案時已經畫好簽收單 (buildBeautifiedCanvas，800x1600) 才上傳，這裡再框一次會變成框中框 → 直接顯示
-                if (img.width === 800 && img.height === 1600) { setPreviewImage(seq, photoDataUrl, fname); return; }
-                try {
-                    const branch = String(task.branch || '').trim();
-                    let themeColor = '#1e3a5f';
-                    if (branch.includes('高雅瓷')) themeColor = '#FF69B4';
-                    else if (branch.includes('安帝嘉')) themeColor = '#10B981';
-                    else if (branch.includes('喜悅納')) themeColor = '#3B82F6';
-                    else if (branch.includes('漢樺'))   themeColor = '#F59E0B';
-
-                    canvas.width = 800; canvas.height = 1600;
-                    ctx.fillStyle = '#f1f5f9';
-                    ctx.fillRect(0, 0, 800, 1600);
-
-                    // ── 標題行 ──
-                    ctx.fillStyle = themeColor;
-                    ctx.font = 'bold 38px "Noto Sans TC", sans-serif';
-                    ctx.textAlign = 'left';
-                    ctx.fillText((task.customer || '客戶') + ' 派送成功', 40, 95);
-
-                    // ── 到貨時間（重要，放標題正下方）──
-                    const arrivalTime = (task.date || '') + (task.finishTime ? ' ' + task.finishTime : '');
-                    ctx.font = 'bold 26px "Rajdhani", sans-serif';
-                    ctx.fillStyle = themeColor;
-                    ctx.fillText('到貨 ' + arrivalTime, 40, 138);
-
-                    // ── 白卡 ──
-                    ctx.fillStyle = '#ffffff';
-                    ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
-                    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(30, 180, 740, 1380, 30); ctx.fill(); }
-                    else { ctx.fillRect(30, 180, 740, 1380); }
-                    ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-
-                    // ── 照片 ──
-                    const iW = 680, iH = 900, iX = 60, iY = 220;
-                    ctx.save();
-                    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(iX, iY, iW, iH, 20); ctx.clip(); }
-                    const asp = img.width / img.height;
-                    if (asp < iW / iH) { const dH = iW / asp; ctx.drawImage(img, iX, iY - (dH - iH) / 2, iW, dH); }
-                    else               { const dW = iH * asp;  ctx.drawImage(img, iX - (dW - iW) / 2, iY, dW, iH); }
-                    ctx.restore();
-
-                    // ── 主題色 BAR ──
-                    ctx.fillStyle = themeColor;
-                    ctx.fillRect(30, iY + iH + 5, 740, 15);
-
-                    // ── 資訊列 ──
-                    let cy = 1180;
-                    const row = (label, val, y) => {
-                        if (!val || val === '--' || val === '0') return y;
-                        ctx.fillStyle = '#64748b'; ctx.font = 'bold 22px "Noto Sans TC", sans-serif';
-                        ctx.textAlign = 'left'; ctx.fillText(label, 70, y);
-                        ctx.fillStyle = '#1e293b'; ctx.font = '900 34px "Noto Sans TC", sans-serif';
-                        if (val.length > 20) {
-                            ctx.fillText(val.substring(0, 20), 70, y + 50);
-                            ctx.fillText(val.substring(20), 70, y + 90);
-                            ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 2;
-                            ctx.beginPath(); ctx.moveTo(70, y + 110); ctx.lineTo(730, y + 110); ctx.stroke();
-                            return y + 150;
-                        }
-                        ctx.fillText(val, 70, y + 50);
-                        ctx.strokeStyle = '#f1f5f9'; ctx.lineWidth = 2;
-                        ctx.beginPath(); ctx.moveTo(70, y + 80); ctx.lineTo(730, y + 80); ctx.stroke();
-                        return y + 110;
-                    };
-
-                    cy = row('收件客戶/案名', task.customer, cy);
-                    cy = row('送貨地址', task.address, cy);
-                    cy = row('到貨時間', arrivalTime, cy);
-
-                    const w = parseFloat(task.weight) || 0;
-                    const carLine = (task.vehicle || 'N/A') + (w >= 10 ? ' / ' + w + 'KG' : '');
-                    ctx.fillStyle = '#64748b'; ctx.font = 'bold 22px "Noto Sans TC", sans-serif';
-                    ctx.fillText(w >= 10 ? '車牌號碼 / 載重' : '車牌號碼', 70, cy);
-                    ctx.fillStyle = '#1e293b'; ctx.font = '900 34px "Noto Sans TC", sans-serif';
-                    ctx.fillText(carLine, 70, cy + 50);
-
-                    // ── 章 ──
-                    ctx.save(); ctx.translate(620, 1450); ctx.rotate(-Math.PI / 12);
-                    ctx.strokeStyle = themeColor; ctx.lineWidth = 5;
-                    ctx.beginPath(); ctx.arc(0, 0, 80, 0, Math.PI * 2); ctx.stroke();
-                    ctx.fillStyle = themeColor; ctx.font = 'bold 32px "Noto Sans TC", sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillText('已送達', 0, -10);
-                    ctx.font = 'bold 20px "Rajdhani", sans-serif';
-                    ctx.fillText('VERIFIED', 0, 30);
-                    ctx.restore();
-
-                    setPreviewImage(seq, canvas.toDataURL('image/jpeg', 0.9), fname);
-                } catch(e) {
-                    console.error('BeautifyCanvas err:', e);
-                    setPreviewImage(seq, normalizeDriveUrl(task.signPhoto), fname);
-                }
-            };
-            img.onerror = function() { setPreviewImage(seq, normalizeDriveUrl(task.signPhoto), fname); };
-            img.src = photoDataUrl;
         }
 
         // V37.20: 統一轉換 Google Drive 網址為 lh3 格式，確保 <img> 可正常載入
