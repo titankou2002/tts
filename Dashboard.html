@@ -2461,6 +2461,21 @@
             margin-bottom: 15px;
         }
 
+        /* V43.37: 新增行程視窗 (tempModal) 等比例縮小、間距收緊；上方預留 55px (外殼頁 OS.html 把 iframe 往上推 55px，頂端在螢幕外) */
+        #tempModal { padding-top: 63px !important; box-sizing: border-box; }
+        #tempModal .modal-body { width: 420px; padding: 14px 16px; margin-top: 0; max-height: calc(100vh - 71px); }
+        #tempModal .modal-body > div,
+        #tempModal .modal-body > .input-group { margin-bottom: 6px !important; }
+        #tempModal .input-group { margin-bottom: 0; }
+        #tempModal .input-group label { font-size: 11px; margin-bottom: 1px; }
+        #tempModal input:not([type="checkbox"]),
+        #tempModal select,
+        #tempModal textarea { padding: 4px 8px !important; font-size: 13px !important; box-sizing: border-box; }
+        #tempModal textarea { min-height: 30px !important; }
+        #tempModal #tFreightEstBox { padding: 5px 10px !important; font-size: 12px !important; }
+        #tempModal .modal-body > div:last-child { margin-top: 10px !important; margin-bottom: 0 !important; }
+        #tempModal .modal-body > div:last-child .btn { padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
+
         .input-group label {
             display: block;
             font-size: 11px;
@@ -2775,8 +2790,8 @@
             </div>
 
             <!-- V40：指定到貨時間-強制 (紅色系) -->
-            <div style="margin-bottom:8px; padding:10px 12px; border:1px solid rgba(239,68,68,0.4); border-radius:8px; background:rgba(239,68,68,0.06);">
-                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#f87171; font-weight:900;">
+            <div style="margin-bottom:8px; padding:6px 10px; border:1px solid rgba(239,68,68,0.4); border-radius:8px; background:rgba(239,68,68,0.06);">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; color:#f87171; font-weight:900; font-size:13px;">
                     <input id="tForceArrive" type="checkbox" style="width:18px; height:18px; accent-color:#ef4444; cursor:pointer;" onchange="toggleForceArrive('tForceArrive','tForceArriveWrap')">
                     ⏰ 指定到貨時間-強制
                 </label>
