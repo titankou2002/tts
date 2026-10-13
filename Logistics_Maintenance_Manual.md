@@ -35,6 +35,22 @@
 **會。** `keepSystemAlive_V11` 觸發器每天自動跑，只要不推新程式，其他人永遠能進去。
 問題只出在推程式的那一刻。
 
+### 戰情室畫面頂端 55px 在螢幕外（2026-10-08 V43.36）
+
+bigt.cc 外殼頁（`OS.html` 等）的 iframe 設 `height: calc(100% + 55px); margin-top: -55px`，用來遮 GAS「此應用程式由其他使用者建立」橫幅。**擁有者登入時沒有橫幅 → 系統頁面最上面 55px 實際在螢幕外。**
+
+- 任何貼齊頂端的 `position: fixed` 視窗／提示，上方至少預留 55px（例：圖片預覽 `padding-top: 71px`、新增行程 `#tempModal padding-top: 63px`）。
+- 本機測試頁沒有外殼頁，重現不了；測試時在頂端放一條 55px 色條模擬被遮。
+
+### 部署後驗證（2026-10-08 起每版都做）
+
+1. `clasp push -f` → `clasp version "說明"` → `clasp deploy -i <主 Web App ID> -V <版本>`。
+2. `curl "<exec 網址>?p=srcline&f=Dashboard"` 抓線上原始碼，確認含新程式（剛部署 1～2 分鐘內可能還是舊版快取，重抓即可）。
+3. 對每個 `<script>` 跑 `node --check`，確認沒有被 GAS 精簡器弄壞。
+4. 含 `?` 或 `[?&` 的 regex 一律用 `new RegExp('...')`；JS 字串裡不要出現連續 `//`（拆成 `'https:/' + '/...'`）。
+
+---
+
 ---
 
 ---
