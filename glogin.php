@@ -17,6 +17,8 @@ $query = $query !== '' ? '?' . preg_replace('/[^A-Za-z0-9_\-=&%.]/', '', $query)
 $back = '/tts/' . $page . $query;
 /* 2026-09-30: 高雅瓷業務系統 (bigt.cc/ait/inventory.html) 也用這裡接 Google 整頁跳轉登入 */
 if ((string) parse_url($ret, PHP_URL_PATH) === '/ait/inventory.html') { $back = '/ait/inventory.html' . $query; }
+/* 2026-10-20: 每周匯報看板 (bigt.cc/weekly/) 也用這裡接 Google 整頁跳轉登入（手機主畫面 App 模式） */
+if ((string) parse_url($ret, PHP_URL_PATH) === '/weekly/') { $back = '/weekly/' . $query; }
 
 $cred = isset($_POST['credential']) ? $_POST['credential'] : '';
 $csrfBody = isset($_POST['g_csrf_token']) ? $_POST['g_csrf_token'] : '';
