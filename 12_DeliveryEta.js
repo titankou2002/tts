@@ -219,12 +219,15 @@ function deliveryEtaQuery_(company, branch, dateStr, q) {
       }
     }
   } catch (eLL) { console.error('讀座標失敗: ' + eLL.message); }
+  var gpsDiag = { total: tasks.length, fromWarRoom: 0, afterFix: 0 }; // 診斷：戰情室資料本身有座標的筆數、本檔還原後有座標的筆數
+  tasks.forEach(function (t) { if (_etaValidLL_(Number(t.lat), Number(t.lng))) gpsDiag.fromWarRoom++; });
   tasks.forEach(function (t) {
     var ll = llByRow[t.rowIndex + '|' + t.id];
     if (ll) { t._lat = ll.lat; t._lng = ll.lng; }
     else if (_etaValidLL_(Number(t.lat), Number(t.lng))) { t._lat = Number(t.lat); t._lng = Number(t.lng); }
   });
 
+  tasks.forEach(function (t) { if (_etaValidLL_(t._lat, t._lng)) gpsDiag.afterFix++; });
   // 這家客戶的單 (名稱比對沿用經銷商查詢的規則)
   var key = cleanCustName_V11(company), rawKey = company;
   var mine = tasks.filter(function (t) {
@@ -234,7 +237,7 @@ function deliveryEtaQuery_(company, branch, dateStr, q) {
     var c = cleanCustName_V11(String(t.customer || ''));
     return key.length >= 2 && (c === key || String(t.customer || '').trim() === rawKey);
   });
-  if (!mine.length) return { success: true, date: dateStr, isToday: isToday, total: 0, matches: [] };
+  if (!mine.length) return { success: true, date: dateStr, isToday: isToday, total: 0, matches: [], gps: gpsDiag };
 
   // 關鍵字 (案名、地名) 篩選；篩不到就回全部，讓機器人列出來給客人選
   var qq = String(q || '').replace(/\s/g, '');
@@ -347,7 +350,7 @@ function deliveryEtaQuery_(company, branch, dateStr, q) {
   matches.sort(function (a, b) { return (ord[a.state] - ord[b.state]) || ((a.stopsAhead || 0) - (b.stopsAhead || 0)); });
 
   if (logRows.length) { try { _etaLog_(logRows); } catch (eLog) { console.error('到貨預估記錄寫入失敗: ' + eLog.message); } }
-  return { success: true, date: dateStr, isToday: isToday, total: mine.length, narrowed: narrowed, now: _etaHm_(nowMin), matches: matches.slice(0, 8), calib: calib };
+  return { success: true, date: dateStr, isToday: isToday, total: mine.length, narrowed: narrowed, now: _etaHm_(nowMin), matches: matches.slice(0, 8), calib: calib, gps: gpsDiag };
 }
 
 /** 寫入「到貨預估記錄」；同一張單 10 分鐘內不重複記 */

@@ -783,7 +783,9 @@ function getWarRoomData_V11(force, targetDateStr, token) {
         if (rowDate && rowDate < todayStr) continue;
       }
 
-      var lat = parseFloat(getSafeVal(row, idx.lat)), lng = parseFloat(getSafeVal(row, idx.lng)), hasGPS = !isNaN(lat) && !isNaN(lng);
+      // V43.61: 「緯度」欄在試算表是日期格式，getValues() 給的是 Date，parseFloat 會變 NaN → 全部任務沒有座標 (地圖沒點、到站時間算不出來)。
+      // 改用 _etaNum_ (12_DeliveryEta.js) 還原成原本的數字；一般數字與文字照舊。
+      var lat = _etaNum_(getSafeVal(row, idx.lat)), lng = _etaNum_(getSafeVal(row, idx.lng)), hasGPS = _etaValidLL_(lat, lng);
       var rawV = String(getSafeVal(row, idx.vehicle)).trim();
       var finalV = rawV;
       // V35.9: 強制標準化車牌/司機代碼 (去空格、去底線、轉換為大寫)，確保前後台對位一致
