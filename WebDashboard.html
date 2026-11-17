@@ -232,7 +232,14 @@
         .branch-card .bc-k { font-size: 11px; color: var(--text-dim); }
         .branch-card .bc-v { font-size: 22px; font-weight: 800; color: #fff; }
         .branch-card .bc-v small { font-size: 12px; color: var(--text-dim); font-weight: 600; margin-left: 2px; }
-        @media (max-width: 900px) { #branchCards { grid-template-columns: repeat(2, 1fr) !important; } }
+        @media (max-width: 900px) { #branchCards, #freightBranchCards { grid-template-columns: repeat(2, 1fr) !important; } }
+        .freight-bcard { text-align: left; position: relative; transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s; cursor: pointer; }
+        .freight-bcard:hover { border-color: rgba(56,189,248,0.5); box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+        .freight-bcard.active-card { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(56,189,248,0.3), 0 10px 28px rgba(0,0,0,0.45); background: rgba(30,41,59,0.92); }
+        .freight-bcard .fb-type-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; border-radius: 6px; font-size: 12px; transition: background 0.15s; }
+        .freight-bcard .fb-type-row:hover { background: rgba(255,255,255,0.06); }
+        .daily-subtotal-row td { background: rgba(15, 23, 42, 0.92) !important; border-top: 2px solid rgba(56, 189, 248, 0.35) !important; border-bottom: 1px solid rgba(56, 189, 248, 0.2) !important; padding: 9px 12px !important; font-weight: 700; cursor: pointer; user-select: none; }
+        .daily-subtotal-row:hover td { background: rgba(30, 41, 59, 0.95) !important; }
         /* 明細面板 (右側滑出) */
         .bc-v.clickable, .bc-click { cursor: pointer; transition: 0.15s; border-bottom: 1px dashed transparent; }
         .bc-v.clickable:hover, .bc-click:hover { color: var(--accent) !important; border-bottom-color: var(--accent); }
@@ -323,6 +330,10 @@
     <div class="filters-bar">
         <div class="filter-group">
             <label>時間範圍</label>
+            <button class="btn-preset" data-key="today" onclick="setPreset('today')">今日</button>
+            <button class="btn-preset" data-key="yesterday" onclick="setPreset('yesterday')">昨日</button>
+            <button class="btn-preset" data-key="thisWeek" onclick="setPreset('thisWeek')">本週</button>
+            <button class="btn-preset" data-key="lastWeek" onclick="setPreset('lastWeek')">上週</button>
             <button class="btn-preset" data-key="7d" onclick="setPreset('7d')">近一週</button>
             <button class="btn-preset" data-key="thisMonth" onclick="setPreset('thisMonth')">本月</button>
             <button class="btn-preset" data-key="lastMonth" onclick="setPreset('lastMonth')">上個月</button>
@@ -360,6 +371,7 @@
         <button id="tab-overview" class="tab-btn active" onclick="switchTab('overview', this)">營運分析</button>
         <button id="tab-itinerary" class="tab-btn" onclick="switchTab('itinerary', this)">司機行程記錄</button>
         <button id="tab-freight" class="tab-btn" onclick="switchTab('freight', this)">運費統計</button>
+        <button id="tab-simulator" class="tab-btn" onclick="switchTab('simulator', this)"><i class="fas fa-calculator" style="margin-right:5px;"></i>成本與利潤試算</button>
     </div>
 
     <div class="content-container">
@@ -367,6 +379,41 @@
         <div id="overview" class="tab-pane active">
             <div class="section-title"><i class="fas fa-truck"></i> 出貨量</div>
             <div class="stats-grid" id="branchCards" style="grid-template-columns: repeat(4, 1fr);"></div>
+
+            <div class="results-table-container" style="margin-top:0; margin-bottom:18px;">
+                <div style="background: rgba(0,0,0,0.25); padding: 10px 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span style="font-weight: 800; font-size: 14px; color: var(--accent);"><i class="fas fa-calendar-check"></i> 每日 / 每週 / 每月 數據彙整</span>
+                        <div id="overviewPeriodBtns" style="display:inline-flex; gap:4px;">
+                            <button class="btn-branch active" data-p="day" onclick="setOverviewPeriod('day')">每日明細</button>
+                            <button class="btn-branch" data-p="week" onclick="setOverviewPeriod('week')">每週彙整 (週一~日)</button>
+                            <button class="btn-branch" data-p="month" onclick="setOverviewPeriod('month')">每月彙整</button>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size: 11px; color: var(--text-dim);">※ 點擊任一列可檢視該時段訂單明細</span>
+                        <button class="mini-btn" onclick="toggleOverviewPeriodTable()" id="btnTogglePeriodTable">收合表格 ▲</button>
+                    </div>
+                </div>
+                <div id="overviewPeriodBody" class="table-scroll" style="max-height: 320px;">
+                    <table id="overview-period-table">
+                        <thead>
+                            <tr>
+                                <th>時間區間</th>
+                                <th style="text-align:right;">總單數</th>
+                                <th style="text-align:right;">總噸數</th>
+                                <th style="text-align:right;">總運費</th>
+                                <th style="text-align:right; color:#34d399;">安帝嘉</th>
+                                <th style="text-align:right; color:#f472b6;">高雅瓷</th>
+                                <th style="text-align:right; color:#60a5fa;">喜悅納</th>
+                                <th style="text-align:right; color:#fbbf24;">漢樺</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="charts-grid">
                 <div class="chart-container span-3"><div class="chart-title"><i class="fas fa-chart-line"></i> 每日各分公司單量</div><div class="chart-desc">四家分公司每日單量堆疊（此圖不受上方分公司篩選影響）。</div><canvas id="chart-daily-trend"></canvas></div>
                 <div class="chart-container span-1"><div class="chart-title"><i class="fas fa-building"></i> 分公司案量佔比</div><div class="chart-desc">區間內四家分公司的單量比重（不受分公司篩選影響）。</div><canvas id="chart-branch-dist"></canvas></div>
@@ -420,7 +467,7 @@
             <div id="bonusControlCard" style="background:rgba(15,23,42,0.7); border:1px solid rgba(34,197,94,0.35); border-radius:12px; padding:14px 16px; margin-bottom:16px; backdrop-filter:blur(10px);">
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:8px;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <span style="font-size:14px; font-weight:800; color:#22c55e;">⚙️ 配送獎金計算與司機個人底限設定面板</span>
+                        <span style="font-size:14px; font-weight:800; color:#22c55e; display:inline-flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> 配送獎金計算與司機個人底限設定面板</span>
                         <span style="font-size:11px; color:var(--text-dim);">(直接修改數字，下方司機卡片數值與獎金將即時試算連動)</span>
                     </div>
                     <button class="btn" onclick="toggleBonusCardBody()" id="btnToggleBonusCard" style="background:rgba(255,255,255,0.05); color:var(--text-main); border:1px solid var(--glass-border); font-size:11px; padding:4px 10px; border-radius:6px; cursor:pointer;">
@@ -478,73 +525,335 @@
 
         <!-- ===== 運費統計 ===== -->
         <div id="freight" class="tab-pane">
-            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
-                <span style="color:var(--text-dim); font-weight:600;">分公司</span>
-                <button class="btn-branch active" data-branch="全部" onclick="setBranch('全部')">全部</button>
-                <button class="btn-branch b-高雅瓷" data-branch="高雅瓷" onclick="setBranch('高雅瓷')">高雅瓷</button>
-                <button class="btn-branch b-安帝嘉" data-branch="安帝嘉" onclick="setBranch('安帝嘉')">安帝嘉</button>
-                <button class="btn-branch b-喜悅納" data-branch="喜悅納" onclick="setBranch('喜悅納')">喜悅納</button>
-                <button class="btn-branch b-漢樺" data-branch="漢樺" onclick="setBranch('漢樺')">漢樺</button>
-                <span style="color:var(--text-dim); font-weight:600; margin-left:14px;">類型</span>
-                <div id="freightTypeBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
-                    <button class="btn-branch active" data-type="全部" onclick="setFreightType('全部')">全部</button>
-                    <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般銷貨</button>
-                    <button class="btn-branch type-return" data-type="退貨" onclick="setFreightType('退貨')">退貨單</button>
-                    <button class="btn-branch type-sample-paid" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
-                    <button class="btn-branch type-sample-free" data-type="樣品免費" onclick="setFreightType('樣品免費')">樣品免費</button>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+                <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;">
+                    <div class="section-title" style="margin:0;"><i class="fas fa-building"></i> 各家分公司運費對帳總覽</div>
+                    <span id="freightOverviewSummaryText" style="font-size:12px; color:var(--text-dim);"></span>
                 </div>
-                <span style="flex:1"></span>
-                <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
-            </div>
-            <!-- V41.42: 運費統計方塊重設計：單數/狀況可點篩選、客戶前三名可點看佔比 -->
-            <div class="stats-grid">
-                <div class="stat-card"><div class="stat-label">總運費 (含核定調整)</div><div class="stat-value" id="stat-fee-total">--</div><div class="stat-hint">以核定運費為準，未核定則用系統估算 ｜ 運費/油費 <b id="stat-fee-ratio">--</b></div></div>
-                <div class="stat-card"><div class="stat-label">單數 <span class="stat-hint" style="display:inline">(點分類可篩選)</span></div><div class="stat-value" id="stat-fee-count" style="color:var(--accent)">--</div><div class="chip-row" id="chips-kind"></div></div>
-                <div class="stat-card"><div class="stat-label">其它狀況 <span class="stat-hint" style="display:inline">(點可篩選)</span></div><div class="stat-value" id="stat-cond-count" style="color:#c084fc">--</div><div class="chip-row" id="chips-cond"></div></div>
-                <div class="stat-card" style="cursor:pointer" onclick="openCustomerShare()" title="點擊看全部客戶運費佔比"><div class="stat-label">客戶分析 <span class="stat-hint" style="display:inline">(前三名，點看佔比)</span></div><div id="top-customers" style="margin-top:4px"></div></div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <button class="btn-ghost" id="btnToggleFreightDetail" onclick="toggleFreightDetailPanel()" style="display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-folder-open"></i> 展開全部公司內部明細 ▼</button>
+                    <button class="btn-ghost" onclick="openFreightSettings()"><i class="fas fa-cog"></i> 運費設定</button>
+                </div>
             </div>
 
-            <div class="results-table-container">
-                <div style="background: rgba(0,0,0,0.2); padding: 12px 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                    <div style="font-weight: 700; font-size: 14px; color: var(--accent); display:flex; align-items:center; gap:12px;">
-                        <span><i class="fas fa-file-invoice-dollar"></i> 每一筆運費明細</span>
-                        <div style="display:inline-flex; border:1px solid var(--glass-border); border-radius:6px; overflow:hidden; background:#0f172a;">
-                            <button id="btnSortDesc" onclick="setFreightSortDir(-1)" style="background:rgba(56,189,248,0.25); color:var(--accent); border:none; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="降序：最新 / 金額最高 在上面">降序 ▼</button>
-                            <button id="btnSortAsc" onclick="setFreightSortDir(1)" style="background:transparent; color:var(--text-dim); border:none; border-left:1px solid var(--glass-border); padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="升序：最舊 / 金額最低 在上面">升序 ▲</button>
+            <!-- 第一層：四家分公司運費與數據總覽卡 -->
+            <div class="stats-grid" id="freightBranchCards" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 14px;"></div>
+
+            <div id="freightDetailPrompt" onclick="openFreightBranchDetail('全部', '全部')" style="background:rgba(56,189,248,0.08); border:1px dashed rgba(56,189,248,0.4); border-radius:10px; padding:12px 16px; text-align:center; color:#bae6fd; font-size:13px; font-weight:600; cursor:pointer; margin-bottom:14px; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+                <span>請點擊上方任一家分公司的卡片（或分類數字）查看內部詳細對帳單，或 <span style="color:var(--accent); text-decoration:underline; font-weight:800;">點此展開全部公司明細 ▼</span></span>
+            </div>
+
+            <!-- 第二層：內部詳細對帳區 (點選卡片後展開) -->
+            <div id="freightDetailContainer" style="display:none;">
+                <div style="background:rgba(15,23,42,0.85); border:1px solid var(--glass-border); border-radius:10px; padding:10px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+                    <span style="color:var(--accent); font-weight:800; font-size:13px; margin-right:4px;"><i class="fas fa-search-dollar"></i> 內部詳細對帳：</span>
+                    <span style="color:var(--text-dim); font-weight:600; font-size:12px;">分公司</span>
+                    <button class="btn-branch active" data-branch="全部" onclick="setBranch('全部')">全部</button>
+                    <button class="btn-branch b-高雅瓷" data-branch="高雅瓷" onclick="setBranch('高雅瓷')">高雅瓷</button>
+                    <button class="btn-branch b-安帝嘉" data-branch="安帝嘉" onclick="setBranch('安帝嘉')">安帝嘉</button>
+                    <button class="btn-branch b-喜悅納" data-branch="喜悅納" onclick="setBranch('喜悅納')">喜悅納</button>
+                    <button class="btn-branch b-漢樺" data-branch="漢樺" onclick="setBranch('漢樺')">漢樺</button>
+                    <span style="color:var(--text-dim); font-weight:600; font-size:12px; margin-left:10px;">類型</span>
+                    <div id="freightTypeBtns" style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn-branch active" data-type="全部" onclick="setFreightType('全部')">全部</button>
+                        <button class="btn-branch" data-type="銷貨" onclick="setFreightType('銷貨')">一般銷貨</button>
+                        <button class="btn-branch type-return" data-type="退貨" onclick="setFreightType('退貨')">退貨單</button>
+                        <button class="btn-branch type-sample-paid" data-type="樣品收費" onclick="setFreightType('樣品收費')">樣品收費</button>
+                        <button class="btn-branch type-sample-free" data-type="樣品免費" onclick="setFreightType('樣品免費')">樣品免費</button>
+                    </div>
+                    <span style="flex:1"></span>
+                    <button class="mini-btn" onclick="collapseFreightDetailPanel()" style="color:#f87171; border-color:rgba(239,68,68,0.4);">▲ 收合詳細明細</button>
+                </div>
+
+                <!-- V41.42: 運費統計方塊重設計：單數/狀況可點篩選、客戶前三名可點看佔比 -->
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-label">總運費 (含核定調整)</div><div class="stat-value" id="stat-fee-total">--</div><div class="stat-hint">以核定運費為準，未核定則用系統估算 ｜ 運費/油費 <b id="stat-fee-ratio">--</b></div></div>
+                    <div class="stat-card"><div class="stat-label">單數 <span class="stat-hint" style="display:inline">(點分類可篩選)</span></div><div class="stat-value" id="stat-fee-count" style="color:var(--accent)">--</div><div class="chip-row" id="chips-kind"></div></div>
+                    <div class="stat-card"><div class="stat-label">其它狀況 <span class="stat-hint" style="display:inline">(點可篩選)</span></div><div class="stat-value" id="stat-cond-count" style="color:#c084fc">--</div><div class="chip-row" id="chips-cond"></div></div>
+                    <div class="stat-card" style="cursor:pointer" onclick="openCustomerShare()" title="點擊看全部客戶運費佔比"><div class="stat-label">客戶分析 <span class="stat-hint" style="display:inline">(前三名，點看佔比)</span></div><div id="top-customers" style="margin-top:4px"></div></div>
+                </div>
+
+                <div class="results-table-container">
+                    <div style="background: rgba(0,0,0,0.2); padding: 12px 15px; border-bottom: 1px solid var(--glass-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="font-weight: 700; font-size: 14px; color: var(--accent); display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <span><i class="fas fa-file-invoice-dollar"></i> 每一筆運費明細</span>
+                            <div style="display:inline-flex; border:1px solid var(--glass-border); border-radius:6px; overflow:hidden; background:#0f172a;">
+                                <button id="btnViewList" onclick="setFreightViewMode('list')" style="background:rgba(56,189,248,0.25); color:var(--accent); border:none; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="逐筆流水帳模式"><i class="fas fa-list-ul"></i> 逐筆明細</button>
+                                <button id="btnViewDaily" onclick="setFreightViewMode('daily')" style="background:transparent; color:var(--text-dim); border:none; border-left:1px solid var(--glass-border); padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px;" title="依日期分組並顯示每日小計，方便甲乙雙方逐日對帳"><i class="fas fa-calendar-day"></i> 按日小計對帳</button>
+                            </div>
+                            <button id="btnToggleDailyFold" onclick="toggleAllDailyGroups()" style="display:none; background:rgba(255,255,255,0.06); color:#e2e8f0; border:1px solid var(--glass-border); border-radius:6px; padding:4px 10px; font-size:11px; cursor:pointer;">收合為日結總表 ▲</button>
+                            <div style="display:inline-flex; border:1px solid var(--glass-border); border-radius:6px; overflow:hidden; background:#0f172a;">
+                                <button id="btnSortDesc" onclick="setFreightSortDir(-1)" style="background:rgba(56,189,248,0.25); color:var(--accent); border:none; padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="降序：最新 / 金額最高 在上面">降序 ▼</button>
+                                <button id="btnSortAsc" onclick="setFreightSortDir(1)" style="background:transparent; color:var(--text-dim); border:none; border-left:1px solid var(--glass-border); padding:4px 10px; font-size:12px; font-weight:700; cursor:pointer;" title="升序：最舊 / 金額最低 在上面">升序 ▲</button>
+                            </div>
+                            <button id="btnFilterAdjusted" class="btn-branch" onclick="toggleFreightAdjustedOnly()" style="font-size:11px; padding:4px 10px; display:inline-flex; align-items:center; gap:5px;" title="只顯示有人工修改過核定運費或人工改判單據類型的訂單"><i class="fas fa-pen"></i> 只看人工調整 <span id="adjFilterCount"></span></button>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="font-size: 11px; color: var(--text-dim);">※ 點欄頭可排序；「核定運費」可直接修改。</span>
+                            <button class="mini-btn" onclick="freightTableCopy()" title="複製目前篩選的對帳明細(含總計)，可直接貼到 Excel / LINE" style="display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-copy"></i> 複製對帳表</button>
+                            <button class="mini-btn" onclick="freightTableCsv()" title="下載 CSV 對帳單檔案" style="display:inline-flex; align-items:center; gap:5px;"><i class="fas fa-download"></i> 匯出 CSV</button>
                         </div>
                     </div>
-                    <div style="font-size: 12px; color: var(--text-dim);">※ 點擊欄位標頭可切換排序項目；「核定運費」欄可直接修改儲存。</div>
-                </div>
-                <div id="mainTableBatchBar" style="display:none; background:rgba(30,41,59,0.95); border:1px solid #38bdf8; border-radius:8px; padding:8px 14px; margin:8px 15px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                    <div style="font-size:12px; color:#fff; font-weight:bold;">
-                        ☑ 已勾選 <span id="mainBatchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
+                    <div id="mainTableBatchBar" style="display:none; background:rgba(30,41,59,0.95); border:1px solid #38bdf8; border-radius:8px; padding:8px 14px; margin:8px 15px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                        <div style="font-size:12px; color:#fff; font-weight:bold; display:inline-flex; align-items:center; gap:6px;">
+                            <i class="fas fa-check-square" style="color:#38bdf8;"></i> 已勾選 <span id="mainBatchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
+                        </div>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button onclick="submitMainBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#eab308"/></svg> 批次「樣品免費」</button>
+                            <button onclick="submitMainBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#38bdf8"/></svg> 批次「樣品收費」</button>
+                            <button onclick="submitMainBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#e2e8f0"/></svg> 批次「一般銷貨」</button>
+                            <button onclick="submitMainBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#ef4444"/></svg> 批次「退貨單據」</button>
+                            <button onclick="submitMainBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;"><i class="fas fa-undo"></i> 批次清除人工判定</button>
+                        </div>
                     </div>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                        <button onclick="submitMainBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🟡 批次「樣品免費」</button>
-                        <button onclick="submitMainBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔵 批次「樣品收費」</button>
-                        <button onclick="submitMainBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚪ 批次「一般銷貨」</button>
-                        <button onclick="submitMainBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔴 批次「退貨單據」</button>
-                        <button onclick="submitMainBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;">↺ 批次清除人工判定</button>
+                    <div class="table-scroll">
+                    <table id="freight-table">
+                        <thead>
+                            <tr id="freightHead">
+                                <th style="width:32px; text-align:center;"><input type="checkbox" id="selectAllMainRows" onchange="toggleSelectAllMainRows(this)"></th>
+                                <th data-k="date" onclick="freightSortBy('date')">日期</th>
+                                <th data-k="id" onclick="freightSortBy('id')">單號</th>
+                                <th data-k="branch" onclick="freightSortBy('branch')">分公司</th>
+                                <th data-k="customer" onclick="freightSortBy('customer')">客戶名稱</th>
+                                <th data-k="weight" onclick="freightSortBy('weight')">重量(kg)</th>
+                                <th data-k="cond" onclick="freightSortBy('cond')">狀況</th>
+                                <th data-k="estFee" onclick="freightSortBy('estFee')">系統估算</th>
+                                <th>運費公式</th>
+                                <th data-k="finalFee" onclick="freightSortBy('finalFee')">核定運費</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                     </div>
                 </div>
-                <div class="table-scroll">
-                <table id="freight-table">
-                    <thead>
-                        <tr id="freightHead">
-                            <th style="width:32px; text-align:center;"><input type="checkbox" id="selectAllMainRows" onchange="toggleSelectAllMainRows(this)"><\/th>
-                            <th data-k="date" onclick="freightSortBy('date')">日期</th>
-                            <th data-k="id" onclick="freightSortBy('id')">單號</th>
-                            <th data-k="branch" onclick="freightSortBy('branch')">分公司</th>
-                            <th data-k="customer" onclick="freightSortBy('customer')">客戶名稱</th>
-                            <th data-k="weight" onclick="freightSortBy('weight')">重量(kg)</th>
-                            <th data-k="cond" onclick="freightSortBy('cond')">狀況</th>
-                            <th data-k="estFee" onclick="freightSortBy('estFee')">系統估算</th>
-                            <th>運費公式</th>
-                            <th data-k="finalFee" onclick="freightSortBy('finalFee')">核定運費</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+            </div>
+        </div>
+
+        <!-- ===== 成本與利潤試算 ===== -->
+        <div id="simulator" class="tab-pane">
+            <!-- 頂部：四大損益與利潤率核心指標卡 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+                    <div class="section-title" style="margin:0;"><i class="fas fa-chart-line"></i> 成本結構、運費區段調價與利潤率試算中心</div>
+                    <span id="simPeriodInfoText" style="font-size:12px; color:var(--text-dim);"></span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <label style="font-size:12px; color:var(--text-dim); display:inline-flex; align-items:center; gap:5px; cursor:pointer;" title="若上方選取的時間範圍不是整個月（例如只看單日或單週），可選擇固定月成本是否依天數比例折算">
+                        <input type="checkbox" id="simProrateByDays" onchange="runFreightSimulation()" style="accent-color:var(--accent);"> 非整月時依天數比例折算月固定成本
+                    </label>
+                </div>
+            </div>
+
+            <div class="stats-grid" style="margin-bottom:16px;">
+                <div class="stat-card" style="border-top:3px solid var(--accent);">
+                    <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>試算總運費營收</span>
+                        <span id="sim-kpi-rev-diff" style="font-size:11px; font-weight:800;"></span>
+                    </div>
+                    <div class="stat-value" id="sim-kpi-rev" style="color:var(--accent);">--</div>
+                    <div class="stat-hint" id="sim-kpi-rev-orig">目前實際核定/估算總運費：--</div>
+                </div>
+
+                <div class="stat-card" style="border-top:3px solid #f59e0b;">
+                    <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>區間總營業成本</span>
+                        <span id="sim-kpi-cost-tag" style="font-size:11px; color:#fbbf24; font-weight:700;"></span>
+                    </div>
+                    <div class="stat-value" id="sim-kpi-cost" style="color:#fbbf24;">--</div>
+                    <div id="sim-kpi-cost-bar" style="height:6px; border-radius:4px; background:rgba(255,255,255,0.08); overflow:hidden; display:flex; margin:6px 0 4px;"></div>
+                    <div class="stat-hint" id="sim-kpi-cost-detail">人事(含獎金) -- ｜ 油資 -- ｜ 保養/折舊/罰單 --</div>
+                </div>
+
+                <div class="stat-card" style="border-top:3px solid var(--success);">
+                    <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>預估淨利 (損益)</span>
+                        <span id="sim-kpi-profit-diff" style="font-size:11px; font-weight:800;"></span>
+                    </div>
+                    <div class="stat-value" id="sim-kpi-profit" style="color:var(--success);">--</div>
+                    <div class="stat-hint" id="sim-kpi-profit-orig">調價前原淨利：--</div>
+                </div>
+
+                <div class="stat-card" style="border-top:3px solid #a855f7;">
+                    <div class="stat-label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>預估利潤率 (毛利率)</span>
+                        <span id="sim-kpi-margin-diff" style="font-size:11px; font-weight:800;"></span>
+                    </div>
+                    <div class="stat-value" id="sim-kpi-margin" style="color:#c084fc;">--</div>
+                    <div class="stat-hint" id="sim-kpi-unit-metrics">每單平均：營收 -- / 成本 --</div>
+                </div>
+            </div>
+
+            <!-- 第一部分：每月成本與配送獎金設定 -->
+            <div style="background:var(--card-bg); border:1px solid var(--glass-border); border-radius:12px; padding:16px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--glass-border);">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span style="font-weight:800; font-size:14px; color:#fbbf24; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-coins"></i> 1. 每月成本結構設定（按月自動記憶）</span>
+                        <div style="display:inline-flex; align-items:center; gap:6px; background:#0f172a; border:1px solid var(--glass-border); border-radius:8px; padding:4px 10px;">
+                            <span style="font-size:12px; color:var(--text-dim); font-weight:700;">核算月份：</span>
+                            <input type="month" id="simCostMonthPicker" onchange="onSimMonthPickerChange(this.value)" style="background:transparent; border:none; color:#fff; font-size:13px; font-weight:800; outline:none; cursor:pointer;">
+                        </div>
+                        <span id="simCostMemoryBadge" style="font-size:11px; color:#4ade80; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); padding:3px 8px; border-radius:6px; font-weight:700;"></span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="mini-btn" onclick="copyPrevMonthCostToCurrent()" title="手動將上個月記憶的成本與配送獎金帶入本月" style="display:inline-flex; align-items:center; gap:5px; color:#38bdf8; border-color:rgba(56,189,248,0.4);">
+                            <i class="fas fa-history"></i> 帶入上個月數字 (<span id="simPrevMonthLabel">--</span>)
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px;">
+                    <!-- 1. 人事費用 (固定薪資/勞健保) -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#38bdf8;"><i class="fas fa-users" style="margin-right:4px;"></i>人事費用 (底薪/固定)</label>
+                            <span id="simPersonnelTotalTag" style="font-size:11px; color:#bae6fd; font-weight:700;">含獎金共 $0</span>
+                        </div>
+                        <input type="number" id="simCostPersonnel" min="0" step="1000" placeholder="輸入月固定人事費..." oninput="onSimCostInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #334155; border-radius:6px; padding:8px 10px; color:#fff; font-size:16px; font-weight:800;">
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:5px;" id="simPrevPersonnelHint">上月記憶：--</div>
+                    </div>
+
+                    <!-- 2. 配送獎金 (計入人事費用，獨立一格讓小姐填寫並帶入上月) -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid rgba(56,189,248,0.45); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#7dd3fc;"><i class="fas fa-award" style="margin-right:4px;"></i>配送獎金 <span style="font-size:10px; background:rgba(56,189,248,0.2); padding:1px 5px; border-radius:4px;">計入人事</span></label>
+                            <button type="button" onclick="applyPrevMonthBonusOnly()" style="background:transparent; border:1px solid rgba(56,189,248,0.4); color:#38bdf8; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;" title="單獨帶入上個月的配送獎金">帶入上月</button>
+                        </div>
+                        <input type="number" id="simCostBonus" min="0" step="500" placeholder="由小姐填寫配送獎金..." oninput="onSimCostInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #38bdf8; border-radius:6px; padding:8px 10px; color:#4ade80; font-size:16px; font-weight:800;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-dim); margin-top:5px; flex-wrap:wrap; gap:4px;">
+                            <span id="simPrevBonusHint">上月獎金：--</span>
+                            <span id="simSysBonusHint" style="color:#94a3b8; cursor:pointer; text-decoration:underline dotted;" onclick="applySystemCalcBonusToSim()" title="點擊帶入系統依行程表計算之預估配送獎金">系統試算參考：$0</span>
+                        </div>
+                    </div>
+
+                    <!-- 3. 油資費用 (APP 統計自動帶入) -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid rgba(249,115,22,0.35); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#fb923c;"><i class="fas fa-gas-pump" style="margin-right:4px;"></i>油資費用 (APP統計)</label>
+                            <button type="button" id="simResetAppFuelBtn" onclick="resetSimFuelToApp()" style="display:none; background:transparent; border:1px solid rgba(249,115,22,0.5); color:#fb923c; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; cursor:pointer;">還原APP統計</button>
+                        </div>
+                        <input type="number" id="simCostFuel" min="0" step="500" placeholder="自動帶入APP油資..." oninput="onSimFuelInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #334155; border-radius:6px; padding:8px 10px; color:#fb923c; font-size:16px; font-weight:800;">
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:5px;" id="simAppFuelHint">區間 APP 行程表油資合計：$0</div>
+                    </div>
+
+                    <!-- 4. 保養費用 -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#fbbf24;"><i class="fas fa-tools" style="margin-right:4px;"></i>保養費用</label>
+                        </div>
+                        <input type="number" id="simCostMaint" min="0" step="500" placeholder="輸入保養費用..." oninput="onSimCostInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #334155; border-radius:6px; padding:8px 10px; color:#fff; font-size:16px; font-weight:800;">
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:5px;" id="simPrevMaintHint">上月記憶：--</div>
+                    </div>
+
+                    <!-- 5. 罰單費用 -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#f87171;"><i class="fas fa-exclamation-triangle" style="margin-right:4px;"></i>罰單費用</label>
+                        </div>
+                        <input type="number" id="simCostFines" min="0" step="500" placeholder="輸入罰單費用..." oninput="onSimCostInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #334155; border-radius:6px; padding:8px 10px; color:#fff; font-size:16px; font-weight:800;">
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:5px;" id="simPrevFinesHint">上月記憶：--</div>
+                    </div>
+
+                    <!-- 6. 折舊費用 -->
+                    <div style="background:rgba(15,23,42,0.75); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <label style="font-size:12px; font-weight:800; color:#c084fc;"><i class="fas fa-truck-pickup" style="margin-right:4px;"></i>折舊費用</label>
+                        </div>
+                        <input type="number" id="simCostDeprec" min="0" step="500" placeholder="輸入折舊費用..." oninput="onSimCostInput()" style="width:100%; box-sizing:border-box; background:#020617; border:1px solid #334155; border-radius:6px; padding:8px 10px; color:#fff; font-size:16px; font-weight:800;">
+                        <div style="font-size:11px; color:var(--text-dim); margin-top:5px;" id="simPrevDeprecHint">上月記憶：--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 第二部分：運費區段價格即時模擬調整 -->
+            <div style="background:var(--card-bg); border:1px solid var(--glass-border); border-radius:12px; padding:16px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--glass-border);">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span style="font-weight:800; font-size:14px; color:var(--accent); display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-sliders-h"></i> 2. 各重量區段與附加運費模擬調價（改動立即重算全單）</span>
+                        <label style="font-size:12px; color:#cbd5e1; display:inline-flex; align-items:center; gap:5px; cursor:pointer; background:rgba(255,255,255,0.05); padding:4px 10px; border-radius:6px; border:1px solid var(--glass-border);">
+                            <input type="checkbox" id="simKeepAdjustedFee" checked onchange="runFreightSimulation()" style="accent-color:var(--success);">
+                            已人工核定/指定運費之訂單維持原指定價
+                        </label>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:11px; color:var(--text-dim);">全區段快調：</span>
+                        <button type="button" class="mini-btn" onclick="batchAdjustSimSlabs(-50, 'add')">全級距 -50</button>
+                        <button type="button" class="mini-btn" onclick="batchAdjustSimSlabs(50, 'add')">全級距 +50</button>
+                        <button type="button" class="mini-btn" onclick="batchAdjustSimSlabs(100, 'add')">全級距 +100</button>
+                        <button type="button" class="mini-btn" onclick="batchAdjustSimSlabs(5, 'pct')">全級距 +5%</button>
+                        <button type="button" class="mini-btn" onclick="batchAdjustSimSlabs(10, 'pct')">全級距 +10%</button>
+                        <button type="button" class="mini-btn" onclick="resetSimRatesToOfficial()" style="color:#fbbf24; border-color:rgba(251,191,36,0.4);"><i class="fas fa-undo"></i> 還原目前正式費率</button>
+                        <button type="button" class="btn-refresh" id="simApplyOfficialBtn" onclick="applySimRatesToOfficial()" style="padding:5px 12px; font-size:12px;"><i class="fas fa-save"></i> 正式寫入運費管理表</button>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns: 2fr 1fr; gap:16px;" class="sim-rate-grid">
+                    <!-- 左側：重量級距表 -->
+                    <div style="background:rgba(15,23,42,0.65); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-size:13px; font-weight:800; color:#fff;"><i class="fas fa-weight-hanging" style="color:var(--accent); margin-right:5px;"></i>重量區段基礎運費（含區間命中單數與佔比）</span>
+                            <button type="button" class="mini-btn" onclick="simAddSlabRow()">+ 新增重量區段</button>
+                        </div>
+                        <div id="simSlabsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                    </div>
+
+                    <!-- 右側：附加服務費與偏遠倍率 -->
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div style="background:rgba(15,23,42,0.65); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                            <div style="font-size:13px; font-weight:800; color:#fff; margin-bottom:8px;"><i class="fas fa-plus-circle" style="color:#f472b6; margin-right:5px;"></i>附加服務費用設定</div>
+                            <div id="simAddonsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        </div>
+                        <div style="background:rgba(15,23,42,0.65); border:1px solid var(--glass-border); border-radius:10px; padding:12px;">
+                            <div style="font-size:13px; font-weight:800; color:#fff; margin-bottom:8px;"><i class="fas fa-map-marked-alt" style="color:#fbbf24; margin-right:5px;"></i>偏遠地區加乘倍率</div>
+                            <div id="simRemoteList" style="display:flex; flex-direction:column; gap:8px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 第三部分：各家分公司試算對比卡 -->
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+                    <div class="section-title" style="margin:0;"><i class="fas fa-building"></i> 3. 各家分公司運費試算對比（點擊卡片可篩選下方明細）</div>
+                    <span style="font-size:12px; color:var(--text-dim);">對比「目前運費」與「調整區段後試算運費」之差額與漲跌幅</span>
+                </div>
+            </div>
+            <div class="stats-grid" id="simBranchCards" style="grid-template-columns: repeat(4, 1fr); margin-bottom:16px;"></div>
+
+            <!-- 第四部分：各筆訂單試算明細表 -->
+            <div class="results-table-container">
+                <div style="background:rgba(0,0,0,0.25); padding:12px 15px; border-bottom:1px solid var(--glass-border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span style="font-weight:800; font-size:14px; color:var(--accent);"><i class="fas fa-list-alt"></i> 各筆訂單運費試算對比明細</span>
+                        <span id="simOrderFilterTag" style="font-size:12px; color:#fbbf24; font-weight:700;"></span>
+                        <label style="font-size:12px; color:#cbd5e1; display:inline-flex; align-items:center; gap:5px; cursor:pointer; background:rgba(255,255,255,0.05); padding:3px 9px; border-radius:6px; border:1px solid var(--glass-border);">
+                            <input type="checkbox" id="simOnlyDiffOrders" onchange="renderSimOrdersTable()" style="accent-color:var(--accent);">
+                            只顯示試算後金額有變動的訂單 (<span id="simDiffOrderCount">0</span>)
+                        </label>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <button type="button" class="mini-btn" onclick="copySimTableTsv()"><i class="fas fa-copy"></i> 複製試算表</button>
+                        <button type="button" class="mini-btn" onclick="exportSimTableCsv()"><i class="fas fa-download"></i> 匯出試算 CSV</button>
+                    </div>
+                </div>
+                <div class="table-scroll" style="max-height:520px;">
+                    <table id="sim-orders-table">
+                        <thead>
+                            <tr>
+                                <th>日期</th>
+                                <th>單號</th>
+                                <th>分公司</th>
+                                <th>客戶名稱</th>
+                                <th style="text-align:right;">重量(kg)</th>
+                                <th>狀況</th>
+                                <th style="text-align:right;">目前運費</th>
+                                <th style="text-align:right; color:var(--accent);">試算新運費</th>
+                                <th style="text-align:right;">差額 (+/-)</th>
+                                <th>試算運費公式拆解</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -555,50 +864,50 @@
     <div id="drillPanel">
         <div class="drill-head">
             <div><h3 id="drillTitle">明細</h3><div class="sub" id="drillSub"></div></div>
-            <button class="mini-btn" onclick="drillCopy()" title="複製成表格，可直接貼到 Excel / Google 試算表">複製表格</button>
-            <button class="mini-btn" onclick="drillCsv()">⬇ CSV</button>
-            <button class="drill-close" onclick="closeDrill()">✕ 關閉</button>
+            <button class="mini-btn" onclick="drillCopy()" title="複製成表格，可直接貼到 Excel / Google 試算表"><i class="fas fa-copy"></i> 複製表格</button>
+            <button class="mini-btn" onclick="drillCsv()"><i class="fas fa-download"></i> CSV</button>
+            <button class="drill-close" onclick="closeDrill()"><i class="fas fa-times"></i> 關閉</button>
         </div>
         <div class="drill-summary" id="drillSummary"></div>
         <div id="drillBatchBar" style="display:none; background:rgba(30,41,59,0.95); border:1px solid #38bdf8; border-radius:8px; padding:8px 14px; margin:10px 0; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-            <div style="font-size:12px; color:#fff; font-weight:bold;">
-                ☑ 已勾選 <span id="batchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
+            <div style="font-size:12px; color:#fff; font-weight:bold; display:inline-flex; align-items:center; gap:6px;">
+                <i class="fas fa-check-square" style="color:#38bdf8;"></i> 已勾選 <span id="batchSelectedCount" style="color:#38bdf8; font-size:14px; font-weight:900;">0</span> 筆單據
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <button onclick="submitBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🟡 批次「樣品免費」</button>
-                <button onclick="submitBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔵 批次「樣品收費」</button>
-                <button onclick="submitBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">⚪ 批次「一般銷貨」</button>
-                <button onclick="submitBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer;">🔴 批次「退貨單據」</button>
-                <button onclick="submitBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;">↺ 批次清除人工判定</button>
+                <button onclick="submitBatchDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.2); border:1px solid #eab308; color:#eab308; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#eab308"/></svg> 批次「樣品免費」</button>
+                <button onclick="submitBatchDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.2); border:1px solid #38bdf8; color:#38bdf8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#38bdf8"/></svg> 批次「樣品收費」</button>
+                <button onclick="submitBatchDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.1); border:1px solid #94a3b8; color:#fff; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#e2e8f0"/></svg> 批次「一般銷貨」</button>
+                <button onclick="submitBatchDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.2); border:1px solid #ef4444; color:#ef4444; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold; cursor:pointer; display:inline-flex; align-items:center; gap:5px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#ef4444"/></svg> 批次「退貨單據」</button>
+                <button onclick="submitBatchDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:4px 10px; border-radius:6px; font-size:11px; cursor:pointer;"><i class="fas fa-undo"></i> 批次清除人工判定</button>
             </div>
         </div>
         <div class="drill-body"><table id="drillTable"><thead></thead><tbody></tbody></table></div>
     </div>
     <div id="lightbox" onclick="this.classList.remove('open')"><img id="lightboxImg" src=""></div>
 
-    <!-- ✏️ 單據類型選擇視窗 -->
+    <!-- 單據類型選擇視窗 -->
     <div id="docTypeMask" class="modal-mask" onclick="if (event.target === this) closeDocTypeModal()">
         <div class="modal" style="max-width:420px; padding:22px; background:#0f172a; border:1px solid #38bdf8; border-radius:14px; box-shadow:0 20px 50px rgba(0,0,0,0.8);">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #334155; padding-bottom:8px;">
-                <h4 style="margin:0; color:#38bdf8; font-size:16px; font-weight:800;">✏️ 選擇單據類型人工改判</h4>
-                <span style="color:#94a3b8; cursor:pointer; font-size:18px;" onclick="closeDocTypeModal()">✕</span>
+                <h4 style="margin:0; color:#38bdf8; font-size:16px; font-weight:800; display:inline-flex; align-items:center; gap:6px;"><i class="fas fa-pen"></i> 選擇單據類型人工改判</h4>
+                <span style="color:#94a3b8; cursor:pointer; font-size:18px;" onclick="closeDocTypeModal()"><i class="fas fa-times"></i></span>
             </div>
             <div style="font-size:12px; color:#cbd5e1; margin-bottom:15px;">單號：<b id="dtModalId" style="color:#fff; font-size:13px;"></b></div>
             <div style="display:flex; flex-direction:column; gap:10px;">
                 <button onclick="submitDocTypeChoice('樣品免費')" style="background:rgba(234,179,8,0.15); border:1.5px solid #eab308; color:#eab308; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>🟡 樣品免費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送回公司/倉庫，免運 $0)</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#eab308"/></svg> 樣品免費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送回公司/倉庫，免運 $0)</span>
                 </button>
                 <button onclick="submitDocTypeChoice('樣品收費')" style="background:rgba(56,189,248,0.15); border:1.5px solid #38bdf8; color:#38bdf8; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>🔵 樣品收費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送到外場/客戶，照常計費)</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#38bdf8"/></svg> 樣品收費</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(送到外場/客戶，照常計費)</span>
                 </button>
                 <button onclick="submitDocTypeChoice('銷貨')" style="background:rgba(255,255,255,0.06); border:1.5px solid #475569; color:#fff; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>⚪ 一般銷貨</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(一般銷貨單據)</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#e2e8f0"/></svg> 一般銷貨</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(一般銷貨單據)</span>
                 </button>
                 <button onclick="submitDocTypeChoice('退貨')" style="background:rgba(239,68,68,0.15); border:1.5px solid #ef4444; color:#ef4444; padding:10px 14px; border-radius:8px; font-weight:bold; cursor:pointer; text-align:left; font-size:13px; display:flex; justify-content:space-between; align-items:center;">
-                    <span>🔴 退貨單據</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(退貨或載回倉庫)</span>
+                    <span style="display:inline-flex; align-items:center; gap:6px;"><svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="#ef4444"/></svg> 退貨單據</span> <span style="font-size:11px; color:#cbd5e1; font-weight:normal;">(退貨或載回倉庫)</span>
                 </button>
                 <button onclick="submitDocTypeChoice('')" style="background:transparent; border:1px dashed #64748b; color:#94a3b8; padding:8px; border-radius:8px; cursor:pointer; margin-top:4px; font-size:12px;">
-                    ↺ 清除人工判定 (回到系統自動規則)
+                    <i class="fas fa-undo"></i> 清除人工判定 (回到系統自動規則)
                 </button>
             </div>
             <div style="display:flex; justify-content:flex-end; margin-top:16px;">
@@ -772,6 +1081,7 @@
                     plates.forEach(p => { const op = document.createElement('option'); op.value = p; op.textContent = plateLabel(p); dSel.appendChild(op); });
                     if (plates.includes(cur)) dSel.value = cur;
                     buildItinPlateButtons();
+                    initSimulatorFromData(res);
                     updateDashboard();
                 } else {
                     notify('資料載入失敗：' + ((res && res.error) || '未知錯誤'), true);
@@ -790,13 +1100,35 @@
             document.querySelectorAll('.btn-preset').forEach(b => b.classList.toggle('active', b.dataset.key === key));
         }
         function setPreset(key, silent) {
-            const now = new Date(); let start = new Date(), end = new Date();
-            if (key === 'today') { start.setHours(0,0,0,0); }
-            else if (key === '7d') { start.setDate(now.getDate() - 6); }
-            else if (key === 'thisMonth') { start = new Date(now.getFullYear(), now.getMonth(), 1); }
-            else if (key === 'lastMonth') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = new Date(now.getFullYear(), now.getMonth(), 0); }
-            else if (key === '90d') { start.setDate(now.getDate() - 89); }
-            else if (key === '180d') { start.setDate(now.getDate() - 179); }
+            const now = new Date();
+            const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+            let start = new Date(y, m, d), end = new Date(y, m, d);
+            if (key === 'today') {
+                start = new Date(y, m, d);
+                end = new Date(y, m, d);
+            } else if (key === 'yesterday') {
+                start = new Date(y, m, d - 1);
+                end = new Date(y, m, d - 1);
+            } else if (key === 'thisWeek') {
+                const dow = now.getDay() || 7; /* 週一=1 ... 週日=7 */
+                start = new Date(y, m, d - (dow - 1));
+                end = new Date(y, m, d);
+            } else if (key === 'lastWeek') {
+                const dow = now.getDay() || 7;
+                start = new Date(y, m, d - (dow - 1) - 7);
+                end = new Date(y, m, d - dow);
+            } else if (key === '7d') {
+                start = new Date(y, m, d - 6);
+            } else if (key === 'thisMonth') {
+                start = new Date(y, m, 1);
+            } else if (key === 'lastMonth') {
+                start = new Date(y, m - 1, 1);
+                end = new Date(y, m, 0);
+            } else if (key === '90d') {
+                start = new Date(y, m, d - 89);
+            } else if (key === '180d') {
+                start = new Date(y, m, d - 179);
+            }
             document.getElementById('startDate').value = ymd(start);
             document.getElementById('endDate').value = ymd(end);
             markPreset(key);
@@ -808,7 +1140,8 @@
         function setBranch(b) { document.getElementById('branchFilter').value = b; syncBranchButtons(); updateDashboard(); }
         function syncBranchButtons() {
             const b = document.getElementById('branchFilter').value;
-            document.querySelectorAll('.btn-branch').forEach(btn => btn.classList.toggle('active', btn.dataset.branch === b));
+            document.querySelectorAll('.btn-branch[data-branch]').forEach(btn => btn.classList.toggle('active', btn.dataset.branch === b));
+            document.querySelectorAll('#freightBranchCards .freight-bcard').forEach(card => card.classList.toggle('active-card', card.dataset.branch === b));
         }
 
         function switchTab(targetId, btnElement) {
@@ -850,9 +1183,8 @@
             /*  營運分析的分公司圖表一律看四家：只套日期與司機篩選 */
             const foAllBranch = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && (inc || !o.isSample));
             const sampleAll = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver) && o.isSample);
-            // V42.44: 日期/分公司/司機都篩過、但「不排除樣品單」的完整清單，
-            // 供「司機行程記錄」(內部/免費樣品要單獨計筆) 跟「運費統計」選樣品類型時使用，
-            // 不能再套用上面「含免費樣品」勾選框(預設不勾=排除樣品)的排除規則
+            const foAllBranchFull = rawData.orders.filter(o => o.date >= f.sd && o.date <= f.ed && (f.driver === '全部' || o.plate === f.driver));
+            /* V42.44: 日期/分公司/司機都篩過、但「不排除樣品單」的完整清單 */
             const foFull = rawData.orders.filter(o =>
                 o.date >= f.sd && o.date <= f.ed &&
                 (f.branch === '全部' || o.branch === f.branch) &&
@@ -861,10 +1193,11 @@
             renderFuel(fs);
             renderPerformance(foFull, fs);
             renderItinerary();
-            // V42.42: 運費統計選了「樣品免費/樣品收費」類型按鈕時，這是使用者明確要看樣品單，
-            // 不該再被上面「含免費樣品」勾選框擋掉
+            renderFreightOverviewCards(foAllBranchFull, fs);
+            /* V42.42: 運費統計選了「樣品免費/樣品收費」類型按鈕時，這是使用者明確要看樣品單 */
             const foForFreight = (freightType === '樣品免費' || freightType === '樣品收費') ? foFull : fo;
             renderFreight(foForFreight, fs);
+            updateSimulatorView(foAllBranch, fs);
         }
 
         /*  ===== 營運分析 ===== */
@@ -877,8 +1210,112 @@
             if (w < 1) return '<1<small>萬<\/small>';
             return Math.round(w) + '<small>萬<\/small>';
         }
+
+        let overviewPeriod = 'day';
+        let __lastOverviewAll = [];
+        function setOverviewPeriod(p) {
+            overviewPeriod = p;
+            document.querySelectorAll('#overviewPeriodBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.p === p));
+            renderOverviewPeriodTable(__lastOverviewAll);
+        }
+        function toggleOverviewPeriodTable() {
+            const body = document.getElementById('overviewPeriodBody');
+            const btn = document.getElementById('btnTogglePeriodTable');
+            if (!body) return;
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                if (btn) btn.innerText = '收合表格 ▲';
+            } else {
+                body.style.display = 'none';
+                if (btn) btn.innerText = '展開表格 ▼';
+            }
+        }
+        function ymdSlash(d) {
+            return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+        }
+        function weekdayLabel(dateStr) {
+            const parts = String(dateStr || '').split('/');
+            if (parts.length < 3) return '';
+            const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+            return ['日', '一', '二', '三', '四', '五', '六'][dt.getDay()] || '';
+        }
+        function renderOverviewPeriodTable(all) {
+            const tbody = document.querySelector('#overview-period-table tbody');
+            if (!tbody) return;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const groups = {};
+            (all || []).forEach(o => {
+                const ds = String(o.date || '');
+                if (!ds) return;
+                let key = ds, label = ds + ' (' + weekdayLabel(ds) + ')', sd = ds, ed = ds;
+                if (overviewPeriod === 'week') {
+                    const p = ds.split('/');
+                    const dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+                    const dow = dt.getDay() || 7;
+                    const mon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() - (dow - 1));
+                    const sun = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + (7 - dow));
+                    sd = ymdSlash(mon);
+                    ed = ymdSlash(sun);
+                    key = sd;
+                    label = sd + ' ~ ' + ed.slice(5);
+                } else if (overviewPeriod === 'month') {
+                    key = ds.slice(0, 7);
+                    label = key.replace('/', ' 年 ') + ' 月';
+                    sd = key + '/01';
+                    ed = key + '/31';
+                }
+                const g = groups[key] || (groups[key] = { key, label, sd, ed, count: 0, weight: 0, fee: 0, byBr: { '安帝嘉': { n: 0, f: 0 }, '高雅瓷': { n: 0, f: 0 }, '喜悅納': { n: 0, f: 0 }, '漢樺': { n: 0, f: 0 } } });
+                const fee = feeOfOrder(o);
+                g.count++;
+                g.weight += (o.weight || 0);
+                g.fee += fee;
+                const b = brOf(o);
+                if (g.byBr[b]) { g.byBr[b].n++; g.byBr[b].f += fee; }
+            });
+            const list = Object.values(groups).sort((a, b) => b.key.localeCompare(a.key));
+            if (!list.length) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:#64748b; padding:16px;">區間內無出貨數據<\/td><\/tr>';
+                return;
+            }
+            const fmtBrCell = x => x.n ? `<span style="color:#fff; font-weight:700;">${x.n}<\/span><small style="color:var(--text-dim);">單<\/small> <span style="color:var(--text-dim); font-size:11px;">· $${Math.round(x.f).toLocaleString()}<\/span>` : '<span style="color:#475569;">—<\/span>';
+            const totCount = list.reduce((s, g) => s + g.count, 0);
+            const totWeight = list.reduce((s, g) => s + g.weight, 0);
+            const totFee = list.reduce((s, g) => s + g.fee, 0);
+            const totBr = { '安帝嘉': { n: 0, f: 0 }, '高雅瓷': { n: 0, f: 0 }, '喜悅納': { n: 0, f: 0 }, '漢樺': { n: 0, f: 0 } };
+            list.forEach(g => { CARD_BRANCHES.forEach(b => { totBr[b].n += g.byBr[b].n; totBr[b].f += g.byBr[b].f; }); });
+
+            const rowsHtml = list.map(g => {
+                const arg = escapeHTML(g.sd + '|' + g.ed + '|' + g.label);
+                return `<tr style="cursor:pointer;" onclick="openDrill('period', '${arg}')" title="點擊檢視 ${escapeHTML(g.label)} 訂單明細">`
+                    + `<td style="font-weight:700; color:var(--accent); white-space:nowrap;">${escapeHTML(g.label)}<\/td>`
+                    + `<td style="text-align:right; font-weight:800; color:#fff; white-space:nowrap;">${g.count} <small style="color:var(--text-dim);">單<\/small><\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${(g.weight / 1000).toFixed(1)} <small style="color:var(--text-dim);">噸<\/small><\/td>`
+                    + `<td style="text-align:right; font-weight:800; color:var(--success); white-space:nowrap;">$${Math.round(g.fee).toLocaleString()}<\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${fmtBrCell(g.byBr['安帝嘉'])}<\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${fmtBrCell(g.byBr['高雅瓷'])}<\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${fmtBrCell(g.byBr['喜悅納'])}<\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${fmtBrCell(g.byBr['漢樺'])}<\/td>`
+                    + `<\/tr>`;
+            }).join('');
+
+            const totalHtml = `<tr style="background:rgba(15,23,42,0.95); border-top:2px solid var(--accent); font-weight:800;">`
+                + `<td style="color:#fff;">區間合計 (${list.length} ${overviewPeriod === 'day' ? '天' : (overviewPeriod === 'week' ? '週' : '個月')})<\/td>`
+                + `<td style="text-align:right; color:var(--accent);">${totCount} <small>單<\/small><\/td>`
+                + `<td style="text-align:right; color:#fff;">${(totWeight / 1000).toFixed(1)} <small>噸<\/small><\/td>`
+                + `<td style="text-align:right; color:var(--success);">$${Math.round(totFee).toLocaleString()}<\/td>`
+                + `<td style="text-align:right;">${fmtBrCell(totBr['安帝嘉'])}<\/td>`
+                + `<td style="text-align:right;">${fmtBrCell(totBr['高雅瓷'])}<\/td>`
+                + `<td style="text-align:right;">${fmtBrCell(totBr['喜悅納'])}<\/td>`
+                + `<td style="text-align:right;">${fmtBrCell(totBr['漢樺'])}<\/td>`
+                + `<\/tr>`;
+
+            tbody.innerHTML = rowsHtml + totalHtml;
+        }
+
         function renderOverview(orders, ordersAll, sampleAll) {
             const all = ordersAll || orders;
+            __lastOverviewAll = all;
+            renderOverviewPeriodTable(all);
             const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
             const samples = sampleAll || [];
 
@@ -1202,7 +1639,7 @@
             sched.forEach(s => {
                 const drv = vm[s.plate] || s.driver || '';
                 if (!drv) return;
-                const d = byDrv[drv] || (byDrv[drv] = { name: drv, plates: new Set(), days: new Set(), km: 0, fuelAmt: 0, fuelLit: 0, orders: 0, internalOrders: 0, internalWeight: 0, timed: 0, onTime: 0 });
+                const d = byDrv[drv] || (byDrv[drv] = { name: drv, plates: new Set(), days: new Set(), km: 0, fuelAmt: 0, fuelLit: 0, orders: 0, internalOrders: 0, internalWeight: 0, timed: 0, onTime: 0, late: 0, lateBig: 0, reasons: {} });
                 d.plates.add(s.plate); d.days.add(s.date); d.km += s.totalKm || 0; d.fuelAmt += s.fuelAmt || 0; d.fuelLit += s.fuelLit || 0;
                 ordersFor(s.date, s.plate).forEach(o => {
                     if (checkIsSample(o)) {
@@ -1215,6 +1652,11 @@
                     if (o.specifiedArrive) {
                         const dl = deadlineOf(o.specifiedArrive), ft = hhmm(o.finishTime);
                         if (dl >= 0 && ft >= 0) { d.timed++; if (ft <= dl) d.onTime++; }
+                        const lm = lateMinOf(o);
+                        if (lm > 0) {
+                            d.late++;
+                            if (lm > LATE_BIG_MIN) { d.lateBig++; const rs = o.lateReason || ''; if (rs) d.reasons[rs] = (d.reasons[rs] || 0) + 1; }
+                        }
                     }
                 });
             });
@@ -1318,17 +1760,19 @@
                     
                     <!-- ===== 上半部（數據統計） ===== -->
                     <div style="font-size:11px; font-weight:800; color:var(--text-dim); margin-top:6px; margin-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:3px;">
-                        📊 數據統計
+                        <i class="fas fa-chart-bar" style="margin-right:4px;"><\/i>數據統計
                     <\/div>
                     ${row('總單量', dispAllOrders, '含客戶配送 ' + selCustOrders.length + ' 單 + 內部 ' + selInternalOrders.length + ' 筆 (點擊看明細)', `openDrill('driverAll','${drvEsc}')`)}
                     ${row('總重量', totalTons + '<span style="font-size:12px;color:var(--text-main);font-weight:700;">' + unitLabel + '<\/span>', '點擊檢視純手工 ' + manTons + unitLabel + ' vs 堆高機 ' + forkTons + unitLabel + ' 拆解', `openDrill('driverAll','${drvEsc}')`)}
                     ${row('平均每日單量', Math.round(d.orders / days) + '<span style="font-size:12px"> 單/日<\/span>', '出勤 ' + d.days.size + ' 天')}
                     ${row('每日里程數', Math.round(d.km / days) + '<span style="font-size:12px"> km/日<\/span>', '總里程 ' + Math.round(d.km).toLocaleString() + ' km')}
+                    ${row('指定準點率', punct, d.timed ? ('指定時間單 ' + d.timed + ' 筆｜準時 ' + d.onTime + '｜遲到 ' + d.late + '（逾30分 ' + d.lateBig + '）') : '區間內無指定時間單')}
+                    ${d.lateBig ? row('逾30分遲到', d.lateBig + '<span style="font-size:12px"> 次<\/span>', Object.keys(d.reasons).length ? Object.entries(d.reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => escapeHTML(k) + '×' + v).join('、') : '無原因紀錄（功能上線前的單）') : ''}
                     ${row('每公里油耗', perKm + (perKm !== '—' ? '<span style="font-size:12px"> /km<\/span>' : ''), kmPerL || '區間內無加油記錄')}
 
                     <!-- ===== 下半部（獎金計算） ===== -->
                     <div style="border-top:1px solid rgba(255,255,255,0.1); margin:10px 0 6px 0; padding-top:8px; font-size:11px; font-weight:800; color:#22c55e;">
-                        💰 獎金計算
+                        <i class="fas fa-coins" style="margin-right:4px;"><\/i>獎金計算
                     <\/div>
                     ${row('客戶配送單量', dispCustOrders, '已扣除內部運輸/免費樣品 (計入獎金)', `openDrill('driverCustOnly','${drvEsc}')`)}
                     ${row('加權後重量', bonusTons + '<span style="font-size:12px;color:#22c55e;font-weight:700;">' + unitLabel + '<\/span>', '純手工 + 堆高機x1/3 噸數', `openDrill('driverAll','${drvEsc}')`)}
@@ -1488,7 +1932,12 @@
                         el.style.background = 'rgba(34,197,94,0.15)';
                         setTimeout(() => { el.style.background = originalBg; }, 800);
                         const o = rawData.orders.find(x => String(x.id) === String(taskId) && x.branch === branch);
-                        if (o) { o.adjustedFee = newFee; renderFreightStats(); }
+                        if (o) {
+                            o.adjustedFee = newFee;
+                            renderFreightStats();
+                            renderFreightOverviewCards(__lastAllBranchFull, __lastFreightSets.schedule || []);
+                            updateDailySubtotalInPlace(o.date);
+                        }
                     } else {
                         el.style.background = 'rgba(239,68,68,0.15)';
                         if (isAuthError(res)) { setAdminToken(''); promptAdminLogin(() => handleAdjustFreight(el)); return; }
@@ -1505,6 +1954,14 @@
 
         let __lastFreightSets = { rawOrders: [], orders: [], schedule: [] };
         /*  V41.42: 狀況判斷 (偏遠 / 久候 / 指定時間 / 搬運 / 貨運行)；旗標來自後端 isTimed/isWait/isCarry，舊快取沒有時退回公式字串判斷 */
+        /*  V43.42: 遲到分鐘。優先用司機結案時後端記錄的 lateMin；舊單沒紀錄時用完成時間 vs 指定時間補算 */
+        function lateMinOf(o) {
+            if (o.lateMin > 0) return o.lateMin;
+            if (!o.specifiedArrive) return 0;
+            const dl = deadlineOf(o.specifiedArrive), ft = hhmm(o.finishTime);
+            return (dl >= 0 && ft >= 0 && ft > dl) ? ft - dl : 0;
+        }
+        const LATE_BIG_MIN = 30;   /*  與司機端/後端 LATE_NOTIFY_MIN 一致：超過才要求原因 + 通知 */
         function condsOf(o) {
             const p = parseFeeParts(o.detail);
             const c = [];
@@ -1512,13 +1969,19 @@
             if (o.isWait || p.wait) c.push('久候');
             if (o.isTimed || p.timed) c.push('指定時間');
             if (o.isCarry || p.carry) c.push('搬運');
+            if (lateMinOf(o) > LATE_BIG_MIN) c.push('遲到');
             return c;
         }
-        const COND_COLOR = { '偏遠': '#fbbf24', '久候': '#c084fc', '指定時間': '#38bdf8', '搬運': '#f472b6', '貨運行': '#f97316' };
+        const COND_COLOR = { '偏遠': '#fbbf24', '久候': '#c084fc', '指定時間': '#38bdf8', '搬運': '#f472b6', '貨運行': '#f97316', '遲到': '#ef4444' };
         function condBadges(o) {
             const c = condsOf(o);
             if (o.carrierFlag) c.push('貨運行');
-            return c.length ? c.map(x => `<span class="cond-badge" style="color:${COND_COLOR[x]}">${x}<\/span>`).join('') : '<span style="color:var(--text-dim)">—<\/span>';
+            const badges = c.map(x => `<span class="cond-badge" style="color:${COND_COLOR[x]}"${x === '遲到' ? ` title="遲到 ${lateMinOf(o)} 分鐘｜${escapeHTML(o.lateReason || '無原因紀錄')}"` : ''}>${x === '遲到' ? '遲到' + lateMinOf(o) + '分' : x}<\/span>`);
+            if (o.feeReason) {
+                const stTip = o.feeConfirmStatus ? '｜確認狀態：' + o.feeConfirmStatus : '';
+                badges.push(`<span class="cond-badge" style="color:#4ade80;" title="${escapeHTML('指定運費原因：' + o.feeReason + stTip)}">指定:${escapeHTML(o.feeReason)}<\/span>`);
+            }
+            return badges.length ? badges.join('') : '<span style="color:var(--text-dim)">—<\/span>';
         }
         /*  單數分類：一般 / 退貨 / 貨運行 / 偏遠 (一張單可同時屬於多類) */
         function kindsOf(o) {
@@ -1549,7 +2012,7 @@
             base.forEach(o => { kindsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); condsOf(o).forEach(k => cnt[k] = (cnt[k] || 0) + 1); });
             const chip = k => `<span class="chip ${freightCond === k ? 'on' : ''}" onclick="setFreightCond('${k}')" style="${COND_COLOR[k] && freightCond !== k ? 'color:' + COND_COLOR[k] : ''}">${k}<b>${cnt[k] || 0}<\/b><\/span>`;
             document.getElementById('chips-kind').innerHTML = ['一般', '退貨', '貨運行', '偏遠'].map(chip).join('');
-            document.getElementById('chips-cond').innerHTML = ['久候', '搬運', '指定時間'].map(chip).join('');
+            document.getElementById('chips-cond').innerHTML = ['久候', '搬運', '指定時間', '遲到'].map(chip).join('');
             setText('stat-cond-count', base.filter(o => condsOf(o).some(c => c !== '偏遠')).length);
 
             const byCust = {};
@@ -1648,7 +2111,7 @@
                                 o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
                             }
                         });
-                        notify(res.message || `✅ 已批次修改 ${items.length} 筆單據！`);
+                        notify(res.message || `已批次修改 ${items.length} 筆單據！`);
                         updateDashboard();
                     } else notify('批次改判失敗：' + ((res && res.error) || ''), true);
                 }).withFailureHandler(err => notify('批次改判失敗：' + err.message, true)).batchSetDocTypeOverride_V42(items, ATOKEN());
@@ -1660,9 +2123,233 @@
             if (o.docType === '樣品') return o.sampleTo === 'home' ? '樣品免費' : '樣品收費';
             return '銷貨';
         }
+        function isOrderAdjusted(o) {
+            return (o.adjustedFee > 0 && o.adjustedFee !== o.estFee) || Boolean(o.docTypeManual);
+        }
+
+        let __lastAllBranchFull = [];
+        let freightDetailOpen = false;
+        let freightViewMode = 'list';
+        let freightAdjustedOnly = false;
+        let collapsedDailyDates = new Set();
+        let dailyAllFolded = false;
+
+        function renderFreightOverviewCards(allInDateDriver, schedule) {
+            __lastAllBranchFull = allInDateDriver || [];
+            const box = document.getElementById('freightBranchCards');
+            if (!box) return;
+            const inc = includeSamples();
+            const curBranch = document.getElementById('branchFilter').value;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const billableAll = __lastAllBranchFull.filter(o => inc || !o.isSample);
+            const grandTotalFee = billableAll.reduce((s, o) => s + feeOfOrder(o), 0);
+            const grandTotalKg = billableAll.reduce((s, o) => s + (o.weight || 0), 0);
+            const sumEl = document.getElementById('freightOverviewSummaryText');
+            if (sumEl) {
+                sumEl.innerHTML = `區間四家應收總計：<b style="color:var(--success); font-size:14px;">$${Math.round(grandTotalFee).toLocaleString()}<\/b>（計費 <b>${billableAll.length}<\/b> 單 · <b>${(grandTotalKg / 1000).toFixed(1)}<\/b> 噸）`;
+            }
+            const dotSvg = color => `<svg width="10" height="10" viewBox="0 0 10 10" style="vertical-align:middle; margin-right:5px;"><circle cx="5" cy="5" r="4" fill="${color}"/><\/svg>`;
+
+            box.innerHTML = CARD_BRANCHES.map(b => {
+                const boAll = __lastAllBranchFull.filter(o => brOf(o) === b);
+                const boBillable = boAll.filter(o => inc || !o.isSample);
+                const totalFee = boBillable.reduce((s, o) => s + feeOfOrder(o), 0);
+                const estTotal = boBillable.reduce((s, o) => s + (o.estFee || 0), 0);
+                const totalKg = boBillable.reduce((s, o) => s + (o.weight || 0), 0);
+                const pct = grandTotalFee ? (totalFee / grandTotalFee * 100) : 0;
+                const c = BRANCH_COLOR[b] || '#94a3b8';
+                const isSelected = freightDetailOpen && curBranch === b;
+
+                const sales = boAll.filter(o => freightTypeOf(o) === '銷貨');
+                const salesFee = sales.reduce((s, o) => s + feeOfOrder(o), 0);
+                const sPaid = boAll.filter(o => freightTypeOf(o) === '樣品收費');
+                const sPaidFee = sPaid.reduce((s, o) => s + feeOfOrder(o), 0);
+                const rets = boAll.filter(o => freightTypeOf(o) === '退貨');
+                const retsFee = rets.reduce((s, o) => s + feeOfOrder(o), 0);
+                const sFree = boAll.filter(o => freightTypeOf(o) === '樣品免費');
+                const carrierCnt = boBillable.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== '').length;
+                const adjCnt = boAll.filter(isOrderAdjusted).length;
+
+                return `<div class="stat-card branch-card freight-bcard${isSelected ? ' active-card' : ''}" data-branch="${b}" style="border-top-color:${c};" onclick="openFreightBranchDetail('${b}')">`
+                    + `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">`
+                    + `<span class="stat-label" style="color:${c}; margin:0; font-size:15px;">${b}<\/span>`
+                    + `<span style="font-size:11px; color:var(--text-dim);">佔比 <b style="color:#fff;">${pct.toFixed(0)}%<\/b><\/span>`
+                    + `<\/div>`
+                    + `<div style="display:flex; justify-content:space-between; align-items:baseline; padding:4px 6px; background:rgba(0,0,0,0.22); border-radius:8px; margin-bottom:8px;">`
+                    + `<span style="font-size:11px; color:var(--text-dim);">應收總運費<\/span>`
+                    + `<span style="font-size:22px; font-weight:900; color:var(--success);">$${Math.round(totalFee).toLocaleString()}<\/span>`
+                    + `<\/div>`
+                    + `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); padding:0 6px 6px; border-bottom:1px dashed var(--glass-border);">`
+                    + `<span>計費 <b style="color:#fff;">${boBillable.length}<\/b> 單 · <b style="color:#fff;">${(totalKg / 1000).toFixed(1)}<\/b> 噸<\/span>`
+                    + `<span>系統原估 $${Math.round(estTotal).toLocaleString()}<\/span>`
+                    + `<\/div>`
+                    + `<div style="margin-top:6px; display:flex; flex-direction:column; gap:2px;">`
+                    + `<div class="fb-type-row" style="${isSelected && freightType === '銷貨' ? 'background:rgba(56,189,248,0.16);' : ''}" onclick="event.stopPropagation(); openFreightBranchDetail('${b}', '銷貨')" title="點擊只看 ${b} 一般銷貨明細（再點可關閉）"><span style="color:#cbd5e1;">${dotSvg('#cbd5e1')}一般銷貨<\/span><span style="font-weight:700; color:#fff;">${sales.length} 單 · $${Math.round(salesFee).toLocaleString()}<\/span><\/div>`
+                    + `<div class="fb-type-row" style="${isSelected && freightType === '樣品收費' ? 'background:rgba(56,189,248,0.16);' : ''}" onclick="event.stopPropagation(); openFreightBranchDetail('${b}', '樣品收費')" title="點擊只看 ${b} 樣品收費明細（再點可關閉）"><span style="color:#38bdf8;">${dotSvg('#38bdf8')}樣品收費<\/span><span style="font-weight:700; color:#7dd3fc;">${sPaid.length} 單 · $${Math.round(sPaidFee).toLocaleString()}<\/span><\/div>`
+                    + `<div class="fb-type-row" style="${isSelected && freightType === '退貨' ? 'background:rgba(56,189,248,0.16);' : ''}" onclick="event.stopPropagation(); openFreightBranchDetail('${b}', '退貨')" title="點擊只看 ${b} 退貨單明細（再點可關閉）"><span style="color:#f87171;">${dotSvg('#f87171')}退貨單據<\/span><span style="font-weight:700; color:#fca5a5;">${rets.length} 單 · $${Math.round(retsFee).toLocaleString()}<\/span><\/div>`
+                    + `<div class="fb-type-row" style="${isSelected && freightType === '樣品免費' ? 'background:rgba(56,189,248,0.16);' : ''}" onclick="event.stopPropagation(); openFreightBranchDetail('${b}', '樣品免費')" title="點擊只看 ${b} 樣品免費/內部單明細（再點可關閉）"><span style="color:#fbbf24;">${dotSvg('#fbbf24')}樣品免費<\/span><span style="font-weight:700; color:#fde68a;">${sFree.length} 單 · $0<\/span><\/div>`
+                    + `<\/div>`
+                    + `<div style="display:flex; justify-content:space-between; font-size:11px; color:var(--text-dim); padding:6px 6px 0; margin-top:4px; border-top:1px dashed var(--glass-border);">`
+                    + `<span>貨運行折扣 <b style="color:#f97316;">${carrierCnt}<\/b> 單<\/span>`
+                    + `<span>人工調整 <b style="color:#38bdf8;">${adjCnt}<\/b> 筆<\/span>`
+                    + `<\/div>`
+                    + `<button type="button" onclick="event.stopPropagation(); openFreightBranchDetail('${b}')" style="margin-top:10px; width:100%; padding:7px 10px; border-radius:8px; border:1px solid ${isSelected ? 'var(--accent)' : 'var(--glass-border)'}; background:${isSelected ? 'rgba(56,189,248,0.22)' : 'rgba(255,255,255,0.05)'}; color:${isSelected ? 'var(--accent)' : '#e2e8f0'}; font-size:12px; font-weight:800; cursor:pointer;">`
+                    + `${isSelected ? '<i class="fas fa-check-circle" style="margin-right:4px; color:#22c55e;"><\/i>目前檢視中（再點關閉 ▲）' : '<i class="fas fa-search" style="margin-right:4px;"><\/i>查看 ' + b + ' 內部對帳明細 ▼'}`
+                    + `<\/button>`
+                    + `<\/div>`;
+            }).join('');
+        }
+
+        function syncFreightDetailVisibility() {
+            const container = document.getElementById('freightDetailContainer');
+            const prompt = document.getElementById('freightDetailPrompt');
+            const btn = document.getElementById('btnToggleFreightDetail');
+            if (!container) return;
+            container.style.display = freightDetailOpen ? 'block' : 'none';
+            if (prompt) prompt.style.display = freightDetailOpen ? 'none' : 'block';
+            if (btn) btn.innerHTML = freightDetailOpen ? '<i class="fas fa-chevron-up" style="margin-right:4px;"><\/i>收合內部詳細明細' : '<i class="fas fa-folder-open" style="margin-right:4px;"><\/i>展開全部公司內部明細 ▼';
+        }
+
+        function openFreightBranchDetail(branch, type) {
+            const curBranch = document.getElementById('branchFilter').value;
+            if (freightDetailOpen && curBranch === branch && (!type || freightType === type)) {
+                collapseFreightDetailPanel();
+                return;
+            }
+            freightDetailOpen = true;
+            syncFreightDetailVisibility();
+            const targetType = type !== undefined ? type : '全部';
+            freightType = targetType;
+            document.querySelectorAll('#freightTypeBtns .btn-branch').forEach(b => b.classList.toggle('active', b.dataset.type === targetType));
+            if (branch !== undefined) {
+                document.getElementById('branchFilter').value = branch;
+                syncBranchButtons();
+            }
+            updateDashboard();
+            const container = document.getElementById('freightDetailContainer');
+            if (container) {
+                setTimeout(() => container.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+            }
+        }
+
+        function toggleFreightDetailPanel() {
+            if (freightDetailOpen) {
+                collapseFreightDetailPanel();
+            } else {
+                openFreightBranchDetail(document.getElementById('branchFilter').value || '全部', freightType || '全部');
+            }
+        }
+
+        function collapseFreightDetailPanel() {
+            freightDetailOpen = false;
+            syncFreightDetailVisibility();
+            renderFreightOverviewCards(__lastAllBranchFull, __lastFreightSets.schedule || []);
+        }
+
+        function setFreightViewMode(mode) {
+            freightViewMode = mode;
+            const btnList = document.getElementById('btnViewList');
+            const btnDaily = document.getElementById('btnViewDaily');
+            const btnFold = document.getElementById('btnToggleDailyFold');
+            if (btnList) {
+                btnList.style.background = mode === 'list' ? 'rgba(56,189,248,0.25)' : 'transparent';
+                btnList.style.color = mode === 'list' ? 'var(--accent)' : 'var(--text-dim)';
+            }
+            if (btnDaily) {
+                btnDaily.style.background = mode === 'daily' ? 'rgba(56,189,248,0.25)' : 'transparent';
+                btnDaily.style.color = mode === 'daily' ? 'var(--accent)' : 'var(--text-dim)';
+            }
+            if (btnFold) {
+                btnFold.style.display = mode === 'daily' ? 'inline-block' : 'none';
+            }
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
+        }
+
+        function toggleAllDailyGroups() {
+            const orders = __lastFreightSets.orders || [];
+            const dates = [...new Set(orders.map(o => o.date))];
+            dailyAllFolded = !dailyAllFolded;
+            if (dailyAllFolded) {
+                collapsedDailyDates = new Set(dates);
+            } else {
+                collapsedDailyDates.clear();
+            }
+            const btnFold = document.getElementById('btnToggleDailyFold');
+            if (btnFold) btnFold.innerText = dailyAllFolded ? '展開每日明細 ▼' : '收合為日結總表 ▲';
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
+        }
+
+        function toggleDailyGroup(dateStr) {
+            if (collapsedDailyDates.has(dateStr)) collapsedDailyDates.delete(dateStr);
+            else collapsedDailyDates.add(dateStr);
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
+        }
+
+        function toggleFreightAdjustedOnly() {
+            freightAdjustedOnly = !freightAdjustedOnly;
+            const btn = document.getElementById('btnFilterAdjusted');
+            if (btn) btn.classList.toggle('active', freightAdjustedOnly);
+            renderFreight(__lastFreightSets.rawOrders || [], __lastFreightSets.schedule || []);
+        }
+
+        function updateDailySubtotalInPlace(dateStr) {
+            if (freightViewMode !== 'daily' || !dateStr) return;
+            const orders = (__lastFreightSets.orders || []).filter(o => o.date === dateStr);
+            const sumFinal = orders.reduce((s, o) => s + ((o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0), 0);
+            const el = document.getElementById('daily-sub-fee-' + dateStr);
+            if (el) el.innerText = '$' + Math.round(sumFinal).toLocaleString();
+            const grandEl = document.getElementById('freight-table-grand-final');
+            if (grandEl) {
+                const allFinal = (__lastFreightSets.orders || []).reduce((s, o) => s + ((o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0), 0);
+                grandEl.innerText = '$' + Math.round(allFinal).toLocaleString();
+            }
+        }
+
+        function renderSingleFreightRow(o) {
+            const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
+            const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
+                ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">${escapeHTML(o.carrierFlag)}<\/span>`
+                : '';
+            const why = escapeHTML(o.docWhy || '');
+            const act = `style="font-size:10px; cursor:pointer;" onclick="event.stopPropagation(); openDocTypeSelectModal('${escapeHTML(o.id)}','${escapeHTML(o.branch)}')"`;
+            const typeBadge = o.docType === '樣品'
+                ? (o.sampleTo === 'home' ? ` <span class="badge badge-warn" ${act} title="樣品送回公司：不計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品免費<\/span>`
+                                         : ` <span class="badge badge-info" ${act} title="樣品送到外場：照常計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品收費<\/span>`)
+                : (o.docType === '退貨' ? ` <span class="badge badge-danger" ${act} title="判定原因：${why}。點擊開啟單據類型選擇選單">退貨<\/span>`
+                                         : ` <span class="badge" ${act} style="background:rgba(255,255,255,0.06); color:#94a3b8; font-size:10px; cursor:pointer;" title="一般銷貨。點擊開啟單據類型選擇選單">銷貨<\/span>`);
+            const manualTag = o.docTypeManual ? ` <span class="badge badge-info" style="font-size:9px;" title="已人工指定類型：${escapeHTML(o.docTypeManual)}">人工<\/span>` : '';
+            const rawImg = o.thumbnail || o.signPhoto;
+            let fixUrl = '';
+            if (rawImg) {
+                const u = String(rawImg).trim();
+                const m = u.match(/[-\w]{25,}/);
+                if (m && (u.includes('drive.google.com') || u.includes('docs.google.com'))) {
+                    fixUrl = 'https:/' + '/lh3.googleusercontent.com/d/' + m[0];
+                } else {
+                    fixUrl = u;
+                }
+            }
+            const idCell = fixUrl
+                ? `<a href="javascript:void(0)" onclick="showThumb('${escapeHTML(fixUrl)}')" title="點擊開啟銷貨單照片大圖" style="color:var(--accent); font-weight:700; text-decoration:underline dotted; text-underline-offset:3px;">${escapeHTML(o.id)} <i class="fas fa-image" style="font-size:10px; opacity:.7;"><\/i><\/a>`
+                : `<span style="font-weight:700;">${escapeHTML(o.id)}<\/span>`;
+
+            const isFeeDiff = o.adjustedFee > 0 && o.adjustedFee !== o.estFee;
+            const quoteSuffixHtml = (o.adjustedFee > 0 && (o.adjustedFee !== o.estFee || o.feeReason))
+                ? ` <span style="color:#4ade80; font-weight:800;">➔ 指定運費$${o.adjustedFee}${o.feeReason ? '(' + escapeHTML(o.feeReason) + (o.feeConfirmStatus ? '·' + escapeHTML(o.feeConfirmStatus) : '') + ')' : (o.feeConfirmStatus ? '(' + escapeHTML(o.feeConfirmStatus) + ')' : '')}<\/span>`
+                : '';
+            const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}${quoteSuffixHtml}<\/span>`;
+            const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" style="width:78px; background:${isFeeDiff ? 'rgba(34,197,94,0.16)' : 'rgba(255,255,255,0.06)'}; border:1px solid ${isFeeDiff ? '#22c55e' : 'var(--glass-border)'}; border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;" onchange="handleAdjustFreight(this)">`;
+            const cbTd = `<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="main-row-cb" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" onchange="updateMainBatchBar()"><\/td>`;
+            return `<tr>${cbTd}<td style="white-space:nowrap;">${o.date}<\/td><td style="white-space:nowrap;">${idCell}<\/td><td>${branchTag(o.branch)}<\/td><td>${escapeHTML(o.customer)}${typeBadge}${manualTag}${carrierBadge}<\/td><td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg<\/span><\/td><td>${condBadges(o)}<\/td><td>$${o.estFee}<\/td><td>${formulaCell}<\/td><td>${feeInput}<\/td><\/tr>`;
+        }
+
         function renderFreight(rawOrders, schedule) {
             const typed = freightType === '全部' ? rawOrders : rawOrders.filter(o => freightTypeOf(o) === freightType);
-            const orders = typed.filter(matchCond);   /*  方塊上點的分類 / 狀況 */
+            const condFiltered = typed.filter(matchCond);   /*  方塊上點的分類 / 狀況 */
+            const adjCount = condFiltered.filter(isOrderAdjusted).length;
+            const adjSpan = document.getElementById('adjFilterCount');
+            if (adjSpan) adjSpan.innerText = '(' + adjCount + ')';
+            const orders = freightAdjustedOnly ? condFiltered.filter(isOrderAdjusted) : condFiltered;
             __lastFreightSets = { rawOrders, typed, orders, schedule };
             renderFreightStats();
             syncSortDirBtns();
@@ -1687,42 +2374,140 @@
                 return (r || b.date.localeCompare(a.date)) * (r ? freightSort.dir : 1);
             };
             const tableBody = document.querySelector('#freight-table tbody');
-            tableBody.innerHTML = orders.slice().sort(cmp).map(o => {
-                const finalFee = o.adjustedFee > 0 ? o.adjustedFee : o.estFee;
-                const carrierBadge = (o.carrierFlag && o.carrierFlag !== "")
-                    ? `<br><span class="badge" style="background:rgba(249,115,22,0.15); color:#f97316; font-size:10px;">${escapeHTML(o.carrierFlag)}<\/span>`
-                    : '';
-                /*  V41.43: 標籤滑過顯示「為什麼這樣判」(o.docWhy 由後端 _classifyDocTypeWhy_ 給)；點標籤開啟類型切換選單 */
-                const why = escapeHTML(o.docWhy || '');
-                const act = `style="font-size:10px; cursor:pointer;" onclick="event.stopPropagation(); openDocTypeSelectModal('${escapeHTML(o.id)}','${escapeHTML(o.branch)}')"`;
-                const typeBadge = o.docType === '樣品'
-                    ? (o.sampleTo === 'home' ? ` <span class="badge badge-warn" ${act} title="樣品送回公司：不計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品免費<\/span>`
-                                             : ` <span class="badge badge-info" ${act} title="樣品送到外場：照常計費。判定原因：${why}。點擊開啟單據類型選擇選單">樣品收費<\/span>`)
-                    : (o.docType === '退貨' ? ` <span class="badge badge-danger" ${act} title="判定原因：${why}。點擊開啟單據類型選擇選單">退貨<\/span>`
-                                             : ` <span class="badge" ${act} style="background:rgba(255,255,255,0.06); color:#94a3b8; font-size:10px; cursor:pointer;" title="一般銷貨。點擊開啟單據類型選擇選單">銷貨<\/span>`);
-                const rawImg = o.thumbnail || o.signPhoto;
-                let fixUrl = '';
-                if (rawImg) {
-                    const u = String(rawImg).trim();
-                    const m = u.match(/[-\w]{25,}/);
-                    if (m && (u.includes('drive.google.com') || u.includes('docs.google.com'))) {
-                        /* V41.56: 部署管線會吃掉字串內 // 之後的行尾，URL 拆兩段串接 */
-                        fixUrl = 'https:/' + '/lh3.googleusercontent.com/d/' + m[0];
-                    } else {
-                        fixUrl = u;
-                    }
-                }
-                /*  V41.41: 縮圖不另開欄位，單號本身就是連結 (有圖才可點，開大圖預覽) */
-                const idCell = fixUrl
-                    ? `<a href="javascript:void(0)" onclick="showThumb('${escapeHTML(fixUrl)}')" title="點擊開啟銷貨單照片大圖" style="color:var(--accent); font-weight:700; text-decoration:underline dotted; text-underline-offset:3px;">${escapeHTML(o.id)} <i class="fas fa-image" style="font-size:10px; opacity:.7;"></i><\/a>`
-                    : `<span style="font-weight:700;">${escapeHTML(o.id)}<\/span>`;
+            if (!orders.length) {
+                tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#64748b; padding:18px;">區間內無符合條件的運費單據<\/td><\/tr>';
+                updateMainBatchBar();
+                return;
+            }
 
-                const formulaCell = `<span style="font-size:11px; color:var(--text-dim); white-space:nowrap;" title="${escapeHTML(o.detail)}">${escapeHTML(compactFreightFormula(o.detail))}<\/span>`;
-                const feeInput = `<input type="number" value="${finalFee}" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" style="width:76px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); border-radius:4px; padding:4px 6px; color:var(--success); font-weight:700; text-align:right;" onchange="handleAdjustFreight(this)">`;
-                const cbTd = `<td style="text-align:center;" onclick="event.stopPropagation();"><input type="checkbox" class="main-row-cb" data-id="${escapeHTML(o.id)}" data-branch="${escapeHTML(o.branch)}" onchange="updateMainBatchBar()"><\/td>`;
-                return ` <tr> ${cbTd} <td style="white-space:nowrap;">${o.date}<\/td> <td style="white-space:nowrap;">${idCell}<\/td> <td>${branchTag(o.branch)}<\/td> <td>${escapeHTML(o.customer)}${typeBadge}${carrierBadge}<\/td> <td style="white-space:nowrap;">${o.weight} <span style="color:var(--text-dim); font-size:10px;">kg<\/span><\/td> <td>${condBadges(o)}<\/td> <td>$${o.estFee}<\/td> <td>${formulaCell}<\/td> <td>${feeInput}<\/td> <\/tr>`;
-            }).join('') || '<tr><td colspan="10" style="text-align:center; color:#64748b;">區間內無運費單據<\/td><\/tr>';
+            const totalWeight = orders.reduce((s, o) => s + (o.weight || 0), 0);
+            const totalEst = orders.reduce((s, o) => s + (o.estFee || 0), 0);
+            const totalFinal = orders.reduce((s, o) => s + finalOf(o), 0);
+            const grandRowHtml = `<tr style="background:rgba(15,23,42,0.96); border-top:2px solid var(--accent); font-weight:800;">`
+                + `<td><\/td>`
+                + `<td colspan="4" style="color:#fff;">區間總計（共 <span style="color:var(--accent);">${orders.length}<\/span> 筆單據）<\/td>`
+                + `<td style="white-space:nowrap; color:#fff;">${Math.round(totalWeight).toLocaleString()} <span style="font-size:10px; color:var(--text-dim);">kg<\/span><\/td>`
+                + `<td><\/td>`
+                + `<td style="color:#cbd5e1;">$${Math.round(totalEst).toLocaleString()}<\/td>`
+                + `<td><\/td>`
+                + `<td id="freight-table-grand-final" style="color:var(--success); font-size:14px;">$${Math.round(totalFinal).toLocaleString()}<\/td>`
+                + `<\/tr>`;
+
+            if (freightViewMode === 'daily') {
+                const byDate = {};
+                orders.forEach(o => {
+                    const d = o.date || '未知日期';
+                    const g = byDate[d] || (byDate[d] = { date: d, list: [], weight: 0, estFee: 0, finalFee: 0 });
+                    g.list.push(o);
+                    g.weight += (o.weight || 0);
+                    g.estFee += (o.estFee || 0);
+                    g.finalFee += finalOf(o);
+                });
+                const dateGroups = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date) * (freightSort.dir < 0 ? -1 : 1));
+                tableBody.innerHTML = dateGroups.map(g => {
+                    const folded = collapsedDailyDates.has(g.date);
+                    const sortedList = g.list.slice().sort(cmp);
+                    const salesN = g.list.filter(o => freightTypeOf(o) === '銷貨').length;
+                    const retN = g.list.filter(o => freightTypeOf(o) === '退貨').length;
+                    const sampN = g.list.length - salesN - retN;
+                    const subParts = [];
+                    if (salesN) subParts.push('銷貨 ' + salesN);
+                    if (retN) subParts.push('退貨 ' + retN);
+                    if (sampN) subParts.push('樣品 ' + sampN);
+                    const headerRow = `<tr class="daily-subtotal-row" onclick="toggleDailyGroup('${escapeHTML(g.date)}')" title="點擊展開或收合 ${escapeHTML(g.date)} 當日明細">`
+                        + `<td style="text-align:center; color:var(--accent);">${folded ? '▶' : '▼'}<\/td>`
+                        + `<td colspan="4" style="color:#fff; font-size:13px;"><i class="fas fa-calendar-day" style="color:var(--accent); margin-right:5px;"><\/i><b style="color:var(--accent);">${escapeHTML(g.date)} (${weekdayLabel(g.date)})<\/b> — 當日共 <b style="color:#fff;">${g.list.length}<\/b> 單 <span style="font-size:11px; color:var(--text-dim); font-weight:normal;">(${subParts.join(' / ')})<\/span><\/td>`
+                        + `<td style="white-space:nowrap; color:#e2e8f0;">${Math.round(g.weight).toLocaleString()} <span style="font-size:10px; color:var(--text-dim);">kg<\/span><\/td>`
+                        + `<td style="font-size:11px; color:var(--text-dim);">當日小計<\/td>`
+                        + `<td style="color:#cbd5e1;">$${Math.round(g.estFee).toLocaleString()}<\/td>`
+                        + `<td style="font-size:11px; color:var(--text-dim);">${folded ? '(點擊展開明細)' : '(點擊收合明細)'}<\/td>`
+                        + `<td id="daily-sub-fee-${escapeHTML(g.date)}" style="color:var(--success); font-size:13px; font-weight:900;">$${Math.round(g.finalFee).toLocaleString()}<\/td>`
+                        + `<\/tr>`;
+                    return headerRow + (folded ? '' : sortedList.map(renderSingleFreightRow).join(''));
+                }).join('') + grandRowHtml;
+            } else {
+                tableBody.innerHTML = orders.slice().sort(cmp).map(renderSingleFreightRow).join('') + grandRowHtml;
+            }
             updateMainBatchBar();
+        }
+
+        function buildFreightExportTsv() {
+            const orders = (__lastFreightSets.orders || []).slice();
+            const finalOf = o => (o.adjustedFee > 0 ? o.adjustedFee : o.estFee) || 0;
+            orders.sort((a, b) => b.date.localeCompare(a.date) || String(a.id || '').localeCompare(String(b.id || '')));
+            if (freightViewMode === 'daily' && dailyAllFolded) {
+                const byDate = {};
+                orders.forEach(o => {
+                    const d = o.date || '';
+                    const g = byDate[d] || (byDate[d] = { date: d, n: 0, weight: 0, est: 0, final: 0 });
+                    g.n++; g.weight += (o.weight || 0); g.est += (o.estFee || 0); g.final += finalOf(o);
+                });
+                const list = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+                const head = ['日期', '單數', '總重量(kg)', '系統估算小計', '核定運費小計'];
+                const rows = list.map(g => [g.date, g.n, Math.round(g.weight), Math.round(g.est), Math.round(g.final)]);
+                rows.push(['合計', orders.length, Math.round(orders.reduce((s, o) => s + (o.weight || 0), 0)), Math.round(orders.reduce((s, o) => s + (o.estFee || 0), 0)), Math.round(orders.reduce((s, o) => s + finalOf(o), 0))]);
+                return [head].concat(rows).map(r => r.join('\t')).join('\n');
+            }
+            const head = ['日期', '單號', '分公司', '客戶名稱', '單據類型', '貨運行標示', '重量(kg)', '狀況', '系統估算', '運費公式', '核定運費'];
+            const clean = v => String(v === undefined || v === null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+            const rows = orders.map(o => {
+                const condList = condsOf(o).slice();
+                if (o.feeReason) condList.push('指定:' + o.feeReason);
+                const formulaStr = compactFreightFormula(o.detail) + ((o.adjustedFee > 0 && (o.adjustedFee !== o.estFee || o.feeReason)) ? ` ➔ 指定運費$${Math.round(finalOf(o))}${o.feeReason ? '(' + o.feeReason + (o.feeConfirmStatus ? '·' + o.feeConfirmStatus : '') + ')' : ''}` : '');
+                return [
+                    clean(o.date),
+                    clean(o.id),
+                    clean(o.branch),
+                    clean(o.customer),
+                    clean(freightTypeOf(o)),
+                    clean(o.carrierFlag || ''),
+                    Math.round(o.weight || 0),
+                    clean(condList.join('、')),
+                    Math.round(o.estFee || 0),
+                    clean(formulaStr),
+                    Math.round(finalOf(o))
+                ];
+            });
+            rows.push([
+                '合計',
+                '共 ' + orders.length + ' 筆',
+                '',
+                '',
+                '',
+                '',
+                Math.round(orders.reduce((s, o) => s + (o.weight || 0), 0)),
+                '',
+                Math.round(orders.reduce((s, o) => s + (o.estFee || 0), 0)),
+                '',
+                Math.round(orders.reduce((s, o) => s + finalOf(o), 0))
+            ]);
+            return [head].concat(rows).map(r => r.join('\t')).join('\n');
+        }
+
+        function freightTableCopy() {
+            const orders = __lastFreightSets.orders || [];
+            if (!orders.length) { notify('目前無明細可複製', true); return; }
+            navigator.clipboard.writeText(buildFreightExportTsv())
+                .then(() => notify('已複製對帳明細（含總計），可直接貼到 Excel 或 LINE'))
+                .catch(() => notify('複製失敗，請改按「匯出 CSV」', true));
+        }
+
+        function freightTableCsv() {
+            const orders = __lastFreightSets.orders || [];
+            if (!orders.length) { notify('目前無明細可匯出', true); return; }
+            const f = currentFilters();
+            const tsv = buildFreightExportTsv();
+            const csv = '\ufeff' + tsv.split('\n').map(l => l.split('\t').map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '運費對帳單_' + (f.branch || '全部') + '_' + (f.sd || '').replace(/\//g, '') + '-' + (f.ed || '').replace(/\//g, '') + '.csv';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
         }
 
         /*  ===== 明細面板 (點卡片數字) ===== */
@@ -1761,7 +2546,16 @@
             ];
             /*  免費樣品 (送回公司) 運費一律 0 */
             const withFee = list => list.map(o => Object.assign({}, o, { fee: o.isSample ? 0 : feeOfOrder(o) }));
-            if (kind === 'orders') {
+            if (kind === 'period') {
+                const parts = String(branch || '').split('|');
+                const pSd = parts[0] || '', pEd = parts[1] || '', pLabel = parts[2] || pSd;
+                const pOrders = all.filter(o => o.date >= pSd && o.date <= pEd && (!o.isSample || includeSamples()));
+                rows = withFee(pOrders);
+                cols = [{ k: 'branch', n: '分公司', fmt: v => branchTag(v), html: true }].concat(colBase).concat([{ k: 'docType', n: '類型', fmt: v => v || '銷貨' }]);
+                title = pLabel + '｜期間訂單明細';
+                drillState.sortKey = 'date';
+                summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg'], ['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]];
+            } else if (kind === 'orders') {
                 rows = withFee(bo.filter(o => !o.isSample || includeSamples())); cols = colBase.concat([{ k: 'docType', n: '類型', fmt: v => v || '銷貨' }, { k: '_act', n: '' }]);
                 title = branch + '｜區間內訂單'; drillState.sortKey = 'date';
                 summary = [['單數', rows.length], ['總重量', Math.round(rows.reduce((s, o) => s + (o.weight || 0), 0)).toLocaleString() + ' kg'], ['總運費', '$' + Math.round(rows.reduce((s, o) => s + o.fee, 0)).toLocaleString()]];
@@ -1896,7 +2690,7 @@
                                 o.isSample = (o.docType === '樣品' && o.sampleTo === 'home');
                             }
                         });
-                        notify(res.message || `✅ 已批次修改 ${items.length} 筆單據！`);
+                        notify(res.message || `已批次修改 ${items.length} 筆單據！`);
                         updateDashboard();
                         openDrill(drillState.kind, drillState.branch);
                     } else notify('批次改判失敗：' + ((res && res.error) || ''), true);
@@ -2038,6 +2832,843 @@
                 else notify('儲存失敗：' + ((res && res.error) || ''), true);
             }).withFailureHandler(err => { btn.disabled = false; btn.innerText = '儲存設定'; notify('儲存失敗：' + err.message, true); })
               .saveFreightSettings_V41(cfgState, ATOKEN());
+        }
+
+        /*  ===== V43.56: 成本、運費區段與利潤率試算中心 ===== */
+        const SIM_COST_LS_KEY = 'ttsSimMonthlyCostsV43';
+        let simMonthlyCosts = {};
+        let simCurrentMonth = '';
+        let simSaveTimer = null;
+        let simOfficialCfg = { weightSlabs: [], remoteAreas: [], addonFees: [] };
+        let simWorkingCfg = { weightSlabs: [], remoteAreas: [], addonFees: [] };
+        let simRatesLoaded = false;
+        let simSelectedBranch = '全部';
+        let __lastSimOrders = [];
+        let __lastSimSchedule = [];
+        let __lastSimResults = [];
+        let __lastSimAppFuel = 0;
+        let __lastSimSysBonus = 0;
+
+        function loadLocalSimCosts() {
+            try {
+                const raw = localStorage.getItem(SIM_COST_LS_KEY);
+                if (raw) {
+                    const p = JSON.parse(raw);
+                    if (p && typeof p === 'object') return p;
+                }
+            } catch (e) { }
+            return {};
+        }
+
+        function saveLocalSimCosts() {
+            try { localStorage.setItem(SIM_COST_LS_KEY, JSON.stringify(simMonthlyCosts)); } catch (e) { }
+        }
+
+        function getPrevMonthStr(mk) {
+            const parts = String(mk || '').split('-');
+            if (parts.length < 2) return '';
+            let y = parseInt(parts[0], 10), m = parseInt(parts[1], 10) - 1;
+            if (m <= 0) { m = 12; y -= 1; }
+            return y + '-' + String(m).padStart(2, '0');
+        }
+
+        function findPriorMonthEntry(mk) {
+            const exactPrev = getPrevMonthStr(mk);
+            if (exactPrev && simMonthlyCosts[exactPrev]) {
+                return { monthKey: exactPrev, data: simMonthlyCosts[exactPrev] };
+            }
+            const priorKeys = Object.keys(simMonthlyCosts).filter(k => k < mk).sort();
+            if (priorKeys.length > 0) {
+                const latestKey = priorKeys[priorKeys.length - 1];
+                return { monthKey: latestKey, data: simMonthlyCosts[latestKey] };
+            }
+            return { monthKey: exactPrev, data: null };
+        }
+
+        function cloneRateCfg(c) {
+            return {
+                weightSlabs: (c.weightSlabs || []).map(s => ({ maxKg: Number(s.maxKg) || 0, fee: Number(s.fee) || 0 })),
+                remoteAreas: (c.remoteAreas || []).map(a => ({ keywords: String(a.keywords || ''), multiplier: Number(a.multiplier) || 1.0 })),
+                addonFees: (c.addonFees || []).map(a => ({ item: String(a.item || ''), rate: Number(a.rate) || 0 }))
+            };
+        }
+
+        function initSimulatorFromData(res) {
+            const localMap = loadLocalSimCosts();
+            const serverMap = (res && res.monthlyCosts && typeof res.monthlyCosts === 'object') ? res.monthlyCosts : {};
+            simMonthlyCosts = Object.assign({}, localMap, serverMap);
+            saveLocalSimCosts();
+
+            if (!simRatesLoaded && Array.isArray(res.freightRates) && res.freightRates.length) {
+                simOfficialCfg.weightSlabs = res.freightRates.map(r => ({ maxKg: Number(r.maxKg) || 0, fee: Number(r.fee) || 0 }));
+                simWorkingCfg = cloneRateCfg(simOfficialCfg);
+            }
+            google.script.run.withSuccessHandler(r => {
+                if (r && r.success) {
+                    simOfficialCfg = cloneRateCfg(r);
+                    simWorkingCfg = cloneRateCfg(r);
+                    simRatesLoaded = true;
+                    renderSimRateEditors();
+                    runFreightSimulation();
+                }
+            }).withFailureHandler(() => { }).getFreightSettings_V41(ATOKEN());
+        }
+
+        function computeSystemBonusForPeriod(orders, schedule) {
+            const vm = rawData.vehicleMap || {};
+            const f = currentFilters();
+            const drvSet = new Set();
+            (schedule || []).forEach(s => {
+                const drv = vm[s.plate] || s.driver || '';
+                if (drv) drvSet.add(drv);
+            });
+            let totalBonus = 0;
+            drvSet.forEach(drvName => {
+                const drvOrders = (rawData.orders || []).filter(o =>
+                    o.date >= f.sd && o.date <= f.ed &&
+                    !checkIsSample(o) &&
+                    (o.plate === drvName || vm[o.plate] === drvName || o.driver === drvName)
+                );
+                const selW = drvOrders.reduce((s, o) => s + (o.weight || 0), 0);
+                const selForkW = drvOrders.filter(o => o.carrierFlag && String(o.carrierFlag).trim() !== '').reduce((s, o) => s + (o.weight || 0), 0);
+                const selManW = selW - selForkW;
+                const selBonusW = selManW + (selForkW / 3);
+                const bRes = calcDriverBonus(drvName, drvOrders.length, selBonusW / 1000, selW / 1000);
+                totalBonus += (bRes.totalBonus || 0);
+            });
+            return Math.round(totalBonus);
+        }
+
+        function updateSimulatorView(foAllBranch, fs) {
+            __lastSimOrders = foAllBranch || [];
+            __lastSimSchedule = fs || [];
+            __lastSimAppFuel = Math.round(__lastSimSchedule.reduce((s, x) => s + (x.fuelAmt || 0), 0));
+            __lastSimSysBonus = computeSystemBonusForPeriod(__lastSimOrders, __lastSimSchedule);
+
+            const edVal = document.getElementById('endDate').value || '';
+            const targetMonth = edVal.slice(0, 7);
+            const picker = document.getElementById('simCostMonthPicker');
+            if (targetMonth && /^\d{4}-\d{2}$/.test(targetMonth) && simCurrentMonth !== targetMonth) {
+                simCurrentMonth = targetMonth;
+                if (picker) picker.value = targetMonth;
+                loadSimCostInputsForMonth(targetMonth);
+            } else {
+                refreshSimCostHintsOnly();
+            }
+            if (!document.getElementById('simSlabsList').children.length && simWorkingCfg.weightSlabs.length) {
+                renderSimRateEditors();
+            }
+            runFreightSimulation();
+        }
+
+        function onSimMonthPickerChange(mk) {
+            if (!mk || !/^\d{4}-\d{2}$/.test(mk)) return;
+            simCurrentMonth = mk;
+            loadSimCostInputsForMonth(mk);
+            runFreightSimulation();
+        }
+
+        function refreshSimCostHintsOnly() {
+            const mk = simCurrentMonth || (document.getElementById('simCostMonthPicker').value) || '';
+            const prior = findPriorMonthEntry(mk);
+            const prevD = prior.data;
+            const prevLbl = document.getElementById('simPrevMonthLabel');
+            if (prevLbl) prevLbl.innerText = prior.monthKey || '上月';
+
+            const fmtH = (v, prefix) => (prevD && v !== undefined && v !== '') ? `${prefix || '上月記憶'}：$${Math.round(Number(v) || 0).toLocaleString()}` : `${prefix || '上月記憶'}：無紀錄`;
+            setText('simPrevPersonnelHint', fmtH(prevD && prevD.personnel, '上月記憶'));
+            setText('simPrevBonusHint', fmtH(prevD && prevD.bonus, '上月獎金'));
+            setText('simPrevMaintHint', fmtH(prevD && prevD.maintenance, '上月記憶'));
+            setText('simPrevFinesHint', fmtH(prevD && prevD.fines, '上月記憶'));
+            setText('simPrevDeprecHint', fmtH(prevD && prevD.depreciation, '上月記憶'));
+            setText('simSysBonusHint', '系統試算參考：$' + __lastSimSysBonus.toLocaleString());
+            setText('simAppFuelHint', '區間 APP 行程表油資合計：$' + __lastSimAppFuel.toLocaleString());
+
+            const curEntry = simMonthlyCosts[mk] || {};
+            const fuelInp = document.getElementById('simCostFuel');
+            const rstFuelBtn = document.getElementById('simResetAppFuelBtn');
+            if (curEntry.fuelOverride !== undefined && curEntry.fuelOverride !== '') {
+                if (fuelInp && document.activeElement !== fuelInp) fuelInp.value = curEntry.fuelOverride;
+                if (rstFuelBtn) rstFuelBtn.style.display = 'inline-block';
+            } else {
+                if (fuelInp && document.activeElement !== fuelInp) fuelInp.value = __lastSimAppFuel;
+                if (rstFuelBtn) rstFuelBtn.style.display = 'none';
+            }
+        }
+
+        function loadSimCostInputsForMonth(mk) {
+            const prior = findPriorMonthEntry(mk);
+            let cur = simMonthlyCosts[mk];
+            let autoCarried = false;
+            if (!cur && prior.data) {
+                cur = {
+                    personnel: Number(prior.data.personnel) || 0,
+                    bonus: Number(prior.data.bonus) || 0,
+                    fuelOverride: '',
+                    maintenance: Number(prior.data.maintenance) || 0,
+                    fines: Number(prior.data.fines) || 0,
+                    depreciation: Number(prior.data.depreciation) || 0
+                };
+                simMonthlyCosts[mk] = cur;
+                saveLocalSimCosts();
+                autoCarried = true;
+                persistSimMonthToServer(mk, cur, true);
+            } else if (!cur) {
+                cur = { personnel: 0, bonus: 0, fuelOverride: '', maintenance: 0, fines: 0, depreciation: 0 };
+            }
+
+            const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v !== undefined && v !== null && v !== '') ? v : 0; };
+            setVal('simCostPersonnel', cur.personnel || 0);
+            setVal('simCostBonus', cur.bonus || 0);
+            setVal('simCostMaint', cur.maintenance || 0);
+            setVal('simCostFines', cur.fines || 0);
+            setVal('simCostDeprec', cur.depreciation || 0);
+
+            const badge = document.getElementById('simCostMemoryBadge');
+            if (badge) {
+                if (autoCarried) {
+                    badge.style.color = '#fbbf24';
+                    badge.style.borderColor = 'rgba(251,191,36,0.4)';
+                    badge.style.background = 'rgba(251,191,36,0.12)';
+                    badge.innerText = '已自動帶入上月 (' + prior.monthKey + ') 成本與配送獎金';
+                } else if (simMonthlyCosts[mk]) {
+                    badge.style.color = '#4ade80';
+                    badge.style.borderColor = 'rgba(34,197,94,0.35)';
+                    badge.style.background = 'rgba(34,197,94,0.12)';
+                    badge.innerText = '✓ 已載入 ' + mk + ' 記憶成本';
+                } else {
+                    badge.style.color = '#94a3b8';
+                    badge.style.borderColor = 'rgba(148,163,184,0.3)';
+                    badge.style.background = 'rgba(148,163,184,0.1)';
+                    badge.innerText = mk + ' 尚未填寫成本';
+                }
+            }
+            refreshSimCostHintsOnly();
+        }
+
+        function collectCurrentSimCostEntry() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            const existing = simMonthlyCosts[mk] || {};
+            const getNum = id => Math.max(0, Math.round(parseFloat(document.getElementById(id)?.value) || 0));
+            return {
+                personnel: getNum('simCostPersonnel'),
+                bonus: getNum('simCostBonus'),
+                fuelOverride: existing.fuelOverride !== undefined && existing.fuelOverride !== '' ? existing.fuelOverride : '',
+                maintenance: getNum('simCostMaint'),
+                fines: getNum('simCostFines'),
+                depreciation: getNum('simCostDeprec')
+            };
+        }
+
+        function onSimCostInput() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            simCurrentMonth = mk;
+            const entry = collectCurrentSimCostEntry();
+            simMonthlyCosts[mk] = entry;
+            saveLocalSimCosts();
+            runFreightSimulation();
+            schedulePersistSimCost(mk, entry);
+        }
+
+        function onSimFuelInput() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            simCurrentMonth = mk;
+            const val = document.getElementById('simCostFuel')?.value;
+            const entry = collectCurrentSimCostEntry();
+            entry.fuelOverride = (val !== undefined && String(val).trim() !== '') ? Math.max(0, Math.round(parseFloat(val) || 0)) : '';
+            simMonthlyCosts[mk] = entry;
+            saveLocalSimCosts();
+            const rstBtn = document.getElementById('simResetAppFuelBtn');
+            if (rstBtn) rstBtn.style.display = entry.fuelOverride !== '' ? 'inline-block' : 'none';
+            runFreightSimulation();
+            schedulePersistSimCost(mk, entry);
+        }
+
+        function resetSimFuelToApp() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            const entry = collectCurrentSimCostEntry();
+            entry.fuelOverride = '';
+            simMonthlyCosts[mk] = entry;
+            saveLocalSimCosts();
+            const fuelInp = document.getElementById('simCostFuel');
+            if (fuelInp) fuelInp.value = __lastSimAppFuel;
+            const rstBtn = document.getElementById('simResetAppFuelBtn');
+            if (rstBtn) rstBtn.style.display = 'none';
+            runFreightSimulation();
+            schedulePersistSimCost(mk, entry);
+        }
+
+        function copyPrevMonthCostToCurrent() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            const prior = findPriorMonthEntry(mk);
+            if (!prior.data) {
+                notify('找不到上個月 (' + (prior.monthKey || '') + ') 的已記憶成本紀錄', true);
+                return;
+            }
+            const nextEntry = {
+                personnel: Number(prior.data.personnel) || 0,
+                bonus: Number(prior.data.bonus) || 0,
+                fuelOverride: '',
+                maintenance: Number(prior.data.maintenance) || 0,
+                fines: Number(prior.data.fines) || 0,
+                depreciation: Number(prior.data.depreciation) || 0
+            };
+            simMonthlyCosts[mk] = nextEntry;
+            saveLocalSimCosts();
+            loadSimCostInputsForMonth(mk);
+            runFreightSimulation();
+            persistSimMonthToServer(mk, nextEntry, false);
+            notify('已將 ' + prior.monthKey + ' 的成本與配送獎金帶入 ' + mk);
+        }
+
+        function applyPrevMonthBonusOnly() {
+            const mk = simCurrentMonth || document.getElementById('simCostMonthPicker').value || ymd(new Date()).slice(0, 7);
+            const prior = findPriorMonthEntry(mk);
+            if (!prior.data || prior.data.bonus === undefined) {
+                notify('上個月尚無配送獎金紀錄', true);
+                return;
+            }
+            const bonusInp = document.getElementById('simCostBonus');
+            if (bonusInp) bonusInp.value = Number(prior.data.bonus) || 0;
+            onSimCostInput();
+            notify('已帶入 ' + prior.monthKey + ' 配送獎金 $' + Number(prior.data.bonus || 0).toLocaleString());
+        }
+
+        function applySystemCalcBonusToSim() {
+            const bonusInp = document.getElementById('simCostBonus');
+            if (bonusInp) bonusInp.value = __lastSimSysBonus || 0;
+            onSimCostInput();
+            notify('已帶入系統試算配送獎金 $' + (__lastSimSysBonus || 0).toLocaleString());
+        }
+
+        function schedulePersistSimCost(mk, entry) {
+            const badge = document.getElementById('simCostMemoryBadge');
+            if (badge) {
+                badge.style.color = '#38bdf8';
+                badge.innerText = '記憶儲存中...';
+            }
+            clearTimeout(simSaveTimer);
+            simSaveTimer = setTimeout(() => {
+                persistSimMonthToServer(mk, entry, true);
+            }, 650);
+        }
+
+        function persistSimMonthToServer(mk, entry, silent) {
+            google.script.run.withSuccessHandler(res => {
+                if (res && res.success) {
+                    if (res.monthlyCosts) {
+                        simMonthlyCosts = Object.assign({}, simMonthlyCosts, res.monthlyCosts);
+                        saveLocalSimCosts();
+                    }
+                    const badge = document.getElementById('simCostMemoryBadge');
+                    if (badge && simCurrentMonth === mk) {
+                        badge.style.color = '#4ade80';
+                        badge.style.borderColor = 'rgba(34,197,94,0.35)';
+                        badge.style.background = 'rgba(34,197,94,0.12)';
+                        badge.innerText = '✓ 已自動記憶 (' + mk + ')';
+                    }
+                } else if (!silent) {
+                    notify('記憶儲存失敗：' + ((res && res.error) || ''), true);
+                }
+            }).withFailureHandler(() => { }).saveMonthlyCost_V43(mk, entry, ATOKEN());
+        }
+
+        /* ===== 運費級距與附加費模擬器渲染與計算 ===== */
+        function renderSimRateEditors() {
+            const slabsEl = document.getElementById('simSlabsList');
+            const addonsEl = document.getElementById('simAddonsList');
+            const remoteEl = document.getElementById('simRemoteList');
+            if (!slabsEl) return;
+
+            slabsEl.innerHTML = simWorkingCfg.weightSlabs.map((s, i) => {
+                const prevMax = i === 0 ? 0 : (Number(simWorkingCfg.weightSlabs[i - 1].maxKg) || 0) + 1;
+                const origSlab = simOfficialCfg.weightSlabs[i];
+                const origFeeText = origSlab ? `原 $${origSlab.fee}` : '新增';
+                return `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; background:rgba(0,0,0,0.28); border:1px solid var(--glass-border); border-radius:8px; padding:7px 10px;">`
+                    + `<span style="font-size:11px; color:var(--text-dim); min-width:52px;">${prevMax} ~<\/span>`
+                    + `<input type="number" value="${s.maxKg}" oninput="onSimSlabChange(${i}, 'maxKg', this.value)" style="width:74px; background:#020617; border:1px solid #334155; border-radius:6px; padding:5px 7px; color:#e2e8f0; font-size:13px; font-weight:700; text-align:right;">`
+                    + `<span style="font-size:11px; color:var(--text-dim);">kg ➔ $<\/span>`
+                    + `<input type="number" id="sim-slab-fee-${i}" value="${s.fee}" step="50" oninput="onSimSlabChange(${i}, 'fee', this.value)" style="width:86px; background:#020617; border:1.5px solid var(--accent); border-radius:6px; padding:5px 8px; color:#4ade80; font-size:15px; font-weight:900; text-align:right;">`
+                    + `<button type="button" class="mini-btn" style="padding:3px 7px;" onclick="adjustSingleSimSlab(${i}, -50)">-50<\/button>`
+                    + `<button type="button" class="mini-btn" style="padding:3px 7px;" onclick="adjustSingleSimSlab(${i}, 50)">+50<\/button>`
+                    + `<button type="button" class="mini-btn" style="padding:3px 7px;" onclick="adjustSingleSimSlab(${i}, 100)">+100<\/button>`
+                    + `<span style="font-size:11px; color:var(--text-dim);">(${origFeeText})<\/span>`
+                    + `<span id="sim-slab-stat-${i}" style="margin-left:auto; font-size:11px; color:#bae6fd; font-weight:700;"><\/span>`
+                    + `<button type="button" onclick="simDeleteSlabRow(${i})" title="刪除此區段" style="background:transparent; border:none; color:#f87171; cursor:pointer; font-size:14px; font-weight:900; padding:0 4px;">×<\/button>`
+                    + `<\/div>`;
+            }).join('');
+
+            if (addonsEl) {
+                addonsEl.innerHTML = simWorkingCfg.addonFees.map((a, i) => {
+                    const origA = simOfficialCfg.addonFees[i];
+                    return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,0.25); border:1px solid var(--glass-border); border-radius:8px; padding:6px 10px;">`
+                        + `<span style="font-size:12px; color:#e2e8f0; font-weight:700;">${escapeHTML(a.item)}<\/span>`
+                        + `<div style="display:flex; align-items:center; gap:6px;">`
+                        + `<span style="font-size:11px; color:var(--text-dim);">${origA ? '(原$' + origA.rate + ')' : ''} $<\/span>`
+                        + `<input type="number" value="${a.rate}" step="50" oninput="onSimAddonChange(${i}, this.value)" style="width:76px; background:#020617; border:1px solid #475569; border-radius:6px; padding:4px 7px; color:#f472b6; font-size:14px; font-weight:800; text-align:right;">`
+                        + `<\/div><\/div>`;
+                }).join('') || '<div style="font-size:12px; color:var(--text-dim);">尚無附加費用項目<\/div>';
+            }
+
+            if (remoteEl) {
+                remoteEl.innerHTML = simWorkingCfg.remoteAreas.map((r, i) => {
+                    return `<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:rgba(0,0,0,0.25); border:1px solid var(--glass-border); border-radius:8px; padding:6px 10px;">`
+                        + `<span style="font-size:11px; color:#cbd5e1; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHTML(r.keywords)}">${escapeHTML(r.keywords)}<\/span>`
+                        + `<div style="display:flex; align-items:center; gap:5px;">`
+                        + `<span style="font-size:11px; color:var(--text-dim);">倍率 ×<\/span>`
+                        + `<input type="number" step="0.1" value="${r.multiplier}" oninput="onSimRemoteChange(${i}, this.value)" style="width:64px; background:#020617; border:1px solid #475569; border-radius:6px; padding:4px 6px; color:#fbbf24; font-size:13px; font-weight:800; text-align:right;">`
+                        + `<\/div><\/div>`;
+                }).join('') || '<div style="font-size:12px; color:var(--text-dim);">尚無偏遠地區設定<\/div>';
+            }
+        }
+
+        function onSimSlabChange(idx, field, val) {
+            if (!simWorkingCfg.weightSlabs[idx]) return;
+            simWorkingCfg.weightSlabs[idx][field] = Math.max(0, parseFloat(val) || 0);
+            runFreightSimulation();
+        }
+
+        function adjustSingleSimSlab(idx, delta) {
+            if (!simWorkingCfg.weightSlabs[idx]) return;
+            const nextFee = Math.max(0, (Number(simWorkingCfg.weightSlabs[idx].fee) || 0) + delta);
+            simWorkingCfg.weightSlabs[idx].fee = nextFee;
+            const inp = document.getElementById('sim-slab-fee-' + idx);
+            if (inp) inp.value = nextFee;
+            runFreightSimulation();
+        }
+
+        function batchAdjustSimSlabs(val, mode) {
+            simWorkingCfg.weightSlabs.forEach((s, i) => {
+                const cur = Number(s.fee) || 0;
+                const next = mode === 'pct' ? Math.round((cur * (1 + val / 100)) / 10) * 10 : Math.max(0, cur + val);
+                s.fee = next;
+                const inp = document.getElementById('sim-slab-fee-' + i);
+                if (inp) inp.value = next;
+            });
+            runFreightSimulation();
+        }
+
+        function simAddSlabRow() {
+            const last = simWorkingCfg.weightSlabs[simWorkingCfg.weightSlabs.length - 1];
+            simWorkingCfg.weightSlabs.push({ maxKg: last ? Number(last.maxKg) + 500 : 500, fee: last ? Number(last.fee) + 200 : 500 });
+            renderSimRateEditors();
+            runFreightSimulation();
+        }
+
+        function simDeleteSlabRow(idx) {
+            if (simWorkingCfg.weightSlabs.length <= 1) { notify('至少需保留一個重量級距', true); return; }
+            simWorkingCfg.weightSlabs.splice(idx, 1);
+            renderSimRateEditors();
+            runFreightSimulation();
+        }
+
+        function onSimAddonChange(idx, val) {
+            if (!simWorkingCfg.addonFees[idx]) return;
+            simWorkingCfg.addonFees[idx].rate = Math.max(0, parseFloat(val) || 0);
+            runFreightSimulation();
+        }
+
+        function onSimRemoteChange(idx, val) {
+            if (!simWorkingCfg.remoteAreas[idx]) return;
+            simWorkingCfg.remoteAreas[idx].multiplier = Math.max(0.1, parseFloat(val) || 1.0);
+            runFreightSimulation();
+        }
+
+        function resetSimRatesToOfficial() {
+            simWorkingCfg = cloneRateCfg(simOfficialCfg);
+            renderSimRateEditors();
+            runFreightSimulation();
+            notify('已還原為目前正式運費管理表費率');
+        }
+
+        function applySimRatesToOfficial() {
+            ask('確定要將目前試算的「重量級距、附加費與偏遠倍率」正式寫入【運費管理表】嗎？<br><small style="color:#94a3b8;">寫入後將成為全系統正式對帳與建單費率。<\/small>', () => {
+                const btn = document.getElementById('simApplyOfficialBtn');
+                if (btn) { btn.disabled = true; btn.innerText = '寫入中…'; }
+                google.script.run.withSuccessHandler(res => {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"><\/i> 正式寫入運費管理表'; }
+                    if (res && res.success) {
+                        simOfficialCfg = cloneRateCfg(simWorkingCfg);
+                        notify(res.message || '已正式更新運費管理表！');
+                        fetchData(true);
+                    } else {
+                        notify('儲存失敗：' + ((res && res.error) || ''), true);
+                    }
+                }).withFailureHandler(err => {
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"><\/i> 正式寫入運費管理表'; }
+                    notify('連線失敗：' + err.message, true);
+                }).saveFreightSettings_V41(simWorkingCfg, ATOKEN());
+            });
+        }
+
+        function simulateOrderWithCfg(o, cfg, keepAdjusted) {
+            if (o.isSample) {
+                return { simFee: 0, origFee: 0, diff: 0, slabIdx: -1, simDetail: '樣品免費 $0' };
+            }
+            const origFee = feeOfOrder(o);
+            const w = parseFloat(o.weight) || 0;
+            const slabs = cfg.weightSlabs || [];
+            let slabIdx = -1;
+            let baseFee = 0;
+            for (let i = 0; i < slabs.length; i++) {
+                if (w <= Number(slabs[i].maxKg)) {
+                    slabIdx = i;
+                    baseFee = Number(slabs[i].fee) || 0;
+                    break;
+                }
+            }
+            if (slabIdx === -1 && slabs.length > 0) {
+                slabIdx = slabs.length - 1;
+                baseFee = Number(slabs[slabIdx].fee) || 0;
+            }
+
+            if (keepAdjusted && o.adjustedFee > 0) {
+                return {
+                    simFee: o.adjustedFee,
+                    origFee: origFee,
+                    diff: o.adjustedFee - origFee,
+                    slabIdx: slabIdx,
+                    simDetail: compactFreightFormula(o.detail) + ' (維持指定$' + o.adjustedFee + ')'
+                };
+            }
+
+            const parts = ['基本' + baseFee];
+            let subTotal = baseFee;
+
+            let mult = 1.0;
+            const isCarrier = !!(o.carrierFlag && String(o.carrierFlag).trim() !== '');
+            if (!isCarrier) {
+                const addr = String(o.address || '');
+                let matched = false;
+                for (let j = 0; j < (cfg.remoteAreas || []).length; j++) {
+                    const kws = String(cfg.remoteAreas[j].keywords || '').split(/[,，\s]+/).filter(Boolean);
+                    for (let k = 0; k < kws.length; k++) {
+                        if (addr.indexOf(kws[k]) !== -1) {
+                            mult = Number(cfg.remoteAreas[j].multiplier) || 1.0;
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if (matched) break;
+                }
+                if (!matched && o.isRemote && o.isRemote !== '否') {
+                    const m = String(o.isRemote).match(/[\d.]+/);
+                    if (m) mult = parseFloat(m[0]) || 1.0;
+                }
+            }
+            if (mult > 1.0) {
+                subTotal = subTotal * mult;
+                parts.push('偏遠x' + mult);
+            }
+
+            const addonMap = {};
+            (cfg.addonFees || []).forEach(a => { addonMap[String(a.item || '').trim()] = Number(a.rate) || 0; });
+            const origParts = parseFeeParts(o.detail);
+            let addonsTotal = 0;
+
+            if (o.isTimed || origParts.timed > 0) {
+                const isRet = String(o.detail || '').indexOf('指定退貨') !== -1 || freightTypeOf(o) === '退貨';
+                const rVal = isRet
+                    ? (addonMap['指定時間退貨'] !== undefined ? addonMap['指定時間退貨'] : origParts.timed)
+                    : (addonMap['指定時間送貨'] !== undefined ? addonMap['指定時間送貨'] : origParts.timed);
+                if (rVal > 0) {
+                    addonsTotal += rVal;
+                    parts.push((isRet ? '指定退貨' : '指定送貨') + rVal);
+                }
+            }
+            if (o.isWait || origParts.wait > 0) {
+                const wVal = addonMap['等候超時費'] !== undefined ? addonMap['等候超時費'] : origParts.wait;
+                if (wVal > 0) {
+                    addonsTotal += wVal;
+                    parts.push('等候超時' + wVal);
+                }
+            }
+            if (o.isCarry || origParts.carry > 0) {
+                const cRate = addonMap['加倍搬運費(每百公斤)'];
+                const cVal = cRate !== undefined ? Math.ceil(w / 100) * cRate : origParts.carry;
+                if (cVal > 0) {
+                    addonsTotal += cVal;
+                    parts.push('搬運' + cVal);
+                }
+            }
+
+            let finalSim = Math.round(subTotal + addonsTotal);
+            let detailStr = parts.join('+') + '=$' + finalSim;
+            const disc = (o.carrierDiscount && o.carrierDiscount > 0 && o.carrierDiscount < 1.0) ? o.carrierDiscount : 1.0;
+            if (isCarrier && disc < 1.0) {
+                finalSim = Math.round(finalSim * disc);
+                detailStr += ' × 貨運行(' + o.carrierFlag + ')' + Math.round(disc * 100) + '%=$' + finalSim;
+            }
+            return {
+                simFee: finalSim,
+                origFee: origFee,
+                diff: finalSim - origFee,
+                slabIdx: slabIdx,
+                simDetail: detailStr
+            };
+        }
+
+        function getSimDaySpanFactor() {
+            const prorate = document.getElementById('simProrateByDays')?.checked;
+            const sd = document.getElementById('startDate').value;
+            const ed = document.getElementById('endDate').value;
+            if (!sd || !ed) return { days: 30, factor: 1 };
+            const d1 = new Date(sd), d2 = new Date(ed);
+            const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+            if (!prorate) return { days: days, factor: 1 };
+            return { days: days, factor: Math.min(1, days / 30) };
+        }
+
+        function runFreightSimulation() {
+            const orders = __lastSimOrders || [];
+            const keepAdj = document.getElementById('simKeepAdjustedFee')?.checked !== false;
+            const slabCounts = simWorkingCfg.weightSlabs.map(() => ({ n: 0, simFee: 0 }));
+
+            __lastSimResults = orders.map(o => {
+                const r = simulateOrderWithCfg(o, simWorkingCfg, keepAdj);
+                if (r.slabIdx >= 0 && slabCounts[r.slabIdx]) {
+                    slabCounts[r.slabIdx].n++;
+                    slabCounts[r.slabIdx].simFee += r.simFee;
+                }
+                return { order: o, origFee: r.origFee, simFee: r.simFee, diff: r.diff, simDetail: r.simDetail, slabIdx: r.slabIdx };
+            });
+
+            const billableCount = __lastSimResults.filter(x => !x.order.isSample).length || 1;
+            slabCounts.forEach((sc, idx) => {
+                const el = document.getElementById('sim-slab-stat-' + idx);
+                if (el) {
+                    const pct = Math.round(sc.n / billableCount * 100);
+                    el.innerHTML = `<span style="color:#38bdf8;">${sc.n} 單<\/span> <span style="color:var(--text-dim);">(${pct}%)<\/span> · $${Math.round(sc.simFee).toLocaleString()}`;
+                }
+            });
+
+            const origTotalRev = __lastSimResults.reduce((s, r) => s + r.origFee, 0);
+            const simTotalRev = __lastSimResults.reduce((s, r) => s + r.simFee, 0);
+            const revDiff = simTotalRev - origTotalRev;
+            const revDiffPct = origTotalRev ? (revDiff / origTotalRev * 100) : 0;
+
+            const span = getSimDaySpanFactor();
+            const cEntry = collectCurrentSimCostEntry();
+            const rawPersonnel = (cEntry.personnel || 0) + (cEntry.bonus || 0);
+            setText('simPersonnelTotalTag', '含獎金共 $' + Math.round(rawPersonnel).toLocaleString());
+
+            const effPersonnel = Math.round(rawPersonnel * span.factor);
+            const effFuel = Math.round( parseFloat(document.getElementById('simCostFuel')?.value) || 0 );
+            const effMaint = Math.round((cEntry.maintenance || 0) * span.factor);
+            const effFines = Math.round((cEntry.fines || 0) * span.factor);
+            const effDeprec = Math.round((cEntry.depreciation || 0) * span.factor);
+            const totalCost = effPersonnel + effFuel + effMaint + effFines + effDeprec;
+
+            const origProfit = origTotalRev - totalCost;
+            const simProfit = simTotalRev - totalCost;
+            const profitDiff = simProfit - origProfit;
+            const origMargin = origTotalRev > 0 ? (origProfit / origTotalRev * 100) : 0;
+            const simMargin = simTotalRev > 0 ? (simProfit / simTotalRev * 100) : 0;
+            const marginDiff = simMargin - origMargin;
+
+            const f = currentFilters();
+            setText('simPeriodInfoText', `目前試算區間：${f.sd} ~ ${f.ed}（共 ${span.days} 天 · 計費單據 ${orders.length} 筆）`);
+
+            setText('sim-kpi-rev', '$' + Math.round(simTotalRev).toLocaleString());
+            setText('sim-kpi-rev-orig', '目前實際核定/估算總運費：$' + Math.round(origTotalRev).toLocaleString());
+            const revDiffEl = document.getElementById('sim-kpi-rev-diff');
+            if (revDiffEl) {
+                revDiffEl.style.color = revDiff > 0 ? '#4ade80' : (revDiff < 0 ? '#f87171' : '#94a3b8');
+                revDiffEl.innerText = (revDiff >= 0 ? '+' : '') + '$' + Math.round(revDiff).toLocaleString() + ` (${revDiff >= 0 ? '+' : ''}${revDiffPct.toFixed(1)}%)`;
+            }
+
+            setText('sim-kpi-cost', '$' + Math.round(totalCost).toLocaleString());
+            setText('sim-kpi-cost-tag', span.factor < 1 ? `已折算 ${span.days}/30 天` : '完整月成本');
+            setText('sim-kpi-cost-detail', `人事(含獎金) $${effPersonnel.toLocaleString()} ｜ 油資 $${effFuel.toLocaleString()} ｜ 保養/罰/折 $${(effMaint + effFines + effDeprec).toLocaleString()}`);
+            const barEl = document.getElementById('sim-kpi-cost-bar');
+            if (barEl) {
+                const tc = totalCost || 1;
+                const pPct = (effPersonnel / tc * 100).toFixed(1);
+                const fPct = (effFuel / tc * 100).toFixed(1);
+                const oPct = Math.max(0, 100 - parseFloat(pPct) - parseFloat(fPct)).toFixed(1);
+                barEl.innerHTML = `<div style="width:${pPct}%; background:#38bdf8;" title="人事(含配送獎金) ${pPct}%"><\/div>`
+                    + `<div style="width:${fPct}%; background:#fb923c;" title="油資 ${fPct}%"><\/div>`
+                    + `<div style="width:${oPct}%; background:#c084fc;" title="保養/罰單/折舊 ${oPct}%"><\/div>`;
+            }
+
+            const profEl = document.getElementById('sim-kpi-profit');
+            if (profEl) {
+                profEl.style.color = simProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+                profEl.innerText = (simProfit < 0 ? '-$' : '$') + Math.abs(Math.round(simProfit)).toLocaleString();
+            }
+            setText('sim-kpi-profit-orig', '調價前原淨利：' + (origProfit < 0 ? '-$' : '$') + Math.abs(Math.round(origProfit)).toLocaleString());
+            const profDiffEl = document.getElementById('sim-kpi-profit-diff');
+            if (profDiffEl) {
+                profDiffEl.style.color = profitDiff > 0 ? '#4ade80' : (profitDiff < 0 ? '#f87171' : '#94a3b8');
+                profDiffEl.innerText = (profitDiff >= 0 ? '淨利 +' : '淨利 ') + '$' + Math.round(profitDiff).toLocaleString();
+            }
+
+            const margEl = document.getElementById('sim-kpi-margin');
+            if (margEl) {
+                margEl.style.color = simMargin >= 15 ? '#4ade80' : (simMargin >= 0 ? '#fbbf24' : '#f87171');
+                margEl.innerText = simMargin.toFixed(1) + '%';
+            }
+            const margDiffEl = document.getElementById('sim-kpi-margin-diff');
+            if (margDiffEl) {
+                margDiffEl.style.color = marginDiff > 0 ? '#4ade80' : (marginDiff < 0 ? '#f87171' : '#94a3b8');
+                margDiffEl.innerText = `原 ${origMargin.toFixed(1)}% (${marginDiff >= 0 ? '+' : ''}${marginDiff.toFixed(1)}%)`;
+            }
+            const avgRevPerOrder = orders.length ? Math.round(simTotalRev / orders.length) : 0;
+            const avgCostPerOrder = orders.length ? Math.round(totalCost / orders.length) : 0;
+            setText('sim-kpi-unit-metrics', `每單平均：試算運費 $${avgRevPerOrder.toLocaleString()} vs 平均成本 $${avgCostPerOrder.toLocaleString()}`);
+
+            renderSimBranchCards(simTotalRev, totalCost);
+            renderSimOrdersTable();
+        }
+
+        function selectSimBranchFilter(b) {
+            simSelectedBranch = (simSelectedBranch === b) ? '全部' : b;
+            renderSimBranchCards();
+            renderSimOrdersTable();
+        }
+
+        function renderSimBranchCards(simTotalRevParam, totalCostParam) {
+            const box = document.getElementById('simBranchCards');
+            if (!box) return;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const simGrandRev = simTotalRevParam !== undefined ? simTotalRevParam : __lastSimResults.reduce((s, r) => s + r.simFee, 0);
+
+            box.innerHTML = CARD_BRANCHES.map(b => {
+                const bRows = __lastSimResults.filter(r => brOf(r.order) === b);
+                const origFee = bRows.reduce((s, r) => s + r.origFee, 0);
+                const simFee = bRows.reduce((s, r) => s + r.simFee, 0);
+                const diff = simFee - origFee;
+                const diffPct = origFee ? (diff / origFee * 100) : 0;
+                const totalKg = bRows.reduce((s, r) => s + (r.order.weight || 0), 0);
+                const sharePct = simGrandRev ? (simFee / simGrandRev * 100) : 0;
+                const origAvg = bRows.length ? Math.round(origFee / bRows.length) : 0;
+                const simAvg = bRows.length ? Math.round(simFee / bRows.length) : 0;
+                const changedCnt = bRows.filter(r => r.diff !== 0).length;
+                const c = BRANCH_COLOR[b] || '#94a3b8';
+                const isSel = simSelectedBranch === b;
+
+                return `<div class="stat-card branch-card freight-bcard${isSel ? ' active-card' : ''}" style="border-top-color:${c}; cursor:pointer;" onclick="selectSimBranchFilter('${b}')">`
+                    + `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">`
+                    + `<span class="stat-label" style="color:${c}; margin:0; font-size:15px;">${b}<\/span>`
+                    + `<span style="font-size:11px; color:var(--text-dim);">營收佔比 <b style="color:#fff;">${sharePct.toFixed(0)}%<\/b><\/span>`
+                    + `<\/div>`
+                    + `<div style="display:flex; justify-content:space-between; align-items:baseline; padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:8px; margin-bottom:6px;">`
+                    + `<span style="font-size:11px; color:var(--text-dim);">試算後運費<\/span>`
+                    + `<span style="font-size:22px; font-weight:900; color:var(--accent);">$${Math.round(simFee).toLocaleString()}<\/span>`
+                    + `<\/div>`
+                    + `<div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; padding:2px 4px 6px; border-bottom:1px dashed var(--glass-border);">`
+                    + `<span style="color:var(--text-dim);">目前原運費：<b>$${Math.round(origFee).toLocaleString()}<\/b><\/span>`
+                    + `<span style="font-weight:800; color:${diff > 0 ? '#4ade80' : (diff < 0 ? '#f87171' : '#94a3b8')};">${diff >= 0 ? '+' : ''}$${Math.round(diff).toLocaleString()} (${diff >= 0 ? '+' : ''}${diffPct.toFixed(1)}%)<\/span>`
+                    + `<\/div>`
+                    + `<div style="margin-top:8px; display:flex; flex-direction:column; gap:4px; font-size:12px; color:#cbd5e1;">`
+                    + `<div style="display:flex; justify-content:space-between;"><span>計費單量 / 總噸數<\/span><b>${bRows.length} 單 · ${(totalKg / 1000).toFixed(1)} 噸<\/b><\/div>`
+                    + `<div style="display:flex; justify-content:space-between;"><span>平均每單運費<\/span><b>$${origAvg} ➔ <span style="color:var(--accent);">$${simAvg}<\/span><\/b><\/div>`
+                    + `<div style="display:flex; justify-content:space-between;"><span>試算變動單數<\/span><b style="color:${changedCnt > 0 ? '#fbbf24' : '#94a3b8'};">${changedCnt} 筆變動<\/b><\/div>`
+                    + `<\/div>`
+                    + `<button type="button" style="margin-top:10px; width:100%; padding:6px 10px; border-radius:8px; border:1px solid ${isSel ? 'var(--accent)' : 'var(--glass-border)'}; background:${isSel ? 'rgba(56,189,248,0.22)' : 'rgba(255,255,255,0.05)'}; color:${isSel ? 'var(--accent)' : '#e2e8f0'}; font-size:11px; font-weight:800; cursor:pointer;">`
+                    + `${isSel ? '<i class="fas fa-check-circle" style="color:#22c55e; margin-right:4px;"><\/i>目前篩選中（再點顯示全部）' : '<i class="fas fa-filter" style="margin-right:4px;"><\/i>點此只看 ' + b + ' 試算明細'}`
+                    + `<\/button>`
+                    + `<\/div>`;
+            }).join('');
+        }
+
+        function renderSimOrdersTable() {
+            const tbody = document.querySelector('#sim-orders-table tbody');
+            if (!tbody) return;
+            const onlyDiff = document.getElementById('simOnlyDiffOrders')?.checked;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const branchFiltered = simSelectedBranch === '全部'
+                ? __lastSimResults
+                : __lastSimResults.filter(r => brOf(r.order) === simSelectedBranch);
+
+            const diffCount = branchFiltered.filter(r => r.diff !== 0).length;
+            setText('simDiffOrderCount', diffCount);
+            const tagEl = document.getElementById('simOrderFilterTag');
+            if (tagEl) {
+                tagEl.innerText = simSelectedBranch === '全部' ? '（全部公司）' : `（目前篩選：${simSelectedBranch}）`;
+            }
+
+            const rows = onlyDiff ? branchFiltered.filter(r => r.diff !== 0) : branchFiltered;
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:#64748b; padding:18px;">無符合條件的試算訂單<\/td><\/tr>';
+                return;
+            }
+
+            const totOrig = rows.reduce((s, r) => s + r.origFee, 0);
+            const totSim = rows.reduce((s, r) => s + r.simFee, 0);
+            const totDiff = totSim - totOrig;
+            const totKg = rows.reduce((s, r) => s + (r.order.weight || 0), 0);
+
+            const sumRow = `<tr style="background:rgba(15,23,42,0.96); border-top:2px solid var(--accent); font-weight:800;">`
+                + `<td colspan="4" style="color:#fff;">試算列表合計（共 <span style="color:var(--accent);">${rows.length}<\/span> 筆）<\/td>`
+                + `<td style="text-align:right; color:#fff;">${Math.round(totKg).toLocaleString()} kg<\/td>`
+                + `<td><\/td>`
+                + `<td style="text-align:right; color:#cbd5e1;">$${Math.round(totOrig).toLocaleString()}<\/td>`
+                + `<td style="text-align:right; color:var(--accent); font-size:14px;">$${Math.round(totSim).toLocaleString()}<\/td>`
+                + `<td style="text-align:right; color:${totDiff > 0 ? '#4ade80' : (totDiff < 0 ? '#f87171' : '#94a3b8')};">${totDiff >= 0 ? '+' : ''}$${Math.round(totDiff).toLocaleString()}<\/td>`
+                + `<td><\/td>`
+                + `<\/tr>`;
+
+            tbody.innerHTML = rows.map(r => {
+                const o = r.order;
+                const diffColor = r.diff > 0 ? '#4ade80' : (r.diff < 0 ? '#f87171' : '#64748b');
+                const diffTxt = r.diff === 0 ? '—' : ((r.diff > 0 ? '+' : '') + '$' + Math.round(r.diff).toLocaleString());
+                return `<tr style="${r.diff !== 0 ? 'background:rgba(56,189,248,0.05);' : ''}">`
+                    + `<td style="white-space:nowrap;">${escapeHTML(o.date)}<\/td>`
+                    + `<td style="white-space:nowrap; font-weight:700;">${escapeHTML(o.id)}<\/td>`
+                    + `<td>${branchTag(o.branch)}<\/td>`
+                    + `<td>${escapeHTML(o.customer)}<\/td>`
+                    + `<td style="text-align:right; white-space:nowrap;">${Math.round(o.weight || 0)} <span style="font-size:10px; color:var(--text-dim);">kg<\/span><\/td>`
+                    + `<td>${condBadges(o)}<\/td>`
+                    + `<td style="text-align:right; color:#cbd5e1;">$${Math.round(r.origFee).toLocaleString()}<\/td>`
+                    + `<td style="text-align:right; color:var(--accent); font-weight:800;">$${Math.round(r.simFee).toLocaleString()}<\/td>`
+                    + `<td style="text-align:right; font-weight:800; color:${diffColor};">${diffTxt}<\/td>`
+                    + `<td style="font-size:11px; color:var(--text-dim); white-space:nowrap;">${escapeHTML(r.simDetail)}<\/td>`
+                    + `<\/tr>`;
+            }).join('') + sumRow;
+        }
+
+        function buildSimTableTsv() {
+            const onlyDiff = document.getElementById('simOnlyDiffOrders')?.checked;
+            const brOf = o => BRANCHES.find(b => String(o.branch || '').indexOf(b) !== -1) || '其他';
+            const branchFiltered = simSelectedBranch === '全部'
+                ? __lastSimResults
+                : __lastSimResults.filter(r => brOf(r.order) === simSelectedBranch);
+            const rows = onlyDiff ? branchFiltered.filter(r => r.diff !== 0) : branchFiltered;
+            const head = ['日期', '單號', '分公司', '客戶名稱', '重量(kg)', '目前運費', '試算新運費', '差額', '試算公式拆解'];
+            const clean = v => String(v === undefined || v === null ? '' : v).replace(/[\t\r\n]+/g, ' ');
+            const body = rows.map(r => [
+                clean(r.order.date),
+                clean(r.order.id),
+                clean(r.order.branch),
+                clean(r.order.customer),
+                Math.round(r.order.weight || 0),
+                Math.round(r.origFee),
+                Math.round(r.simFee),
+                Math.round(r.diff),
+                clean(r.simDetail)
+            ]);
+            return [head].concat(body).map(line => line.join('\t')).join('\n');
+        }
+
+        function copySimTableTsv() {
+            navigator.clipboard.writeText(buildSimTableTsv())
+                .then(() => notify('已複製試算對比表，可直接貼到 Excel / LINE'))
+                .catch(() => notify('複製失敗，請改用匯出 CSV', true));
+        }
+
+        function exportSimTableCsv() {
+            const tsv = buildSimTableTsv();
+            const csv = '\ufeff' + tsv.split('\n').map(l => l.split('\t').map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '運費與利潤試算對比_' + (simSelectedBranch || '全部') + '.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
         }
 
         /*  環圈圖：扇形內寫數值與百分比、中央寫總計 (Chart.js 沒有內建，自行繪製) */

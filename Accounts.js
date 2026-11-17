@@ -329,9 +329,75 @@ function _notifyAccountEvent_(branch, text) {
 function _approvePageInfo_(p) {
   var id = String(p.r || ''), action = String(p.a || ''), sig = String(p.s || '');
   if (!_checkApproveLink_(id, action, sig)) return { valid: false, message: '這個審核連結無效或已被修改' };
+  if (id.indexOf('FQ~') === 0) {
+    return _freightApprovePageInfo_V43_(id, action, sig);
+  }
   var req = _readRequests_().filter(function (x) { return x.id === id; })[0];
   if (!req) return { valid: false, message: '找不到這筆申請' };
   return { valid: true, id: id, action: action, sig: sig, name: req.name, title: req.title, branch: req.branch, email: req.label, phone: req.phone, note: req.note, time: req.time, status: req.status, reviewer: req.reviewer };
+}
+
+function _freightApprovePageInfo_V43_(id, action, sig) {
+  try {
+    var parts = String(id || '').split('~');
+    var qBranch = parts[1] || '';
+    var qTaskId = parts[2] || '';
+    var qFee = parseFloat(parts[3]) || 0;
+    var sheet = getSS_V11().getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) return { valid: false, message: '找不到派送清單' };
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (v) { return String(v).trim(); });
+    var idxId = h.indexOf('單號');
+    var idxBr = h.indexOf('分公司');
+    var idxCust = h.indexOf('客戶');
+    var idxAddr = _findHeader(h, ['送貨地址', '地址']);
+    var idxWeight = _findHeader(h, ['重量']);
+    var idxSpec = h.indexOf('指定到貨時間');
+    var idxCarrier = h.indexOf('貨運行標示');
+    var idxCarrierDisc = h.indexOf('貨運行折扣');
+    var idxRemote = h.indexOf('是否偏遠');
+    var idxReason = h.indexOf('運費調整原因');
+    var idxConfirm = h.indexOf('運費確認狀態');
+    for (var i = 1; i < data.length; i++) {
+      var rowId = String(data[i][idxId] || '').trim();
+      var rowBr = idxBr !== -1 ? String(data[i][idxBr] || '').trim() : '';
+      if (_matchOrderId_(rowId, qTaskId) && (!qBranch || _matchBranch_(rowBr, qBranch))) {
+        var addrVal = idxAddr !== -1 ? String(data[i][idxAddr] || '').trim() : '';
+        var weightVal = idxWeight !== -1 ? (parseFloat(data[i][idxWeight]) || 0) : 0;
+        var specVal = idxSpec !== -1 ? String(data[i][idxSpec] || '').trim() : '';
+        var cFlag = idxCarrier !== -1 ? String(data[i][idxCarrier] || '').trim() : '';
+        var cDisc = idxCarrierDisc !== -1 ? (parseFloat(data[i][idxCarrierDisc]) || 1.0) : 1.0;
+        if (!cFlag && typeof _isCarrierAddress_ === 'function' && _isCarrierAddress_(addrVal)) { cFlag = '貨運行集貨'; cDisc = 0.5; }
+        if (cDisc > 1.0) cDisc = cDisc / 100.0;
+        var remVal = idxRemote !== -1 ? String(data[i][idxRemote] || '').trim() : '';
+        var calc = FreightEngine.calculateFreight(addrVal, weightVal, {
+          isTimedDeliver: (specVal && specVal !== '否') ? '是' : '否',
+          carrierFlag: cFlag,
+          carrierDiscount: cDisc,
+          isRemoteVal: remVal
+        });
+        return {
+          valid: true,
+          kind: 'freight',
+          id: id,
+          action: action,
+          sig: sig,
+          branch: rowBr || qBranch,
+          taskId: rowId,
+          customer: idxCust !== -1 ? String(data[i][idxCust] || '').trim() : '',
+          address: addrVal,
+          weight: Math.round(weightVal) + ' kg',
+          estFee: calc ? calc.estFee : 0,
+          quotedFee: Math.round(qFee),
+          reason: idxReason !== -1 ? String(data[i][idxReason] || '').trim() : '',
+          status: (idxConfirm !== -1 ? String(data[i][idxConfirm] || '').trim() : '') || '待確認'
+        };
+      }
+    }
+    return { valid: false, message: '找不到這筆訂單 (' + qTaskId + ')' };
+  } catch (e) {
+    return { valid: false, message: '讀取訂單失敗：' + e.message };
+  }
 }
 
 function decideAccount_V43_impl_(id, action, sig, idToken, provider) {

@@ -328,6 +328,19 @@ function _clearWarRoomCache_(dateStr) {
   } catch (e) { }
 }
 
+/** V43.41: 司機端任務快取清理工具 */
+function _clearDriverTasksCache_(carPlate) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (carPlate) {
+      var c = String(carPlate).trim();
+      cache.remove("DRV_TASKS_V43_" + c + "_today");
+      cache.remove("DRV_TASKS_V43_" + c + "_tmr");
+      cache.remove("DRV_TASKS_V43_" + c + "_all");
+    }
+  } catch (e) { }
+}
+
 /**
  * V41.22: 只寫回「有改到的列 × 有改到的欄」，不再整表 setValues 覆蓋。
  * 整表覆蓋會把讀取快照之後、其他人 (例如司機結案) 寫進去的值蓋回舊值。
@@ -459,6 +472,10 @@ function doGet(e) {
   // V11.50: 經銷商查詢專用 API 路由入口 (安全後端過濾)
   if (e && e.parameter && e.parameter.action === 'getDealerProgress') {
     return handleDealerApiRequest_V11(e);
+  }
+  // 2026-11-17: 到貨預估查詢 (高雅瓷 LINE 機器人群組回覆用，12_DeliveryEta.js)
+  if (e && e.parameter && e.parameter.action === 'deliveryEta') {
+    return handleDeliveryEtaApi_(e);
   }
   if (e && e.parameter && e.parameter.action === 'initHeaders') {
     return ContentService.createTextOutput(fixArchiveHeaders_V42());
@@ -930,29 +947,9 @@ function getWarRoomData_V11(force, targetDateStr, token) {
     var stats = { totalOrders: tasks.length, delivered: tasks.filter(function (t) { return t.status === '已完成'; }).length, returned: tasks.filter(function (t) { return t.status && t.status.indexOf('退貨') !== -1; }).length, totalWeight: tasks.reduce(function (sum, t) { return sum + (parseFloat(t.weight) || 0); }, 0), totalKM: Math.round(totalKM_Val * 10) / 10 };
     stats.pending = tasks.length - stats.delivered - stats.returned; // Calculate pending based on delivered and returned
     // V13.0: 抓取業務白名單對照圖 (供新增行程介面指派業務使用)
+    // V43.49: 只收白名單「身分類型」含「業務」且帳號啟用的人，依所屬分公司分組 (行政/司機/主管/倉管不列入)
     var salesMap = {};
-    try {
-      var sheetW = ss.getSheetByName("系統白名單");
-      if (sheetW) {
-        var wd = sheetW.getDataRange().getValues();
-        var wh = wd[0].map(function(v){ return String(v).trim(); });
-        var cN = wh.indexOf("姓名"), cB = wh.indexOf("所屬分公司"), cR = wh.indexOf("身分類型"), cA = wh.indexOf("帳號啟用");
-        if (cN !== -1 && cB !== -1) {
-          for (var w = 1; w < wd.length; w++) {
-            if (cA !== -1 && String(wd[w][cA]).trim() === "否") continue;
-            // V13.3: 移除硬性 Role 字串檢查，只要帳號啟用且有分公司即載入，避免漏填漏抓
-            // var role = cR !== -1 ? String(wd[w][cR] || "").trim() : "";
-            // if (role.indexOf("業務") === -1 && role.indexOf("司機") === -1) continue;
-            
-            var bKey = String(wd[w][cB]).trim();
-            var nVal = String(wd[w][cN]).trim();
-            if (!bKey || !nVal) continue;
-            if (!salesMap[bKey]) salesMap[bKey] = [];
-            salesMap[bKey].push(nVal);
-          }
-        }
-      }
-    } catch(e) { console.error("Load salesMap failed: " + e); }
+    try { salesMap = _getBranchSalesMap_(); } catch(e) { console.error("Load salesMap failed: " + e); }
 
     const result = { success: true, tasks: tasks, vehicles: vehicles, vehiclePositions: vPos, kpi: stats, branchSalesMap: salesMap, ver: "V2633.4.5" };
     // 存進快取，有效 5 分鐘 (300秒)，使用帶日期的 key 確保換日後自動失效
@@ -967,14 +964,72 @@ function getWarRoomData_V11(force, targetDateStr, token) {
 }
 
 /** V5.1.12: 分析儀表板核心數據抓取 (近 60 天) */
+/** V43.49: 白名單「業務」依分公司分組。只收身分類型含「業務」、帳號啟用 (=否 者跳過)；同分公司同名去重。
+ *  白名單上要讓某人出現在「指派業務」下拉：身分類型填「業務」、所屬分公司填對。 */
+function _getBranchSalesMap_() {
+  var map = {};
+  var ss = getSS_V11();
+  var sheetW = ss.getSheetByName("系統白名單");
+  if (!sheetW) return map;
+  var wd = sheetW.getDataRange().getValues();
+  if (wd.length < 2) return map;
+  var wh = wd[0].map(function (v) { return String(v).trim(); });
+  var cN = wh.indexOf("姓名"), cB = wh.indexOf("所屬分公司"), cR = wh.indexOf("身分類型"), cA = wh.indexOf("帳號啟用");
+  if (cN === -1 || cB === -1 || cR === -1) return map;
+  for (var w = 1; w < wd.length; w++) {
+    if (cA !== -1 && String(wd[w][cA]).trim() === "否") continue;
+    if (String(wd[w][cR] || "").indexOf("業務") === -1) continue;
+    var bKey = String(wd[w][cB] || "").trim();
+    var nVal = String(wd[w][cN] || "").trim();
+    if (!bKey || !nVal) continue;
+    if (!map[bKey]) map[bKey] = [];
+    if (map[bKey].indexOf(nVal) === -1) map[bKey].push(nVal);
+  }
+  return map;
+}
+
+/** V43.49: 取某分公司的業務名單 (精準比對，退而求其次用包含比對) */
+function _salesListForBranch_(map, branch) {
+  var b = String(branch || "").trim();
+  if (!b) return [];
+  if (map[b]) return map[b];
+  var keys = Object.keys(map);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i].indexOf(b) !== -1 || b.indexOf(keys[i]) !== -1) return map[keys[i]];
+  }
+  return [];
+}
+
+/** V43.49: 把 OCR 從單據「業務：214 謝博皓」讀到的名字，對到該分公司白名單裡的業務。
+ *  只認白名單身分類型=業務的人；小姐(行政)、讀不出、對不到、同名多人都回傳空字串，絕不亂帶。
+ *  比對順序：完全相同 → 互相包含且唯一 → 同字數只差一個字(OCR 常認錯一字)且唯一。 */
+function _matchSalesName_(ocrName, branch) {
+  var n = String(ocrName || "").replace(/\s/g, "");
+  if (!n) return "";
+  var list = _salesListForBranch_(_getBranchSalesMap_(), branch);
+  if (!list.length) return "";
+  var i, hit = [];
+  for (i = 0; i < list.length; i++) if (list[i] === n) return list[i];
+  for (i = 0; i < list.length; i++) if (list[i].indexOf(n) !== -1 || n.indexOf(list[i]) !== -1) hit.push(list[i]);
+  if (hit.length === 1) return hit[0];
+  if (hit.length > 1) return "";
+  for (i = 0; i < list.length; i++) {
+    if (list[i].length !== n.length) continue;
+    var diff = 0;
+    for (var k = 0; k < n.length; k++) if (list[i][k] !== n[k]) diff++;
+    if (diff <= 1) hit.push(list[i]);
+  }
+  return hit.length === 1 ? hit[0] : "";
+}
+
 /** V41.13: 清除分析中心分段快取 */
 function _clearDashboardCache_() {
   try {
     var c = CacheService.getScriptCache();
-    var meta = c.get('dashboard_stats_v5_meta');
+    var meta = c.get('dashboard_stats_v6_meta');
     var cnt = meta ? (JSON.parse(meta).count || 0) : 0;
-    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v5_' + i);
-    c.remove('dashboard_stats_v5_meta');
+    for (var i = 0; i < cnt; i++) c.remove('dashboard_stats_v6_' + i);
+    c.remove('dashboard_stats_v6_meta');
   } catch (e) { }
 }
 
@@ -1032,17 +1087,21 @@ function getDashboardData(force, token) {
     return { success: false, error: "AUTH_REQUIRED", message: authErr.message || "未登入或 Token 已失效" };
   }
   const cache = CacheService.getScriptCache();
-  const DASH_CACHE_KEY = 'dashboard_stats_v5';
+  const DASH_CACHE_KEY = 'dashboard_stats_v6';
   
   if (!force) {
     // 1. 記憶體快取
     const cachedObj = readChunkedCacheJson_V11(cache, DASH_CACHE_KEY);
-    if (cachedObj && cachedObj.success) return cachedObj;
+    if (cachedObj && cachedObj.success) {
+      cachedObj.monthlyCosts = getMonthlyCostMap_V43();
+      return cachedObj;
+    }
 
     // 2. 0.1 秒極速試算表分頁快取 (避免 cold start 算 30 秒)
     const sheetCache = _readDashboardSheetCache_();
     if (sheetCache && sheetCache.success) {
       try { writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, sheetCache, 3600); } catch (e) { }
+      sheetCache.monthlyCosts = getMonthlyCostMap_V43();
       return sheetCache;
     }
   }
@@ -1052,6 +1111,7 @@ function getDashboardData(force, token) {
   if (result && result.success) {
     try { writeChunkedCacheJson_V11(cache, DASH_CACHE_KEY, result, 3600); } catch (ce) { }
     try { _writeDashboardSheetCache_(result); } catch (se) { }
+    result.monthlyCosts = getMonthlyCostMap_V43();
   }
   return result;
 }
@@ -1126,11 +1186,14 @@ function _computeDashboardDataCore_V11() {
       whStatus: tH.indexOf("驗貨狀態"),
       returnReason: findHIdx_Core(tH, "RETURN_REASON"),
       specifiedArrive: tH.indexOf("指定到貨時間"),
+      lateMin: tH.indexOf("遲到分鐘"), lateReason: tH.indexOf("遲到原因"), // V43.42
       
       // 運費新欄位索引
       freightEst: tH.indexOf("估算運費"),
       freightDetail: tH.indexOf("運費計算明細"),
       adjustedFee: tH.indexOf("調整後運費"),
+      feeReason: tH.indexOf("運費調整原因"),
+      feeConfirmStatus: tH.indexOf("運費確認狀態"),
       carrierFlag: tH.indexOf("貨運行標示"),
       carrierDiscount: tH.indexOf("貨運行折扣"),
       isRemote: tH.indexOf("是否偏遠"),
@@ -1229,6 +1292,8 @@ function _computeDashboardDataCore_V11() {
       var finalRemote = calcResult.isRemote;
 
       var adjFee = tIdx.adjustedFee !== -1 ? parseFloat(getSafeVal(row, tIdx.adjustedFee)) || 0 : 0;
+      var feeReasonVal = tIdx.feeReason !== -1 ? String(getSafeVal(row, tIdx.feeReason) || "").trim() : "";
+      var feeConfirmVal = tIdx.feeConfirmStatus !== -1 ? String(getSafeVal(row, tIdx.feeConfirmStatus) || "").trim() : "";
 
       orders.push({
         id: tIdx.id !== -1 ? String(getSafeVal(row, tIdx.id)) : "",
@@ -1266,12 +1331,17 @@ function _computeDashboardDataCore_V11() {
         estFee: finalEst,
         detail: finalDetail,
         adjustedFee: adjFee,
+        feeReason: feeReasonVal,
+        feeConfirmStatus: feeConfirmVal,
         carrierFlag: carrierFlagVal,
         carrierDiscount: carrierDiscountVal,
         // V41.42: 狀況旗標 (分析中心運費統計「狀況」欄與篩選用；與計費輸入一致)
         isTimed: isTimedDeliver === "是" || isTimedReturn === "是",
         isWait: isOvertimeWait === "是",
         isCarry: isHeavyCarry === "是",
+        // V43.42: 司機結案時記錄的遲到分鐘 / 原因 (沒有紀錄的舊單由前端用完成時間 vs 指定時間補算分鐘)
+        lateMin: tIdx.lateMin !== -1 ? (Number(getSafeVal(row, tIdx.lateMin)) || 0) : 0,
+        lateReason: tIdx.lateReason !== -1 ? String(getSafeVal(row, tIdx.lateReason) || "").trim() : "",
         wrapSeal: (function () {
           var ws = tIdx.wrapSeal !== -1 ? String(getSafeVal(row, tIdx.wrapSeal) || "").trim() : "";
           if (ws) return ws;
@@ -1376,9 +1446,24 @@ function _computeDashboardDataCore_V11() {
  * 也可在 Apps Script 編輯器手動執行一次，立即暖機。
  */
 function warmDashboardCache_V11(e) {
+  // V43.56: 每小時觸發器 + 每 30 分鐘全站預熱會重複算同一份 (實測單次 120~178 秒)。
+  // 加鎖避免兩個同時跑，且 20 分鐘內剛熱過就直接略過。
+  var wl = LockService.getScriptLock();
+  if (!wl.tryLock(1000)) return { success: true, skipped: 'busy' };
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var last = Number(props.getProperty('WARM_DASH_AT') || 0);
+    if (Date.now() - last < 20 * 60 * 1000) return { success: true, skipped: 'fresh', at: last };
+    var out = _warmDashboardCacheImpl_V11_(e);
+    if (out && out.success) props.setProperty('WARM_DASH_AT', String(Date.now()));
+    return out;
+  } finally { try { wl.releaseLock(); } catch (x) { } }
+}
+
+function _warmDashboardCacheImpl_V11_(e) {
   const result = _computeDashboardDataCore_V11();
   if (result && result.success) {
-    try { writeChunkedCacheJson_V11(CacheService.getScriptCache(), 'dashboard_stats_v5', result, 3600); } catch (ce) { }
+    try { writeChunkedCacheJson_V11(CacheService.getScriptCache(), 'dashboard_stats_v6', result, 3600); } catch (ce) { }
     try { _writeDashboardSheetCache_(result); } catch (se) { }
     return { success: true, orders: result.orders && result.orders.length, schedule: result.schedule && result.schedule.length, at: Date.now() };
   }
@@ -2110,7 +2195,7 @@ function ensureHeaders_V11(sheet) {
   var required = ["車牌", "狀態", "順序", "緯度", "經度", "貨單縮圖"];
   var sheetName = sheet.getName();
   if (sheetName === V11_PROD_CONFIG.SHEET_LOG) {
-    required = ["單號", "clientUUID", "抵達 GPS 定位", "是否有退貨", "退貨照片", "簽收類型", "貨單縮圖", "司機"];
+    required = ["單號", "clientUUID", "抵達 GPS 定位", "是否有退貨", "退貨照片", "簽收類型", "貨單縮圖", "司機", "遲到分鐘", "遲到原因"];
   } else if (sheetName === V11_PROD_CONFIG.SHEET_SCHEDULE) {
     required = ["上班時間", "下班時間"];
   }
@@ -2120,7 +2205,9 @@ function ensureHeaders_V11(sheet) {
     if (required.indexOf("退回原因") === -1) required.push("退回原因");
     if (required.indexOf("封膠膜") === -1) required.push("封膠膜");
     if (required.indexOf("單據類型(人工)") === -1) required.push("單據類型(人工)");
-    var freightCols = ["是否偏遠", "估算運費", "運費計算明細", "調整後運費", "貨運行標示", "貨運行折扣", "指定送貨", "指定退貨", "等候超時", "加倍搬運"];
+    ["遲到分鐘", "遲到原因"].forEach(function(col) { if (required.indexOf(col) === -1) required.push(col); }); // V43.42
+    ["已回到鶯歌", "回到鶯歌時間", "回到鶯歌確認人"].forEach(function(col) { if (required.indexOf(col) === -1) required.push(col); }); // V43.52: 排車「樣品回鶯歌」分頁的已回鶯歌紀錄 (名稱刻意不含「回鶯歌」，免得跟既有「回鶯歌標記」欄的模糊比對撞到)
+    var freightCols = ["是否偏遠", "估算運費", "運費計算明細", "調整後運費", "運費調整原因", "運費確認狀態", "運費TG訊息", "貨運行標示", "貨運行折扣", "指定送貨", "指定退貨", "等候超時", "加倍搬運"];
     freightCols.forEach(function(col) {
       if (required.indexOf(col) === -1) required.push(col);
     });
@@ -2308,7 +2395,12 @@ function adminDispatchTasks_impl_(tasksData, car, token) {
 
     // 清除快取並強制同步受影響車輛的行程足跡
     _clearWarRoomCache_();
-    affectedCars.forEach(function (c) { if (c) updateScheduleTrace_V12(c); });
+    affectedCars.forEach(function (c) { 
+      if (c) {
+        updateScheduleTrace_V12(c);
+        _clearDriverTasksCache_(c);
+      }
+    });
 
     return "✅ 成功完成 " + tasksData.length + " 筆任務指派 (" + car + ")";
   } catch (e) {
@@ -2869,7 +2961,10 @@ function driverRedoTask_impl_(orderId, branch, token) {
         sheet.getRange(i + 1, idxS + 1).setValue("配送中");
         var oldNote = String(data[i][idxN] || "");
         sheet.getRange(i + 1, idxN + 1).setValue(oldNote + " (撤回重報 " + Utilities.formatDate(new Date(), "GMT+8", "HH:mm") + ")");
+        var carCol = findHIdx_Core(h, "VEHICLE");
+        var carVal = carCol !== -1 ? String(data[i][carCol] || "").trim() : "";
         _clearWarRoomCache_();
+        _clearDriverTasksCache_(carVal);
         return { success: true, message: "✅ 已重設狀態，請點擊「拍照結案」重新回報。" };
       }
     }
@@ -3129,11 +3224,89 @@ function getManagementData() {
   }
 }
 
+/** V43.42: 指定到貨時間遲到判定。時段 (HH:MM~HH:MM) 以結束時間為準；無明確時間或未遲到回傳 0 */
+var LATE_NOTIFY_MIN = 30; // 遲到超過這個分鐘數：司機必須選原因 + 通知該分公司 Telegram 到貨群組
+function _calcLateMin_(specifiedArrive, finishDate) {
+  var ms = String(specifiedArrive || "").match(/\d{1,2}:\d{2}/g);
+  if (!ms || !ms.length) return 0;
+  var dl = ms[ms.length - 1].split(":");
+  var deadline = parseInt(dl[0], 10) * 60 + parseInt(dl[1], 10);
+  var fh = Utilities.formatDate(finishDate, "GMT+8", "HH:mm").split(":");
+  var finish = parseInt(fh[0], 10) * 60 + parseInt(fh[1], 10);
+  return Math.max(0, finish - deadline);
+}
+
+/** V43.42: 遲到原因選項放在試算表《遲到原因選項》(A 欄原因、B 欄「啟用」填「否」即停用)；沒有這張表會自動建立並放入預設值。
+ *  「其他(自填)」由司機端固定加在最後，不用寫在表上。 */
+var LATE_REASON_SHEET = "遲到原因選項";
+var LATE_REASON_DEFAULTS = ["前一站耽誤／卸貨太久", "塞車／路況", "倉庫出貨太晚", "客戶現場等候／改時間", "電梯管制／找不到地點"];
+function _readLateReasons_() {
+  try {
+    var ss = getSS_V11();
+    var sh = ss.getSheetByName(LATE_REASON_SHEET);
+    if (!sh) {
+      sh = ss.insertSheet(LATE_REASON_SHEET);
+      sh.getRange(1, 1, 1, 2).setValues([["遲到原因", "啟用"]]).setBackground("#34495e").setFontColor("#ffffff").setFontWeight("bold");
+      sh.getRange(2, 1, LATE_REASON_DEFAULTS.length, 2).setValues(LATE_REASON_DEFAULTS.map(function (r) { return [r, "是"]; }));
+      sh.getRange(1, 4).setValue("說明：司機結案時，超過指定到貨時間 30 分鐘會從這裡選遲到原因。直接增修 A 欄；B 欄填「否」＝停用；「其他(自填)」系統固定附加在最後。約 5 分鐘內生效。");
+      sh.setColumnWidth(1, 240);
+    }
+    var vals = sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), 2).getValues();
+    var out = [], seen = {};
+    vals.forEach(function (r) {
+      var t = String(r[0] || "").trim();
+      if (!t || t === "其他" || seen[t] || String(r[1] || "").trim() === "否") return;
+      seen[t] = true; out.push(t.substring(0, 30));
+    });
+    return out.length ? out : LATE_REASON_DEFAULTS.slice();
+  } catch (e) {
+    console.error("讀遲到原因選項失敗: " + e.message);
+    return LATE_REASON_DEFAULTS.slice();
+  }
+}
+function getLateReasons_V43(token) {
+  _requireDriver_(token);
+  var cache = CacheService.getScriptCache();
+  try { var c = cache.get("LATE_REASONS_V43"); if (c) return JSON.parse(c); } catch (e) { }
+  var list = _readLateReasons_();
+  try { cache.put("LATE_REASONS_V43", JSON.stringify(list), 300); } catch (e) { }
+  return list;
+}
+
+/** V43.42: 把遲到分鐘/原因寫進派送清單該列 (欄位不存在會自動補)。
+ *  V43.48: 欄位位置整次執行只確認一次 (原本每張遲到單、每張同址合併單都重讀標頭)，補欄位時加 script lock，避免兩位司機同時結案補出重複欄位。 */
+var __lateColIdx__ = null;
+function _lateColIdx_(taskSheet) {
+  if (__lateColIdx__) return __lateColIdx__;
+  var lock = LockService.getScriptLock(), locked = false;
+  try { locked = lock.tryLock(8000); } catch (e) { }
+  try {
+    ensureHeaders_V11(taskSheet);
+    var hh = taskSheet.getRange(1, 1, 1, taskSheet.getLastColumn()).getValues()[0].map(function (v) { return String(v).trim(); });
+    __lateColIdx__ = { min: hh.indexOf("遲到分鐘"), reason: hh.indexOf("遲到原因") };
+  } finally {
+    if (locked) { try { lock.releaseLock(); } catch (e) { } }
+  }
+  return __lateColIdx__;
+}
+function _writeLateCols_(taskSheet, rowNum, lateMin, reason) {
+  var c = _lateColIdx_(taskSheet);
+  if (c.min !== -1) taskSheet.getRange(rowNum, c.min + 1).setValue(lateMin);
+  if (c.reason !== -1 && reason) taskSheet.getRange(rowNum, c.reason + 1).setValue(reason);
+}
+
 function submitFinalDelivery(report) {
   try {
     var ctx = _requireDriver_(report && report.token); if (!_driverMayUseCar_(ctx, report && report.car)) throw new Error('🔒 AUTH_FORBIDDEN：無權操作車輛 ' + (report && report.car));
     var ss = getSS_V11(), now = new Date(), timeStr = Utilities.formatDate(now, "GMT+8", "yyyy/MM/dd HH:mm:ss");
-    
+    // V43.42: 離線補傳時用司機實際按下結案的時間判斷遲到 (限 48 小時內)。
+    // V43.48: 只有「距今超過 5 分鐘」才視為離線補傳而採用手機時間；線上結案一律用伺服器時間，手機時鐘不準也不會影響遲到判定。
+    var finishDate = now, fa = Number(report && report.finishedAt);
+    if (fa && fa > now.getTime() - 48 * 3600 * 1000 && fa < now.getTime() - 5 * 60 * 1000) finishDate = new Date(fa);
+    var finishDay = Utilities.formatDate(finishDate, "GMT+8", "yyyy/MM/dd");
+    var lateReason = String((report && report.lateReason) || "").trim().substring(0, 100);
+    var lateItems = []; // V43.42: 本次結案各單遲到明細 { branch, customer, spec, lateMin }
+
     // V41.80: 高階雙重原子鎖防護（防止雙擊與平行併發）
     if (checkUUIDDuplicate(ss, report.clientUUID)) return { success: true, duplicated: true };
     _markUUIDDone_(report.clientUUID); // 立即記錄原子鎖，擋下 100ms 內同 UUID 的並行請求
@@ -3156,7 +3329,7 @@ function submitFinalDelivery(report) {
 
     var photoId = "", photoUrl = "", tgBlob = null;
     if (report.photo_sign && report.photo_sign.contents) {
-      var blob = Utilities.newBlob(Utilities.base64Decode(report.photo_sign.contents.split(',')[1]), report.photo_sign.mimeType, "SIGN_" + report.orderId + "_" + Date.now());
+      var blob = Utilities.newBlob(Utilities.base64Decode(report.photo_sign.contents.split(',')[1]), report.photo_sign.mimeType, "SIGN_" + report.orderId + "_" + Date.now() + ".jpg");
       tgBlob = blob;
       var folder = getSafeFolder_V11();
       var file = folder.createFile(blob);
@@ -3178,9 +3351,11 @@ function submitFinalDelivery(report) {
       idxStatus = findHIdx_Core(h, "STATUS"),
       idxFinish = findHIdx_Core(h, "FINISH_TIME"),
       idxSpecified = h.indexOf("指定到貨時間"),
+      idxDateCol = findHIdx_Core(h, "DATE"),
       idxThumbSrc = findHIdx_Core(h, "THUMBNAIL");
 
     var specifiedArrive = "";
+    var mainLateMin = 0; // V43.42
     var orderThumbnail = ""; // V42.40: 送貨日誌備份一份貨單縮圖，避免另一邊(派送清單)沒存到就整個沒了
 
     if (idxId !== -1) {
@@ -3215,6 +3390,20 @@ function submitFinalDelivery(report) {
         if (idxFinish !== -1) taskSheet.getRange(foundRow, idxFinish + 1).setValue(timeStr);
         // V37.15: 強制設定白底，確保清除原本的指派顏色
         taskSheet.getRange(foundRow, 1, 1, taskSheet.getLastColumn()).setBackground('#ffffff');
+        // V43.42: 遲到判定 (只算「指定到貨時間」、當天配送、配送成功的單)
+        // V43.48: 遲到紀錄是附加功能，出任何錯都不能中斷結案主流程 (此時狀態已寫入，中斷會留下半套資料)
+        try {
+          if (finalStatus === "已完成" && (idxDateCol === -1 || !tData[foundRow - 1][idxDateCol] || normalizeDate_Core(tData[foundRow - 1][idxDateCol]) === finishDay)) {
+            var mainLate = _calcLateMin_(specifiedArrive, finishDate);
+            if (mainLate > 0) {
+              lateItems.push({ branch: String(report.branch || "").trim(), customer: String(report.customer || ""), spec: specifiedArrive, lateMin: mainLate });
+              mainLateMin = mainLate;
+              _writeLateCols_(taskSheet, foundRow, mainLate, mainLate > LATE_NOTIFY_MIN ? lateReason : "");
+            }
+          }
+        } catch (lateWriteErr) {
+          console.error("遲到紀錄寫入失敗(不影響結案): " + lateWriteErr.message);
+        }
       } else {
         // 找不到對應列時記錄 Log，方便事後追查
         console.error("submitFinalDelivery: 找不到單號 " + reportOrderId + " (" + reportBranch + ") 的對應列，比對失敗");
@@ -3248,6 +3437,7 @@ function submitFinalDelivery(report) {
     setLog("抵達 GPS 定位", report.lat + "," + report.lng);
     setLog("clientUUID", report.clientUUID || "");
     setLog("簽收類型", currentSignType);
+    if (mainLateMin > 0) { setLog("遲到分鐘", mainLateMin); if (mainLateMin > LATE_NOTIFY_MIN) setLog("遲到原因", lateReason); } // V43.42
     _prependRow_(logSheet, logRow);
 
     // V37.23: 同地址批次結案 — 為每個合併訂單更新狀態 + 寫入 Log
@@ -3256,6 +3446,7 @@ function submitFinalDelivery(report) {
         try {
           var btId = String(bt.id || "").trim();
           var btBranch = String(bt.branch || "").trim();
+          var btLate = 0; // V43.42
           if (!btId) return;
           // 更新 SHEET_TASKS 狀態
           if (idxId !== -1) {
@@ -3268,12 +3459,19 @@ function submitFinalDelivery(report) {
               if (btBranch && idxBranch !== -1 && String(tData[bi][idxBranch] || "").trim() !== btBranch) continue;
               btRow = bi + 1;
               if (idxThumbSrc !== -1) btThumbnail = String(tData[bi][idxThumbSrc] || "").trim();
+              // V43.42: 同址各單用自己的指定到貨時間判斷遲到，原因共用司機選的那一次
+              if (idxSpecified !== -1 && (idxDateCol === -1 || !tData[bi][idxDateCol] || normalizeDate_Core(tData[bi][idxDateCol]) === finishDay)) {
+                var btSpec = _fmtArriveTime_(getSafeVal(tData[bi], idxSpecified));
+                btLate = _calcLateMin_(btSpec, finishDate);
+                if (btLate > 0) lateItems.push({ branch: btBranch || String(tData[bi][idxBranch] || "").trim(), customer: String(bt.customer || ""), spec: btSpec, lateMin: btLate });
+              }
               break;
             }
             if (btRow !== -1) {
               if (idxStatus !== -1) taskSheet.getRange(btRow, idxStatus + 1).setValue('已完成');
               if (idxFinish !== -1) taskSheet.getRange(btRow, idxFinish + 1).setValue(timeStr);
               taskSheet.getRange(btRow, 1, 1, taskSheet.getLastColumn()).setBackground('#ffffff');
+              if (btLate > 0) { try { _writeLateCols_(taskSheet, btRow, btLate, btLate > LATE_NOTIFY_MIN ? lateReason : ""); } catch (btLateErr) { console.error("批次遲到紀錄寫入失敗(不影響結案): " + btLateErr.message); } }
             }
           }
           // 寫入 SHEET_LOG（共用同一張簽收照片）
@@ -3295,6 +3493,7 @@ function submitFinalDelivery(report) {
           setBt("抵達 GPS 定位", (report.lat || 0) + "," + (report.lng || 0));
           setBt("clientUUID", bt.clientUUID || "");
           setBt("簽收類型", report.signType || "本人親簽");
+          if (btLate > 0) { setBt("遲到分鐘", btLate); if (btLate > LATE_NOTIFY_MIN) setBt("遲到原因", lateReason); } // V43.42
           _prependRow_(logSheet, btLogRow);
         } catch(bte) {
           console.error("批次結案錯誤 " + (bt.id || "") + ": " + bte.message);
@@ -3317,6 +3516,24 @@ function submitFinalDelivery(report) {
       } catch (tgErr) {
         console.error("TG 推送錯誤: " + tgErr.message);
       }
+    }
+
+    // V43.42: 遲到超過 LATE_NOTIFY_MIN 分鐘 → 依分公司各發一則 Telegram 到貨群組通知 (含司機選的原因)
+    try {
+      var lateByBranch = {};
+      lateItems.forEach(function (it) { if (it.lateMin > LATE_NOTIFY_MIN) (lateByBranch[it.branch] = lateByBranch[it.branch] || []).push(it); });
+      Object.keys(lateByBranch).forEach(function (lb) {
+        var its = lateByBranch[lb];
+        var worst = its.reduce(function (m, x) { return Math.max(m, x.lateMin); }, 0);
+        var msg = "<b>\u26A0\uFE0F 配送遲到 " + worst + " 分鐘</b>\n"
+          + "司機：" + _tgEsc_(driverName || "司機") + "　車牌：" + _tgEsc_(report.car || "") + "\n"
+          + its.map(function (x) { return "・" + _tgEsc_(x.customer) + "　指定 " + _tgEsc_(x.spec) + "　遲 " + x.lateMin + " 分"; }).join("\n") + "\n"
+          + "完成時間：" + Utilities.formatDate(finishDate, "GMT+8", "HH:mm") + "\n"
+          + "原因：" + _tgEsc_(lateReason || "(司機未填)");
+        pushTelegramTextMessage_V11(msg, lb);
+      });
+    } catch (lateErr) {
+      console.error("遲到 TG 通知錯誤: " + lateErr.message);
     }
 
     // V38.x: 高雅瓷配送完成 → LINE 個別通知負責業務
@@ -3344,6 +3561,7 @@ function submitFinalDelivery(report) {
     // V6.2: 不論有無下一站，只要結案就強制清除當前目標並重新整理快取
     // (確保上一動的 targetAddr 不會殘留在 SHEET_STATUS)
     _clearWarRoomCache_();
+    _clearDriverTasksCache_(report.car);
 
     // V6.6: 取得該車牌剩餘的所有任務 (用於前端判斷同地址與下一站選擇)
     var remainingTasks = [];
@@ -3709,7 +3927,11 @@ function uploadFile(f, name, token) {
     if (base64Data.indexOf(',') !== -1) {
       base64Data = base64Data.split(',')[1];
     }
-    var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), f.mimeType, (name || "upload") + "_" + Date.now());
+    var ext = ".jpg";
+    if (f.mimeType === "image/png") ext = ".png";
+    else if (f.mimeType === "application/pdf") ext = ".pdf";
+    var fileName = (name || "upload") + "_" + Date.now() + ext;
+    var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), f.mimeType, fileName);
     var folder = getSafeFolder_V11();
 
     // V36.7: 支援動態子資料夾
@@ -4165,6 +4387,21 @@ function _fmtArriveTime_(v) {
 function getTodayTasks(carPlate, queryDate, token) {
   _requireDriver_(token); // 放在 try 外：驗證失敗要讓前端 failureHandler 收到，而不是被 catch 吞成空陣列
   try {
+    var target = String(carPlate || "").trim();
+    if (!target) return [];
+
+    // V43.41: 司機任務短暫快取 (25 秒)，秒回請求，避免重複掃描數千行工作表
+    var qDate = String(queryDate || "today");
+    var cacheKey = "DRV_TASKS_V43_" + target + "_" + qDate;
+    var cache = CacheService.getScriptCache();
+    try {
+      var cached = cache.get(cacheKey);
+      if (cached) {
+        var parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length >= 0) return parsed;
+      }
+    } catch (ce) { }
+
     var ss = getSS_V11(), sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS), data = sheet.getDataRange().getValues();
     var h = data[0].map(function (v) { return String(v).trim(); });
     var findCol = function (names) { for (var n of names) { var p = h.indexOf(n); if (p !== -1) return p; } return -1; };
@@ -4203,7 +4440,11 @@ function getTodayTasks(carPlate, queryDate, token) {
     var sevenDaysStr = Utilities.formatDate(sevenDaysLater, "GMT+8", "yyyy/MM/dd");
 
     var vInfo = getManagementData(), driverName = vInfo.vehicleMap[carPlate] || "", res = [];
-    var target = String(carPlate || "").trim();
+
+    // V43.41: 預先載入產品主檔 (由 CacheService 秒回)，在單次查詢內即打包完整尺寸、重量、系列資訊，徹底廢除前端二次網路往返
+    var productMap = {};
+    try { productMap = lookupProductMasterData_V11() || {}; } catch (pe) { }
+
     // V41: 品項欄位索引只算一次 (舊版每列都重新掃 10 次表頭)
     var itemCols = [];
     for (var n0 = 1; n0 <= 5; n0++) {
@@ -4254,16 +4495,41 @@ function getTodayTasks(carPlate, queryDate, token) {
             var codeVal = String(getSafeVal(data[i], codeIdx) || '').trim();
             var qtyVal = String(getSafeVal(data[i], qtyIdx) || '').trim();
             if (codeVal && qtyVal) {
-              var itemSize = sizeArr[n - 1] || sizeArr[0] || '';
-              itemsArr.push({ code: codeVal, qty: qtyVal, size: itemSize, pcsPerBox: "", boxQty: "" });
+              var pInfo = findProductInfo_V11(productMap, codeVal);
+              var itemWeight = calcItemWeightKg_V11(qtyVal, pInfo.pcsPerBox, pInfo.kgPerBox);
+              var itemSize = String(pInfo.size || '').trim() || sizeArr[n - 1] || sizeArr[0] || '';
+              itemsArr.push({
+                code: codeVal,
+                qty: qtyVal,
+                size: itemSize,
+                pcsPerBox: pInfo.pcsPerBox || '',
+                boxQty: calcBoxQtyFromPieces_V11(qtyVal, pInfo.pcsPerBox),
+                kgPerBox: pInfo.kgPerBox || '',
+                itemWeight: itemWeight,
+                image: pInfo.img || '',
+                series: pInfo.name || '',
+                originalName: pInfo.originalName || ''
+              });
             }
           }
         }
         if (!itemsArr.length && idx.items !== -1) {
           var rawItems = String(getSafeVal(data[i], idx.items) || '').trim();
           if (rawItems) {
-            rawItems.split(/\n|、|，|,|；|;|\/+/).map(function (s) { return String(s).trim(); }).filter(Boolean).forEach(function (s) {
-              itemsArr.push({ code: s, qty: '', size: sizeArr[itemsArr.length] || sizeArr[0] || '', pcsPerBox: "", boxQty: "" });
+            rawItems.split(/\n|、|，|,|；|;|\/+/).map(function (s) { return String(s).trim(); }).filter(Boolean).forEach(function (s, sIdx) {
+              var pInfo = findProductInfo_V11(productMap, s);
+              itemsArr.push({
+                code: s,
+                qty: '',
+                size: String(pInfo.size || '').trim() || sizeArr[sIdx] || sizeArr[0] || '',
+                pcsPerBox: pInfo.pcsPerBox || '',
+                boxQty: '',
+                kgPerBox: pInfo.kgPerBox || '',
+                itemWeight: '',
+                image: pInfo.img || '',
+                series: pInfo.name || '',
+                originalName: pInfo.originalName || ''
+              });
             });
           }
         }
@@ -4288,11 +4554,20 @@ function getTodayTasks(carPlate, queryDate, token) {
     }
 
 
-    return res.sort(function (a, b) {
+    var sorted = res.sort(function (a, b) {
       if (a.status === '已完成' && b.status !== '已完成') return 1;
       if (a.status !== '已完成' && b.status === '已完成') return -1;
       return a.seq - b.seq;
     });
+
+    try {
+      var jsonStr = JSON.stringify(sorted);
+      if (jsonStr.length < 95000) {
+        cache.put(cacheKey, jsonStr, 25); // V43.41: 快取 25 秒
+      }
+    } catch (ce2) { }
+
+    return sorted;
   } catch (e) { return []; }
 }
 
@@ -4600,21 +4875,30 @@ function archiveYesterdayTasks(e) {
 
     var todayStr = Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd");
     var finishStatus = ["已完成", "退貨完成", "結案"];
-    var count = 0;
+    var colValues = [];
+    var changed = false;
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       var d = row[dateIdx];
-      if (!d) continue;
+      var currentVal = row[archiveIdx] || "";
+      if (d) {
+        var rowDate = (d instanceof Date) ? Utilities.formatDate(d, "GMT+8", "yyyy/MM/dd") : String(d).substring(0, 10).replace(/-/g, '/');
+        var status = String(row[statusIdx]).trim();
+        var isArchived = String(row[archiveIdx]).trim();
 
-      var rowDate = (d instanceof Date) ? Utilities.formatDate(d, "GMT+8", "yyyy/MM/dd") : String(d).substring(0, 10).replace(/-/g, '/');
-      var status = String(row[statusIdx]).trim();
-      var isArchived = String(row[archiveIdx]).trim();
-
-      if (rowDate < todayStr && finishStatus.indexOf(status) !== -1 && isArchived !== "是") {
-        sheet.getRange(i + 1, archiveIdx + 1).setValue("是");
-        count++;
+        if (rowDate < todayStr && finishStatus.indexOf(status) !== -1 && isArchived !== "是") {
+          colValues.push(["是"]);
+          count++;
+          changed = true;
+          continue;
+        }
       }
+      colValues.push([currentVal]);
+    }
+
+    if (changed && colValues.length > 0) {
+      sheet.getRange(2, archiveIdx + 1, colValues.length, 1).setValues(colValues);
     }
     SpreadsheetApp.getUi().alert("✅ 封存完成！\n共封存了 " + count + " 筆前日已完成任務。");
   } catch (e) {
@@ -4919,8 +5203,9 @@ function adminCancelTaskV2_impl_(taskId, branch, token) {
               return "🔒 無權取消其他車輛的任務: " + taskId;
             }
             sheet.getRange(i + 1, statusIdx + 1).setValue("已取消");
-            // 清除戰情室快取，防止舊狀態覆蓋回來
+            // 清除戰情室與司機端快取，防止舊狀態覆蓋回來
             _clearWarRoomCache_();
+            if (vehIdx !== -1) _clearDriverTasksCache_(data[i][vehIdx]);
             return "✅ 任務 " + taskId + " 已取消成功";
         }
     }
@@ -5543,6 +5828,7 @@ function adminBatchReturnTasks_V11_impl_(updates, token) {
 
     // V12.5：同步將被退回的項目，複製一份到「業務配送清單」，供後續業務查收
     var returnedRowsToCopy = [];
+    var touchedRows = [];
     updates.forEach(up => {
       for (let i = 1; i < data.length; i++) {
         if (String(data[i][colId]) === String(up.id)) {
@@ -5556,11 +5842,17 @@ function adminBatchReturnTasks_V11_impl_(updates, token) {
           returnedRowsToCopy.push(clonedRow);
 
           // 2. 原始表更新：改為「退回分公司」存檔
-          sheet.getRange(i + 1, colStat + 1).setValue("退回分公司");
-          sheet.getRange(i + 1, colReason + 1).setValue(up.reason);
+          data[i][colStat] = "退回分公司";
+          data[i][colReason] = up.reason;
+          touchedRows.push({ rowNum: i + 1, rowData: data[i] });
           break;
         }
       }
+    });
+
+    // 批次寫回原始表修改列
+    touchedRows.forEach(item => {
+      _writeRowCells_(sheet, item.rowNum, item.rowData, [colStat, colReason]);
     });
 
     // 執行複製到業務表
@@ -6506,7 +6798,7 @@ function _matchBranch_(b1, b2) {
   return s1 === s2 || s1.indexOf(s2) !== -1 || s2.indexOf(s1) !== -1;
 }
 
-function _updateDashboardSheetCacheItem_(taskId, branch, docType, adjustedFee) {
+function _updateDashboardSheetCacheItem_(taskId, branch, docType, adjustedFee, feeReason, feeConfirmStatus) {
   try {
     var ss = getSS_V11();
     var sheet = ss.getSheetByName(DASHBOARD_CACHE_SHEET);
@@ -6530,17 +6822,397 @@ function _updateDashboardSheetCacheItem_(taskId, branch, docType, adjustedFee) {
           if (adjustedFee !== undefined) {
             o.adjustedFee = adjustedFee;
           }
+          if (feeReason !== undefined) {
+            o.feeReason = feeReason;
+          }
+          if (feeConfirmStatus !== undefined) {
+            o.feeConfirmStatus = feeConfirmStatus;
+          }
           hit = true;
         }
       }
       if (hit) {
         _writeDashboardSheetCache_(data);
         var cache = CacheService.getScriptCache();
-        try { writeChunkedCacheJson_V11(cache, 'dashboard_stats_v5', data, 3600); } catch (ce) { }
+        try { writeChunkedCacheJson_V11(cache, 'dashboard_stats_v6', data, 3600); } catch (ce) { }
       }
     }
   } catch (e) {
     console.log("更新分析中心單筆快取失敗: " + e.message);
+  }
+}
+
+// ==========================================
+// V43.55: 排車即時運費報價 + 原因記憶 + Telegram/LINE 分公司確認與退單連動
+// ==========================================
+var DEFAULT_FREIGHT_REASONS_V43 = ['路線不順', '指定時間', '下貨條件多'];
+var CUSTOM_FREIGHT_REASONS_PROP = 'CUSTOM_FREIGHT_REASONS_V1';
+
+function getCustomFreightReasons_V43() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(CUSTOM_FREIGHT_REASONS_PROP);
+    var saved = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(saved)) saved = [];
+    var out = DEFAULT_FREIGHT_REASONS_V43.slice();
+    saved.forEach(function (r) {
+      var s = String(r || '').trim();
+      if (s && out.indexOf(s) === -1) out.push(s);
+    });
+    return out;
+  } catch (e) {
+    return DEFAULT_FREIGHT_REASONS_V43.slice();
+  }
+}
+
+function saveCustomFreightReasons_V43_impl_(reasons, token) {
+  _requireAdmin_(token);
+  try {
+    var list = Array.isArray(reasons) ? reasons : [];
+    var customOnly = [];
+    list.forEach(function (r) {
+      var s = String(r || '').replace(/[\r\n\t~|]/g, ' ').trim().slice(0, 30);
+      if (s && DEFAULT_FREIGHT_REASONS_V43.indexOf(s) === -1 && customOnly.indexOf(s) === -1) {
+        customOnly.push(s);
+      }
+    });
+    PropertiesService.getScriptProperties().setProperty(CUSTOM_FREIGHT_REASONS_PROP, JSON.stringify(customOnly));
+    return { success: true, reasons: getCustomFreightReasons_V43() };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+function _sendLinePushDirect_V43_(msg) {
+  var lineToken = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
+  var targetId = PropertiesService.getScriptProperties().getProperty('LINE_TARGET_ID');
+  if (!lineToken || !targetId || !msg) return false;
+  var resp = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+    method: 'post',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + lineToken },
+    payload: JSON.stringify({ to: targetId, messages: [{ type: 'text', text: msg }] }),
+    muteHttpExceptions: true
+  });
+  return resp.getResponseCode() === 200;
+}
+
+function setDispatchFreightQuote_V43_impl_(payload, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    var ctx = _requireAdmin_(token);
+    if (!lock.tryLock(15000)) throw new Error('系統忙碌中，請稍後再試');
+    payload = payload || {};
+    var taskId = String(payload.id || '').trim();
+    var branch = String(payload.branch || '').trim();
+    var feeVal = parseFloat(payload.newFee);
+    if (isNaN(feeVal) || feeVal < 0) feeVal = 0;
+    var reasonStr = String(payload.reason || '').replace(/[\r\n\t~|]/g, ' ').trim().slice(0, 60);
+    var sendNotify = payload.sendNotify !== false && feeVal > 0;
+
+    if (payload.rememberReason && reasonStr) {
+      var curReasons = getCustomFreightReasons_V43();
+      if (curReasons.indexOf(reasonStr) === -1) {
+        curReasons.push(reasonStr);
+        saveCustomFreightReasons_V43_impl_(curReasons, token);
+      }
+    }
+
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) throw new Error('找不到派送清單');
+    ensureHeaders_V11(sheet);
+
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (v) { return String(v).trim(); });
+    var idxId = h.indexOf('單號');
+    var idxBr = h.indexOf('分公司');
+    var idxCust = h.indexOf('客戶');
+    var idxAddr = _findHeader(h, ['送貨地址', '地址']);
+    var idxWeight = _findHeader(h, ['重量']);
+    var idxSlot = _findHeader(h, ['到貨時間']);
+    var idxSpec = h.indexOf('指定到貨時間');
+    var idxCarrier = h.indexOf('貨運行標示');
+    var idxCarrierDisc = h.indexOf('貨運行折扣');
+    var idxRemote = h.indexOf('是否偏遠');
+    var idxAdjust = h.indexOf('調整後運費');
+    var idxReason = h.indexOf('運費調整原因');
+    var idxConfirm = h.indexOf('運費確認狀態');
+    var idxTgMsg = h.indexOf('運費TG訊息');
+
+    for (var i = 1; i < data.length; i++) {
+      var rowId = String(data[i][idxId] || '').trim();
+      var rowBr = idxBr !== -1 ? String(data[i][idxBr] || '').trim() : '';
+      if (_matchOrderId_(rowId, taskId) && (!branch || _matchBranch_(rowBr, branch))) {
+        var rNum = i + 1;
+        if (feeVal <= 0) {
+          if (idxAdjust !== -1) sheet.getRange(rNum, idxAdjust + 1).setValue('');
+          if (idxReason !== -1) sheet.getRange(rNum, idxReason + 1).setValue('');
+          if (idxConfirm !== -1) sheet.getRange(rNum, idxConfirm + 1).setValue('');
+          if (idxTgMsg !== -1) sheet.getRange(rNum, idxTgMsg + 1).setValue('');
+          _updateDashboardSheetCacheItem_(rowId, rowBr, undefined, 0, '', '');
+          _clearWarRoomCache_();
+          return {
+            success: true,
+            adjustedFee: 0,
+            feeReason: '',
+            feeConfirmStatus: '',
+            reasons: getCustomFreightReasons_V43(),
+            message: '已恢復系統公式運費'
+          };
+        }
+
+        var confirmStatus = sendNotify ? '待確認' : '已設定';
+        if (idxAdjust !== -1) sheet.getRange(rNum, idxAdjust + 1).setValue(Math.round(feeVal));
+        if (idxReason !== -1) sheet.getRange(rNum, idxReason + 1).setValue(reasonStr);
+        if (idxConfirm !== -1) sheet.getRange(rNum, idxConfirm + 1).setValue(confirmStatus);
+
+        var custVal = idxCust !== -1 ? String(data[i][idxCust] || '').trim() : '';
+        var addrVal = idxAddr !== -1 ? String(data[i][idxAddr] || '').trim() : '';
+        var weightVal = idxWeight !== -1 ? (parseFloat(data[i][idxWeight]) || 0) : 0;
+        var slotVal = idxSlot !== -1 ? String(data[i][idxSlot] || '').trim() : '';
+        var specVal = idxSpec !== -1 ? String(data[i][idxSpec] || '').trim() : '';
+        var cFlag = idxCarrier !== -1 ? String(data[i][idxCarrier] || '').trim() : '';
+        var cDisc = idxCarrierDisc !== -1 ? (parseFloat(data[i][idxCarrierDisc]) || 1.0) : 1.0;
+        if (!cFlag && typeof _isCarrierAddress_ === 'function' && _isCarrierAddress_(addrVal)) { cFlag = '貨運行集貨'; cDisc = 0.5; }
+        if (cDisc > 1.0) cDisc = cDisc / 100.0;
+        var remVal = idxRemote !== -1 ? String(data[i][idxRemote] || '').trim() : '';
+        var calc = FreightEngine.calculateFreight(addrVal, weightVal, {
+          isTimedDeliver: (specVal && specVal !== '否') ? '是' : '否',
+          carrierFlag: cFlag,
+          carrierDiscount: cDisc,
+          isRemoteVal: remVal
+        });
+        var estFee = calc ? calc.estFee : 0;
+
+        var notifiedVia = '';
+        if (sendNotify) {
+          var qId = 'FQ~' + (rowBr || branch || '公司') + '~' + rowId + '~' + Math.round(feeVal);
+          var approveUrl = _approveUrl_(qId, 'approve');
+          var rejectUrl = _approveUrl_(qId, 'reject');
+          var useLine = (rowBr.indexOf('漢樺') !== -1);
+          var chatId = useLine ? '' : _getTgGroupIdForBranch_V11(rowBr);
+
+          if (chatId) {
+            var tgText = '💰 <b>【特殊運費報價確認】' + _tgEsc_(rowBr) + '</b>\n'
+              + '單號：<code>' + _tgEsc_(rowId) + '</code>\n'
+              + '客戶：<b>' + _tgEsc_(custVal) + '</b>\n'
+              + '地址：' + _tgEsc_(addrVal) + '\n'
+              + '重量：' + Math.round(weightVal) + ' kg' + (slotVal ? '｜時段：' + _tgEsc_(slotVal) : '') + '\n'
+              + '──────────────\n'
+              + '系統公式運費：$' + Math.round(estFee).toLocaleString() + '\n'
+              + '👉 <b>本次指定運費：$' + Math.round(feeVal).toLocaleString() + '</b>\n'
+              + '📌 <b>指定原因：' + _tgEsc_(reasonStr || '特殊報價') + '</b>\n'
+              + '──────────────\n'
+              + '請確認是否同意此筆運費（若不同意將自動退回該筆訂單）：';
+            var tgRes = _tgCall_('sendMessage', {
+              chat_id: chatId,
+              text: tgText,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true,
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '✅ 同意運費 ($' + Math.round(feeVal) + ')', url: approveUrl },
+                  { text: '❌ 不同意 (退回訂單)', url: rejectUrl }
+                ]]
+              }
+            });
+            if (tgRes && tgRes.ok && tgRes.result && idxTgMsg !== -1) {
+              sheet.getRange(rNum, idxTgMsg + 1).setValue(String(chatId) + '|' + String(tgRes.result.message_id));
+              notifiedVia = 'Telegram (' + rowBr + '群組)';
+            }
+          }
+          if (!notifiedVia) {
+            var lineMsg = '💰【特殊運費報價確認】' + rowBr + '\n'
+              + '單號：' + rowId + '\n'
+              + '客戶：' + custVal + '\n'
+              + '地址：' + addrVal + '\n'
+              + '重量：' + Math.round(weightVal) + ' kg' + (slotVal ? '｜時段：' + slotVal : '') + '\n'
+              + '──────────────\n'
+              + '系統公式運費：$' + Math.round(estFee).toLocaleString() + '\n'
+              + '👉 本次指定運費：$' + Math.round(feeVal).toLocaleString() + '\n'
+              + '📌 指定原因：' + (reasonStr || '特殊報價') + '\n'
+              + '──────────────\n'
+              + '✅ 同意運費請點：\n' + approveUrl + '\n\n'
+              + '❌ 不同意(自動退單)請點：\n' + rejectUrl;
+            if (_sendLinePushDirect_V43_(lineMsg)) {
+              notifiedVia = 'LINE 群組';
+            }
+          }
+        }
+
+        _updateDashboardSheetCacheItem_(rowId, rowBr, undefined, Math.round(feeVal), reasonStr, confirmStatus);
+        _clearWarRoomCache_();
+        return {
+          success: true,
+          adjustedFee: Math.round(feeVal),
+          feeReason: reasonStr,
+          feeConfirmStatus: confirmStatus,
+          reasons: getCustomFreightReasons_V43(),
+          notifiedVia: notifiedVia,
+          message: '已設定指定運費 $' + Math.round(feeVal) + (notifiedVia ? '，並已發送至 ' + notifiedVia : '')
+        };
+      }
+    }
+    throw new Error('找不到該筆訂單 [' + taskId + ']');
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
+}
+
+function decideFreightQuote_V43_impl_(id, action, sig, reviewerName) {
+  var lock = LockService.getScriptLock();
+  try {
+    if (!_checkApproveLink_(id, action, sig)) {
+      return { success: false, message: '這個確認連結無效或已被修改' };
+    }
+    if (!lock.tryLock(15000)) {
+      return { success: false, message: '系統忙碌中，請稍後再試' };
+    }
+    var parts = String(id || '').split('~');
+    var qBranch = parts[1] || '';
+    var qTaskId = parts[2] || '';
+    var qFee = parseFloat(parts[3]) || 0;
+    var who = String(reviewerName || '').replace(/[\r\n\t]/g, ' ').trim().slice(0, 20);
+    __AUDIT_WHO__ = (qBranch ? qBranch + '｜' : '') + (who || '群組確認');
+
+    var ss = getSS_V11();
+    var sheet = ss.getSheetByName(V11_PROD_CONFIG.SHEET_TASKS);
+    if (!sheet) return { success: false, message: '找不到派送清單' };
+    ensureHeaders_V11(sheet);
+
+    var data = sheet.getDataRange().getValues();
+    var h = data[0].map(function (v) { return String(v).trim(); });
+    var idxId = h.indexOf('單號');
+    var idxBr = h.indexOf('分公司');
+    var idxCust = h.indexOf('客戶');
+    var idxAddr = _findHeader(h, ['送貨地址', '地址']);
+    var idxWeight = _findHeader(h, ['重量']);
+    var idxStat = findHIdx_Core(h, 'STATUS');
+    var idxVeh = findHIdx_Core(h, 'VEHICLE');
+    var idxDriv = findHIdx_Core(h, ['派遣司機', '司機']);
+    var idxRetReason = findHIdx_Core(h, 'RETURN_REASON');
+    var idxThumb = findHIdx_Core(h, 'THUMBNAIL');
+    var idxAdjust = h.indexOf('調整後運費');
+    var idxReason = h.indexOf('運費調整原因');
+    var idxConfirm = h.indexOf('運費確認狀態');
+    var idxTgMsg = h.indexOf('運費TG訊息');
+
+    for (var i = 1; i < data.length; i++) {
+      var rowId = String(data[i][idxId] || '').trim();
+      var rowBr = idxBr !== -1 ? String(data[i][idxBr] || '').trim() : '';
+      if (_matchOrderId_(rowId, qTaskId) && (!qBranch || _matchBranch_(rowBr, qBranch))) {
+        var rNum = i + 1;
+        var curConfirm = idxConfirm !== -1 ? String(data[i][idxConfirm] || '').trim() : '';
+        if (curConfirm.indexOf('已同意') === 0 || curConfirm.indexOf('已退回') === 0) {
+          return { success: false, message: '這筆運費報價先前已經處理過了（目前狀態：' + curConfirm + '）' };
+        }
+        var custVal = idxCust !== -1 ? String(data[i][idxCust] || '').trim() : '';
+        var addrVal = idxAddr !== -1 ? String(data[i][idxAddr] || '').trim() : '';
+        var weightVal = idxWeight !== -1 ? (parseFloat(data[i][idxWeight]) || 0) : 0;
+        var reasonVal = idxReason !== -1 ? String(data[i][idxReason] || '').trim() : '';
+        var tgMsgVal = idxTgMsg !== -1 ? String(data[i][idxTgMsg] || '').trim() : '';
+        var thumbVal = idxThumb !== -1 ? String(data[i][idxThumb] || '').trim() : '';
+        var nowStr = Utilities.formatDate(new Date(), 'GMT+8', 'MM/dd HH:mm');
+        var whoLabel = who ? '（' + who + '・' + nowStr + '）' : '（' + nowStr + '）';
+
+        if (action === 'approve') {
+          var newStatus = '已同意' + (who ? '(' + who + ')' : '');
+          if (idxAdjust !== -1 && qFee > 0) sheet.getRange(rNum, idxAdjust + 1).setValue(Math.round(qFee));
+          if (idxConfirm !== -1) sheet.getRange(rNum, idxConfirm + 1).setValue(newStatus);
+          _updateDashboardSheetCacheItem_(rowId, rowBr, undefined, Math.round(qFee), reasonVal, newStatus);
+          _clearWarRoomCache_();
+
+          if (tgMsgVal && tgMsgVal.indexOf('|') !== -1) {
+            var tgParts = tgMsgVal.split('|');
+            var doneText = '💰 <b>【特殊運費報價確認】' + _tgEsc_(rowBr) + '</b>\n'
+              + '單號：<code>' + _tgEsc_(rowId) + '</code>\n'
+              + '客戶：<b>' + _tgEsc_(custVal) + '</b>\n'
+              + '地址：' + _tgEsc_(addrVal) + '\n'
+              + '重量：' + Math.round(weightVal) + ' kg\n'
+              + '──────────────\n'
+              + '👉 <b>指定運費：$' + Math.round(qFee).toLocaleString() + '</b>（原因：' + _tgEsc_(reasonVal || '特殊報價') + '）\n'
+              + '✅ <b>分公司已同意運費，約定完成！</b>' + _tgEsc_(whoLabel);
+            _tgCall_('editMessageText', {
+              chat_id: tgParts[0],
+              message_id: Number(tgParts[1]),
+              text: doneText,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+          } else if (rowBr.indexOf('漢樺') !== -1) {
+            _sendLinePushDirect_V43_('✅【運費約定完成】' + rowBr + '\n單號：' + rowId + ' (' + custVal + ')\n已同意指定運費 $' + Math.round(qFee).toLocaleString() + '（' + (reasonVal || '特殊報價') + '）' + whoLabel);
+          }
+          return { success: true, message: '✅ 已確認同意運費 $' + Math.round(qFee).toLocaleString() + '，約定完成！' };
+        } else {
+          // 不同意 -> 自動退回該筆訂單並發送原本的 LINE 退回通知
+          var rejStatus = '已退回' + (who ? '(' + who + ')' : '');
+          var retReasonText = '不同意指定運費($' + Math.round(qFee) + (reasonVal ? '-' + reasonVal : '') + ')';
+          if (idxAdjust !== -1) sheet.getRange(rNum, idxAdjust + 1).setValue('');
+          if (idxConfirm !== -1) sheet.getRange(rNum, idxConfirm + 1).setValue(rejStatus);
+
+          // 1. 複製到業務配送清單
+          var clonedRow = data[i].slice();
+          if (idxStat !== -1) clonedRow[idxStat] = '待指派';
+          if (idxVeh !== -1) clonedRow[idxVeh] = '';
+          if (idxDriv !== -1) clonedRow[idxDriv] = '';
+          if (idxRetReason !== -1) clonedRow[idxRetReason] = retReasonText;
+          try {
+            var salesSheet = ensureSalesDeliverySheet_Core(ss);
+            salesSheet.appendRow(clonedRow);
+            sortSalesSheetByCompany_Core(salesSheet);
+          } catch (se) { console.error('複製退單至業務表失敗: ' + se.message); }
+
+          // 2. 更新派送清單為退回分公司，並清空已指派司機/車牌
+          if (idxStat !== -1) sheet.getRange(rNum, idxStat + 1).setValue('退回分公司');
+          if (idxVeh !== -1) sheet.getRange(rNum, idxVeh + 1).setValue('');
+          if (idxDriv !== -1) sheet.getRange(rNum, idxDriv + 1).setValue('');
+          if (idxRetReason !== -1) sheet.getRange(rNum, idxRetReason + 1).setValue(retReasonText);
+
+          // 3. 發送原本格式的 LINE 退回通知
+          var dNow = new Date();
+          var mmdd = String(dNow.getMonth() + 1).padStart(2, '0') + '/' + String(dNow.getDate()).padStart(2, '0');
+          var cleanAddr = String(addrVal || '').replace(/^(台北市|臺北市|新北市|桃園市|基隆市|[\u4e00-\u9fff]{2,3}[縣市])/g, '');
+          var lineReturnMsg = '🌀 ' + mmdd + ' 退回清單 🌀\n\n'
+            + '❌ 退回' + (rowBr || '分公司') + ' ❌\n'
+            + '🟧 ' + custVal + '\n'
+            + '🟧 ' + rowId + '\n'
+            + '🟧 ' + cleanAddr + '\n'
+            + '🟧 原因：' + retReasonText
+            + (thumbVal ? '\n🟧 ' + thumbVal : '')
+            + '\n➖➖➖➖➖';
+          _sendLinePushDirect_V43_(lineReturnMsg);
+
+          // 4. 更新 Telegram 原訊息
+          if (tgMsgVal && tgMsgVal.indexOf('|') !== -1) {
+            var tgParts2 = tgMsgVal.split('|');
+            var rejText = '💰 <b>【特殊運費報價確認】' + _tgEsc_(rowBr) + '</b>\n'
+              + '單號：<code>' + _tgEsc_(rowId) + '</code>\n'
+              + '客戶：<b>' + _tgEsc_(custVal) + '</b>\n'
+              + '地址：' + _tgEsc_(addrVal) + '\n'
+              + '──────────────\n'
+              + '原指定運費：$' + Math.round(qFee).toLocaleString() + '（' + _tgEsc_(reasonVal || '特殊報價') + '）\n'
+              + '❌ <b>分公司不同意運費，已自動退回該筆訂單並發送 LINE 通知！</b>' + _tgEsc_(whoLabel);
+            _tgCall_('editMessageText', {
+              chat_id: tgParts2[0],
+              message_id: Number(tgParts2[1]),
+              text: rejText,
+              parse_mode: 'HTML',
+              disable_web_page_preview: true
+            });
+          }
+
+          _updateDashboardSheetCacheItem_(rowId, rowBr, undefined, 0, reasonVal, rejStatus);
+          _clearWarRoomCache_();
+          return { success: true, message: '❌ 已拒絕此筆運費並自動退回訂單（已同步發送 LINE 退單通知）。' };
+        }
+      }
+    }
+    return { success: false, message: '找不到該筆訂單 [' + qTaskId + ']' };
+  } catch (e) {
+    return { success: false, message: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
   }
 }
 
@@ -6608,24 +7280,90 @@ function batchSetDocTypeOverride_V42_impl_(items, token) {
       if (idxId === -1) continue;
       if (idxT === -1) { idxT = h.length; sheet.getRange(1, idxT + 1).setValue("單據類型(人工)"); }
 
+      var colValues = [];
+      var sheetUpdated = false;
       for (var i = 1; i < data.length; i++) {
         var rowId = String(data[i][idxId]).trim();
         var rowBr = idxBr !== -1 ? String(data[i][idxBr]).trim() : "";
+        var currentT = data[i][idxT] || "";
 
+        var matched = false;
         for (var k = 0; k < items.length; k++) {
           var it = items[k];
           if (_matchOrderId_(rowId, it.id) && _matchBranch_(rowBr, it.branch)) {
             var val = String(it.docType || "").trim();
-            sheet.getRange(i + 1, idxT + 1).setValue(val);
+            colValues.push([val]);
             _updateDashboardSheetCacheItem_(rowId, rowBr, val);
             totalUpdated++;
+            matched = true;
+            sheetUpdated = true;
             break;
           }
         }
+        if (!matched) {
+          colValues.push([currentT]);
+        }
+      }
+      if (sheetUpdated && colValues.length > 0) {
+        sheet.getRange(2, idxT + 1, colValues.length, 1).setValues(colValues);
       }
     }
     _clearWarRoomCache_();
     return { success: true, count: totalUpdated, message: "✅ 已成功批次改判 " + totalUpdated + " 筆單據！" };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
+}
+
+// ==========================================
+// V43.56: 成本與利潤試算 — 每月成本與配送獎金自動記憶
+// 儲存於 ScriptProperties['TTS_MONTHLY_COSTS_V43']，結構：
+//   { "2026-10": { personnel: 0, bonus: 0, fuelOverride: "", maintenance: 0, fines: 0, depreciation: 0, updatedAt: "..." }, ... }
+// ==========================================
+function getMonthlyCostMap_V43() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty('TTS_MONTHLY_COSTS_V43');
+    if (raw) {
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (e) { }
+  return {};
+}
+
+function getMonthlyCosts_V43(token) {
+  _requireViewer_(token);
+  return { success: true, monthlyCosts: getMonthlyCostMap_V43() };
+}
+
+function saveMonthlyCost_V43_impl_(monthKey, costData, token) {
+  _requireAdmin_(token);
+  var lock = LockService.getScriptLock();
+  try {
+    if (!lock.tryLock(10000)) throw new Error("系統忙碌中，請稍後再試");
+    var mk = String(monthKey || "").trim();
+    if (!/^\d{4}-\d{2}$/.test(mk)) throw new Error("月份格式錯誤 (需為 YYYY-MM)");
+    var d = costData || {};
+    var numOrZero = function (v) { var n = parseFloat(v); return (!isNaN(n) && n >= 0) ? Math.round(n) : 0; };
+    var fuelOv = (d.fuelOverride !== undefined && d.fuelOverride !== null && String(d.fuelOverride).trim() !== "")
+      ? Math.max(0, Math.round(parseFloat(d.fuelOverride) || 0))
+      : "";
+    var entry = {
+      personnel: numOrZero(d.personnel),
+      bonus: numOrZero(d.bonus),
+      fuelOverride: fuelOv,
+      maintenance: numOrZero(d.maintenance),
+      fines: numOrZero(d.fines),
+      depreciation: numOrZero(d.depreciation),
+      updatedAt: Utilities.formatDate(new Date(), "GMT+8", "yyyy/MM/dd HH:mm:ss")
+    };
+    var props = PropertiesService.getScriptProperties();
+    var all = getMonthlyCostMap_V43();
+    all[mk] = entry;
+    props.setProperty('TTS_MONTHLY_COSTS_V43', JSON.stringify(all));
+    return { success: true, monthKey: mk, entry: entry, monthlyCosts: all };
   } catch (e) {
     return { success: false, error: e.message };
   } finally {

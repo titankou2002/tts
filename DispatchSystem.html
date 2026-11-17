@@ -72,6 +72,30 @@
         .btn-yingge { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 900; cursor: pointer; }
         .btn-yingge.active { background: #fbbf24; color: #000; border-color: #fbbf24; }
 
+        /* V43.52: 排車 / 樣品回鶯歌 分頁 (電腦、手機共用，手機放大觸控區) */
+        .dp-tabs { display: flex; gap: 6px; padding: 8px 10px 0; background: #0f172a; }
+        .dp-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 8px; background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-bottom: none; border-radius: 10px 10px 0 0; font-weight: 900; font-size: 14px; cursor: pointer; }
+        .dp-tab.active { background: #0f172a; color: #fff; border-color: #38bdf8; box-shadow: inset 0 3px 0 #38bdf8; }
+        .dp-tab#tabSample.active { border-color: #fbbf24; box-shadow: inset 0 3px 0 #fbbf24; }
+        .dp-tab-n { min-width: 22px; padding: 0 7px; border-radius: 999px; background: #334155; color: #fff; font-size: 12px; line-height: 20px; text-align: center; }
+        .dp-tab.active .dp-tab-n { background: #38bdf8; color: #000; }
+        .dp-tab#tabSample.active .dp-tab-n { background: #fbbf24; }
+        #sampleBar { display: none; flex-wrap: wrap; align-items: center; gap: 6px; padding: 7px 10px; background: #1e293b; border-bottom: 1px solid #334155; }
+        #sampleBar .sb-chip { padding: 5px 11px; border-radius: 999px; border: 1px solid #475569; background: transparent; color: #cbd5e1; font-size: 12px; font-weight: 800; cursor: pointer; }
+        #sampleBar .sb-chip.on { background: #fbbf24; color: #000; border-color: #fbbf24; }
+        #sampleBar .sb-act { padding: 5px 11px; border-radius: 6px; border: 1px solid #22c55e; background: rgba(34,197,94,0.12); color: #22c55e; font-size: 12px; font-weight: 900; cursor: pointer; }
+        #sampleBar .sb-act.alt { border-color: #475569; background: transparent; color: #cbd5e1; }
+        #sampleBar .sb-sp { flex: 1; }
+        .btn-backdone { background: transparent; border: 1px solid #22c55e; color: #22c55e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 900; cursor: pointer; }
+        .btn-backdone.done { background: #22c55e; color: #000; }
+        .backdone-time { color: #86efac; font-size: 11px; font-weight: 700; }
+        .done-tag { background: rgba(148,163,184,0.2); color: #94a3b8; border: 1px solid #64748b; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
+        @media (max-width: 768px) {
+            .dp-tab { padding: 11px 6px; font-size: 15px; }
+            #sampleBar { padding: 8px 10px; }
+            #sampleBar .sb-chip, #sampleBar .sb-act { padding: 8px 12px; font-size: 13px; }
+            .btn-backdone { padding: 5px 10px; font-size: 12px; }
+        }
         .driver-name-tag { font-weight: 900; color: #fff; background: var(--color-primary); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
         .unassigned-badge { background: var(--color-danger); color: #fff; padding: 1px 8px; border-radius: 4px; font-size: 11px; font-weight: 900; }
 
@@ -247,6 +271,21 @@
                 </div>
                 <div id="mobileFilterSheet" style="display:none; padding:10px; background:#1e293b; border-top:1px solid #334155; grid-template-columns:1fr 1fr; gap:8px;"></div>
 
+                <!-- V43.52: 排車 / 樣品回鶯歌 分頁 (樣品要回鶯歌的另外放，仍可派給司機) -->
+                <div id="dispatchTabs" class="dp-tabs">
+                    <button type="button" id="tabMain" class="dp-tab active" onclick="setDispatchTab('main')">排車 <span class="dp-tab-n" id="tabMainN">0</span></button>
+                    <button type="button" id="tabSample" class="dp-tab" onclick="setDispatchTab('sample')">樣品回鶯歌 <span class="dp-tab-n" id="tabSampleN">0</span></button>
+                </div>
+                <div id="sampleBar">
+                    <button type="button" class="sb-chip on" data-sub="pending" onclick="setSampleSub('pending')">待回鶯歌</button>
+                    <button type="button" class="sb-chip" data-sub="done" onclick="setSampleSub('done')">已回鶯歌</button>
+                    <button type="button" class="sb-chip" data-sub="all" onclick="setSampleSub('all')">全部</button>
+                    <span class="sb-sp"></span>
+                    <button type="button" class="sb-act alt" onclick="selectAllSampleVisible()">全選</button>
+                    <button type="button" class="sb-act" onclick="markSelectedBackDone(true)">標記已回鶯歌</button>
+                    <button type="button" class="sb-act alt" onclick="markSelectedBackDone(false)">取消標記</button>
+                </div>
+
                 <div id="filterStats" style="padding:7px 12px; background:#0f172a; color:#cbd5e1; font-size:13px; font-weight:bold; border-bottom:1px solid #1e293b;"></div>
                 <div id="unifiedTaskList" class="custom-scroll" style="flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px;"></div>
             </div>
@@ -362,12 +401,108 @@
     <!-- V12.3 FIX: 絕不能用 opacity:0，否則畫布引擎會略過渲染！改用極限 z-index 藏在最底層 -->
     <div id="lineShareTemplate" style="position:fixed; left:0; top:0; background:#0f172a; padding:15px; z-index:-99999; opacity:1; pointer-events:none; visibility: visible; display: none;"></div>
 
+    <!-- V43.55: 排車即時運費設定 / 報價彈窗 -->
+    <div id="freightQuoteModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:100002; align-items:center; justify-content:center; padding:16px;" onclick="if(event.target===this) closeFreightQuoteModal()">
+        <div style="background:#1e293b; border:2px solid #22c55e; border-radius:16px; padding:20px; width:100%; max-width:500px; max-height:92vh; overflow-y:auto; display:flex; flex-direction:column; gap:14px; box-shadow:0 20px 50px rgba(0,0,0,0.6);">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:10px;">
+                <h3 style="margin:0; color:#4ade80; font-size:18px; display:flex; align-items:center; gap:8px;">💰 即時運費報價 / 指定運費</h3>
+                <button type="button" onclick="closeFreightQuoteModal()" style="background:transparent; border:none; color:#94a3b8; font-size:20px; cursor:pointer; line-height:1;">✕</button>
+            </div>
+
+            <div id="fqOrderSummary" style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:12px; font-size:13px; color:#cbd5e1; line-height:1.5;"></div>
+
+            <div style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.3); border-radius:10px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                    <span style="color:#94a3b8; font-size:13px; font-weight:bold;">系統公式運費 (預估)</span>
+                    <b id="fqEstFee" style="color:#38bdf8; font-size:22px; font-family:'Rajdhani',sans-serif;">$0</b>
+                </div>
+                <div id="fqEstDetail" style="color:#94a3b8; font-size:12px; margin-top:4px; word-break:break-all;"></div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <label style="color:#f1f5f9; font-size:13px; font-weight:900;">指定報價運費 (元) <span style="color:#fbbf24; font-size:11px; font-weight:normal;">＊輸入後將以此運費為主</span></label>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="number" id="fqAdjustedInput" min="0" step="50" placeholder="請輸入報價運費金額..." style="flex:1; background:#0f172a; color:#4ade80; border:2px solid #22c55e; border-radius:8px; padding:10px 12px; font-size:20px; font-weight:900;">
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;">
+                    <button type="button" onclick="adjustFqInputDelta(200)" style="background:#0f172a; color:#cbd5e1; border:1px solid #475569; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:bold; cursor:pointer;">+200</button>
+                    <button type="button" onclick="adjustFqInputDelta(300)" style="background:#0f172a; color:#cbd5e1; border:1px solid #475569; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:bold; cursor:pointer;">+300</button>
+                    <button type="button" onclick="adjustFqInputDelta(500)" style="background:#0f172a; color:#cbd5e1; border:1px solid #475569; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:bold; cursor:pointer;">+500</button>
+                    <button type="button" onclick="adjustFqInputDelta(1000)" style="background:#0f172a; color:#cbd5e1; border:1px solid #475569; border-radius:6px; padding:4px 10px; font-size:12px; font-weight:bold; cursor:pointer;">+1000</button>
+                    <button type="button" onclick="setFqInputToEst()" style="background:#0f172a; color:#38bdf8; border:1px solid rgba(56,189,248,0.4); border-radius:6px; padding:4px 10px; font-size:12px; font-weight:bold; cursor:pointer;">帶入公式原價</button>
+                </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:6px;">
+                <label style="color:#f1f5f9; font-size:13px; font-weight:900;">指定運費原因</label>
+                <select id="fqReasonSelect" onchange="onFreightReasonSelectChange()" style="background:#0f172a; color:#fff; border:1px solid #475569; border-radius:8px; padding:10px 12px; font-size:14px; font-weight:bold;"></select>
+                <div id="fqCustomReasonWrap" style="display:none; flex-direction:column; gap:4px; margin-top:4px;">
+                    <input type="text" id="fqCustomReasonInput" placeholder="請輸入原因..." maxlength="40" style="background:#0f172a; color:#fbbf24; border:1px solid #f59e0b; border-radius:8px; padding:9px 12px; font-size:14px; font-weight:bold;">
+                    <span id="fqCustomReasonHint" style="color:#94a3b8; font-size:11px;"></span>
+                </div>
+                <div id="fqSavedCustomChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;"></div>
+            </div>
+
+            <label style="display:flex; align-items:flex-start; gap:10px; background:rgba(168,85,247,0.12); border:1px solid rgba(168,85,247,0.45); border-radius:10px; padding:10px 12px; cursor:pointer; font-size:13px; color:#e2e8f0; line-height:1.4;">
+                <input type="checkbox" id="fqSendNotifyCb" checked style="width:18px; height:18px; margin-top:2px; flex-shrink:0;">
+                <span id="fqNotifyLabelText">同時發送訊息至分公司群組請小姐確認運費（點「同意」即約定完成；點「不同意」將自動退回該筆訂單並發送 LINE 通知）</span>
+            </label>
+
+            <div style="display:flex; gap:10px; margin-top:4px;">
+                <button type="button" id="fqSaveBtn" onclick="submitFreightQuoteModal()" style="flex:1.6; background:#22c55e; color:#052e16; border:none; border-radius:10px; padding:12px; font-size:15px; font-weight:900; cursor:pointer;">✅ 確認指定運費</button>
+                <button type="button" id="fqResetBtn" onclick="resetFreightQuoteToFormula()" style="display:none; flex:1; background:#334155; color:#fca5a5; border:1px solid #ef4444; border-radius:10px; padding:12px; font-size:13px; font-weight:800; cursor:pointer;">↩️ 恢復公式</button>
+                <button type="button" onclick="closeFreightQuoteModal()" style="flex:0.8; background:#475569; color:#fff; border:none; border-radius:10px; padding:12px; font-size:14px; font-weight:800; cursor:pointer;">取消</button>
+            </div>
+        </div>
+    </div>
+
 <script>
 
     let dispatchAllTasks = [];
     let dispatchSelectedIds = new Set();
     let dispatchDrivers = [];
     let pendingReturnSet = new Set(); // V11.20: 暫存待退回單號
+    let dispatchCustomReasons = ['路線不順', '指定時間', '下貨條件多'];
+    let externalCarCount = Math.max(3, Math.min(10, parseInt(localStorage.getItem('tts_ext_car_count') || '3', 10) || 3));
+    let currentFqTaskId = null;
+
+    function getExternalDriversList() {
+        const arr = [];
+        for (let idx = 1; idx <= externalCarCount; idx++) {
+            arr.push({ plate: '外車-' + idx, name: '外車 ' + idx });
+        }
+        return arr;
+    }
+
+    function syncExternalCarCountFromTasks() {
+        let maxN = externalCarCount;
+        (dispatchAllTasks || []).forEach(t => {
+            const s = String(t.vehicle || '') + ' ' + String(t.assignedDriver || '');
+            const m = s.match(/外車[-\s]?(\d+)/);
+            if (m) {
+                const n = parseInt(m[1], 10);
+                if (n > maxN && n <= 10) maxN = n;
+            }
+        });
+        if (maxN !== externalCarCount) {
+            externalCarCount = maxN;
+            localStorage.setItem('tts_ext_car_count', String(externalCarCount));
+        }
+    }
+
+    function addExternalCarSlot(e) {
+        if (e) e.stopPropagation();
+        if (externalCarCount >= 10) {
+            showToast('⚠️ 外車最多支援 10 台 (外車-1 ~ 外車-10)');
+            return;
+        }
+        externalCarCount++;
+        localStorage.setItem('tts_ext_car_count', String(externalCarCount));
+        updateDriverFilter();
+        renderDriverDashboard_V7();
+        renderMobileDriverList();
+        showToast('✅ 已新增 外車-' + externalCarCount);
+    }
 
     // V8.5.1: 新增日期格式化工具
     const formatDate = (d) => `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
@@ -529,6 +664,10 @@
         google.script.run.withSuccessHandler(res => {
             if (res.success) {
                 dispatchAllTasks = res.tasks;
+                if (Array.isArray(res.customFreightReasons) && res.customFreightReasons.length) {
+                    dispatchCustomReasons = res.customFreightReasons;
+                }
+                syncExternalCarCountFromTasks();
                 populateFilters();
                 google.script.run.withSuccessHandler(dRes => {
                     if (dRes.success) {
@@ -584,7 +723,30 @@
         dispatchDrivers.forEach(d => {
             h += `<option value="${d.plate}">👤 ${d.name}<\/option>`;
         });
+        getExternalDriversList().forEach(d => {
+            h += `<option value="${d.plate}">🟣 ${d.plate}<\/option>`;
+        });
         s.innerHTML = h;
+    }
+
+    // V43.52: 排車 / 樣品回鶯歌 分頁狀態
+    let dispatchTab = 'main';   // 'main' | 'sample'
+    let sampleSub = 'pending';  // 'pending' | 'done' | 'all'
+    function setDispatchTab(t) {
+        if (dispatchTab === t) return;
+        dispatchTab = t;
+        dispatchSelectedIds.clear();   // 換分頁就清掉選取，避免跨分頁誤派
+        updateSelectedStats();
+        applyFilters_V3();
+        const c = document.getElementById('unifiedTaskList'); if (c) c.scrollTop = 0;
+    }
+    function setSampleSub(v) { sampleSub = v; dispatchSelectedIds.clear(); updateSelectedStats(); applyFilters_V3(); }
+    function isSampleBackTask(t) { return !!(t && t.isSampleBack); }
+    // 與後端 getUnDispatchedTasks_V3 同一套：人工單據類型優先；否則判成樣品或客戶名/備註有「樣品」
+    function isSampleDocClient(t) {
+        const man = String(t.docTypeManual || '').trim();
+        if (man) return man === '樣品' || man === '樣品免費' || man === '樣品收費';
+        return t.docType === '樣品' || /樣品/.test(String(t.customer || '') + ' ' + String(t.note || ''));
     }
 
     function applyFilters_V3() {
@@ -593,30 +755,119 @@
         const bv = document.getElementById('filterBranch').value;
         const prv = document.getElementById('filterDriver').value;
         const sq = document.getElementById('searchQuery').value.toLowerCase();
-        
-        const filtered = dispatchAllTasks.filter(t => {
+
+        const base = dispatchAllTasks.filter(t => {
             const dOk = dv === 'all' || t.date === dv;
-            const futureOk = !t.date || t.date >= todayStr;
             const bOk = bv === 'all' || (t.branch || '').includes(bv);
             let pOk = true;
             if (prv === 'unassigned') pOk = !t.assignedDriver || t.assignedDriver === "";
             else if (prv !== 'all') pOk = t.assignedDriver === prv || t.vehicle === prv;
-            
+
             const sOk = !sq || (t.customer + t.address + t.id).toLowerCase().includes(sq);
-            
+
             // V11.20: 從主清單隱藏正處於「待退回暫存區」的訂單
             const hideOk = !pendingReturnSet.has(t.id);
 
-            return dOk && futureOk && bOk && pOk && sOk && hideOk;
+            return dOk && bOk && pOk && sOk && hideOk;
         });
+        // V43.52: 樣品要回鶯歌的另外放；排車分頁只留正常要派的單 (維持原本「只看今天以後」的規則)
+        const mainAll = base.filter(t => !isSampleBackTask(t) && (!t.date || t.date >= todayStr));
+        const sampleAll = base.filter(isSampleBackTask);
+        const samplePending = sampleAll.filter(t => !t.backDone);
+        const sampleDone = sampleAll.filter(t => t.backDone);
+        const sampleShown = sampleSub === 'pending' ? samplePending : (sampleSub === 'done' ? sampleDone : sampleAll);
+        const filtered = dispatchTab === 'sample' ? sampleShown : mainAll;
+        window.__dpShown = filtered;
+
+        // 分頁數字：排車=待處理的單數；樣品=還沒確認回到鶯歌的數量
+        const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+        setTxt('tabMainN', mainAll.length); setTxt('tabSampleN', samplePending.length);
+        const tm = document.getElementById('tabMain'), ts = document.getElementById('tabSample');
+        if (tm) tm.classList.toggle('active', dispatchTab === 'main');
+        if (ts) ts.classList.toggle('active', dispatchTab === 'sample');
+        const sb = document.getElementById('sampleBar');
+        if (sb) {
+            sb.style.display = dispatchTab === 'sample' ? 'flex' : 'none';
+            sb.querySelectorAll('.sb-chip').forEach(b => b.classList.toggle('on', b.dataset.sub === sampleSub));
+        }
+
         // V11.20: 顯示/隱藏批次退回按鈕
         const returnBtn = document.getElementById('batchReturnBtn');
         if(returnBtn) returnBtn.style.display = dispatchSelectedIds.size > 0 ? 'flex' : 'none';
 
-        const assignedCnt = filtered.filter(t => (!!t.assignedDriver && t.assignedDriver !== "") || (t.status !== '待指派' && t.status !== '')).length;
-        document.getElementById('filterStats').innerHTML = `🔎 篩選顯示：共 <span style="color:#38bdf8;">${filtered.length}<\/span> 筆 &nbsp;|&nbsp; 🟢 已分配: <span style="color:#22c55e;">${assignedCnt}<\/span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}<\/span>`;
+        const isAsg = t => (!!t.assignedDriver && t.assignedDriver !== "") || (t.status !== '待指派' && t.status !== '');
+        const assignedCnt = filtered.filter(isAsg).length;
+        if (dispatchTab === 'sample') {
+            document.getElementById('filterStats').innerHTML = `🧪 樣品回鶯歌：共 <span style="color:#fbbf24;">${sampleAll.length}<\/span> 筆 &nbsp;|&nbsp; 待回鶯歌: <span style="color:#fbbf24;">${samplePending.length}<\/span> &nbsp;|&nbsp; ✅ 已回鶯歌: <span style="color:#22c55e;">${sampleDone.length}<\/span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}<\/span>`;
+        } else {
+            document.getElementById('filterStats').innerHTML = `🔎 篩選顯示：共 <span style="color:#38bdf8;">${filtered.length}<\/span> 筆 &nbsp;|&nbsp; 🟢 已分配: <span style="color:#22c55e;">${assignedCnt}<\/span> &nbsp;|&nbsp; 🔴 待分配: <span style="color:#ef4444;">${filtered.length - assignedCnt}<\/span>`;
+        }
         renderDispatchSections_V7(filtered);
         renderDriverDashboard_V7();
+    }
+
+    // V43.52: 樣品分頁「全選目前顯示的」與批次標記已回到鶯歌
+    function selectAllSampleVisible() {
+        (window.__dpShown || []).forEach(t => dispatchSelectedIds.add(t.id));
+        updateSelectedStats(); applyFilters_V3();
+    }
+    function markSelectedBackDone(done) {
+        const ids = Array.from(dispatchSelectedIds).filter(id => { const t = dispatchAllTasks.find(x => x.id === id); return isSampleBackTask(t); });
+        if (!ids.length) { showToast('請先勾選要標記的樣品單 (或按「全選」)'); return; }
+        applyBackDone(ids, done);
+    }
+    function toggleYinggeBackDone(e, id, done) {
+        e.stopPropagation();
+        applyBackDone([id], done);
+    }
+    function applyBackDone(ids, done) {
+        const prev = ids.map(id => { const t = dispatchAllTasks.find(x => x.id === id); return t ? { t, b: t.backDone, tm: t.backTime, by: t.backBy } : null; }).filter(Boolean);
+        const nowStr = (() => { const d = new Date(), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); })();
+        prev.forEach(x => { x.t.backDone = !!done; x.t.backTime = done ? nowStr : ''; x.t.backBy = done ? '…' : ''; });
+        dispatchSelectedIds.clear(); updateSelectedStats(); applyFilters_V3();   // 先更新畫面，背景存檔
+        google.script.run
+            .withSuccessHandler(res => {
+                if (!res || !res.success) { rollback('❌ 存檔失敗: ' + ((res && res.error) || '')); return; }
+                prev.forEach(x => { x.t.backTime = res.time || ''; x.t.backBy = res.by || ''; });
+                applyFilters_V3();
+                showToast((done ? '✅ 已記錄回到鶯歌 ' : '↩️ 已取消標記 ') + ids.length + ' 筆');
+            })
+            .withFailureHandler(err => rollback('❌ 伺服器錯誤: ' + err))
+            .markYinggeBack_V3(ids, !!done, ATOKEN());
+        function rollback(msg) {
+            prev.forEach(x => { x.t.backDone = x.b; x.t.backTime = x.tm; x.t.backBy = x.by; });
+            applyFilters_V3(); showToast(msg);
+        }
+    }
+
+    function checkTaskIsFree(gt) {
+        if (!gt) return false;
+        const text = (String(gt.customer || '') + ' ' + String(gt.address || '') + ' ' + String(gt.note || '')).replace(/\s/g, '');
+        if (text.indexOf('加工') !== -1 || text.indexOf('噴砂') !== -1 || text.indexOf('營造') !== -1) return false;
+        if (gt.isSample || gt.sampleTo === 'home' || gt.docType === '樣品免費') return true;
+        if (text.indexOf('指送安帝嘉') !== -1 || text.indexOf('指送喜悅納') !== -1 || text.indexOf('指送高雅瓷') !== -1 || text.indexOf('指送漢樺') !== -1) return true;
+        if (text.indexOf('高職東街13號') !== -1 || text.indexOf('文化路三段535巷98號') !== -1) return true;
+        if (text.indexOf('載回公司') !== -1 || text.indexOf('回公司') !== -1 || text.indexOf('倉內調貨') !== -1 || text.indexOf('轉倉') !== -1) return true;
+        return false;
+    }
+
+    function renderTaskFreightBadge(gt) {
+        if (!gt) return '';
+        const adj = Number(gt.adjustedFee || 0);
+        const est = Number(gt.estFee || 0);
+        const rsn = String(gt.feeReason || '').trim();
+        const st = String(gt.feeConfirmStatus || '').trim();
+        const detailTitle = escapeHTML((gt.freightDetail ? '公式拆解：' + gt.freightDetail : '系統公式運費 $' + est) + '（點擊設定即時指定運費）');
+        if (adj > 0) {
+            const stColor = st === '已同意' ? '#4ade80' : (st === '已退回' ? '#f87171' : '#fbbf24');
+            const stHtml = st ? `<span style="font-size:10px; padding:0 4px; border-radius:3px; background:rgba(0,0,0,0.4); color:${stColor};">${escapeHTML(st)}<\/span>` : '';
+            const rsnHtml = rsn ? `<span style="font-size:11px; color:#fde68a;">(${escapeHTML(rsn)})<\/span>` : '';
+            return `<button type="button" onclick="openFreightQuoteModal(event,'${escapeHTML(gt.id)}')" title="${detailTitle}" style="background:rgba(34,197,94,0.18); color:#4ade80; border:1px solid #22c55e; padding:2px 8px; border-radius:6px; font-size:12px; font-weight:900; cursor:pointer; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">💰指定$${adj}${rsnHtml}${stHtml}<\/button>`;
+        }
+        if (checkTaskIsFree(gt)) {
+            return `<button type="button" onclick="openFreightQuoteModal(event,'${escapeHTML(gt.id)}')" title="${detailTitle}" style="background:rgba(148,163,184,0.12); color:#94a3b8; border:1px dashed #475569; padding:2px 7px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap;">💲免運/報價<\/button>`;
+        }
+        return `<button type="button" onclick="openFreightQuoteModal(event,'${escapeHTML(gt.id)}')" title="${detailTitle}" style="background:rgba(56,189,248,0.12); color:#7dd3fc; border:1px solid rgba(56,189,248,0.35); padding:2px 8px; border-radius:6px; font-size:12px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; gap:3px; white-space:nowrap;">💲公式$${est}<\/button>`;
     }
 
     // V39.29: 手機版任務卡片 - 完全獨立設計，不需要編號(1,2,3)也不需要傳統checkbox，
@@ -638,17 +889,6 @@
                     `;
                 }).join('')}
             <\/div>` : '';
-
-    function checkTaskIsFree(gt) {
-        if (!gt) return false;
-        const text = (String(gt.customer || '') + ' ' + String(gt.address || '') + ' ' + String(gt.note || '')).replace(/\s/g, '');
-        if (text.indexOf('加工') !== -1 || text.indexOf('噴砂') !== -1 || text.indexOf('營造') !== -1) return false;
-        if (gt.isSample || gt.sampleTo === 'home' || gt.docType === '樣品免費') return true;
-        if (text.indexOf('指送安帝嘉') !== -1 || text.indexOf('指送喜悅納') !== -1 || text.indexOf('指送高雅瓷') !== -1 || text.indexOf('指送漢樺') !== -1) return true;
-        if (text.indexOf('高職東街13號') !== -1 || text.indexOf('文化路三段535巷98號') !== -1) return true;
-        if (text.indexOf('載回公司') !== -1 || text.indexOf('回公司') !== -1 || text.indexOf('倉內調貨') !== -1 || text.indexOf('轉倉') !== -1) return true;
-        return false;
-    }
 
         // V39.31: 地址裡「(弘昇貨運)」這類貨運行標記，拿掉「貨運」二字、括號內文字改黃色
         const addrHtml = formatAddrWithCarrierTag(gt.address);
@@ -674,17 +914,20 @@
                     <div style="color:#cbd5e1; font-size:13px; line-height:1.4; word-break:break-word; flex:1; min-width:0;">${addrHtml}<\/div>
                     <span style="flex-shrink:0; display:flex; align-items:center; gap:6px; margin-top:2px;">
                         ${blinkDotHtml}
-                        ${!isAssigned ? '<span class="unassigned-badge">待指派<\/span>' : `<span class="driver-name-tag" style="background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};">${escapeHTML(gt.assignedDriver)}<\/span>`}
+                        ${!isAssigned ? '<span class="unassigned-badge">待指派<\/span>' : `<span class="driver-name-tag" style="background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};">${escapeHTML(gt.assignedDriver)}${gt.isExternalDone ? ' (已完成)' : ''}<\/span>`}
                     <\/span>
                 <\/div>
                 <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:8px;">
                     <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" title="${gt.isBackYingge ? '回鶯歌' : '留永安'}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">${gt.isBackYingge ? '回鶯歌' : '留永安'}<\/button>
+                    ${gt.isSampleBack ? `<button class="btn-backdone ${gt.backDone ? 'done' : ''}" onclick="toggleYinggeBackDone(event,'${gt.id}',${!gt.backDone})">${gt.backDone ? '✓ 已回鶯歌' : '標記已回鶯歌'}<\/button>${gt.backDone && gt.backTime ? `<span class="backdone-time">${escapeHTML(gt.backTime.substring(5))} ${escapeHTML(gt.backBy || '')}<\/span>` : ''}` : ''}
+                    ${gt.completed ? '<span class="done-tag">已完成<\/span>' : ''}
                     ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" style="display:inline-flex; background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px;" onclick="openMobileVoucher(event,'${gt.id}')">📷<\/button>` : ''}
                     ${gt.items && gt.items.length > 0 ? `
                     <div class="items-dropdown-trigger" onclick="toggleItemsDropdown(event, '${gt.id}')" style="background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.4); padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; display: inline-flex; align-items: center; gap: 4px;">
                         明細 <span class="arrow-icon" id="arrow-${gt.id}" style="font-size: 9px; transition: transform 0.2s;">▼<\/span>
                     <\/div>` : ''}
                     <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:15px;">${gt.weight.toFixed(0)}<span style="font-size:10px;">kg<\/span><\/span>
+                    ${renderTaskFreightBadge(gt)}
                     ${gt.carrierFlag ? '<span style="background:rgba(249,115,22,0.15); color:#f97316; border:1px solid rgba(249,115,22,0.4); padding:1px 5px; border-radius:3px; font-size:10px; font-weight:bold;">貨運<\/span>' : ''}
                     ${checkTaskIsFree(gt) ? '<span style="background:rgba(234,179,8,0.2); color:#eab308; border:1px solid rgba(234,179,8,0.5); padding:1px 5px; border-radius:3px; font-size:10px; font-weight:bold;">內部<\/span>' : ''}
                 <\/div>
@@ -821,10 +1064,12 @@
                             <span class="addr-text ${gt.isReturn ? 'addr-return' : ''}">${formatAddrWithCarrierTag(gt.address)}<\/span>
                             ${(String(gt.wrapSeal || '').includes('封') || String(gt.note || '').includes('膠膜')) ? '<span class="wrap-tag" style="background:#22c55e; color:#000; padding:2px 6px; border-radius:4px; font-size:12px; font-weight:bold; margin-left:4px; box-shadow:0 0 6px rgba(34,197,94,0.4);">膠膜<\/span>' : ''}
                             ${isExactDuplicate ? '<span style="color:#ef4444; font-weight:900; font-size:12px; border:1px solid #ef4444; padding:2px 6px; border-radius:4px; margin-left:4px; animation: pulse-light 2s infinite;">重複異常請注意‼️<\/span>' : ''}
-                            ${isAssigned && gt.status !== '退回分公司' ? `<span style="margin-left:auto; background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};" class="driver-name-tag">${escapeHTML(gt.assignedDriver)}<\/span>` : ''}
+                            ${isAssigned && gt.status !== '退回分公司' ? `<span style="margin-left:auto; background:${getDriverColor(gt.assignedDriver)}; color:${getDriverTextColor(gt.assignedDriver)};" class="driver-name-tag">${escapeHTML(gt.assignedDriver)}${gt.isExternalDone ? ' (已完成)' : ''}<\/span>` : ''}
                         <\/div>
-                        <div style="display:flex; align-items:center; gap:10px; margin-left:50px; margin-top:6px;">
+                        <div style="display:flex; align-items:center; gap:10px; margin-left:50px; margin-top:6px; flex-wrap:wrap;">
                             <button class="btn-yingge ${gt.isBackYingge ? 'active' : ''}" onclick="toggleYinggeRemote(event,'${gt.id}',${!gt.isBackYingge})">回鶯歌<\/button>
+                            ${gt.isSampleBack ? `<button class="btn-backdone ${gt.backDone ? 'done' : ''}" onclick="toggleYinggeBackDone(event,'${gt.id}',${!gt.backDone})">${gt.backDone ? '✓ 已回鶯歌' : '標記已回鶯歌'}<\/button>${gt.backDone && gt.backTime ? `<span class="backdone-time">${escapeHTML(gt.backTime.substring(5))} ${escapeHTML(gt.backBy || '')}<\/span>` : ''}` : ''}
+                            ${gt.completed ? '<span class="done-tag">已完成<\/span>' : ''}
                             <!-- V39.26: 手機版看圖小圖示，電腦版隱藏(電腦版點卡片即可看右側面板) -->
                             ${gt.thumbnail ? `<button class="dp-voucher-icon-btn" onclick="openMobileVoucher(event,'${gt.id}')" style="background:transparent; border:1px solid #38bdf8; color:#38bdf8; padding:2px 7px; border-radius:4px; font-size:12px; cursor:pointer; align-items:center;">📷<\/button>` : ''}
 
@@ -836,6 +1081,7 @@
                             ` : ''}
 
                             <span style="color:${getWeightColor(gt.weight)}; font-weight:900; font-size:18px; margin-left: 8px;">${gt.weight.toFixed(0)} <span style="font-size:11px;">kg<\/span><\/span>
+                            ${renderTaskFreightBadge(gt)}
                             ${gt.note ? `<span class="note-line-content" style="color: #fbbf24; font-weight: bold; font-size: 13px; line-height: 1.4; word-break: break-all; margin-left:4px;">${gt.note}<\/span>` : ''}
                             ${(gt.whStatus === '已上車' && gt.date === formatDate(new Date())) ? `
                                 <span style="color:var(--color-success); font-size:12px; margin-left:4px;" title="實載司機: ${gt.whDriver}">✅${(gt.whDriver && gt.whDriver !== gt.assignedDriver) ? `<span style="font-size:10px; opacity:0.8">(載:${gt.whDriver})<\/span>` : ''}<\/span>
@@ -936,30 +1182,33 @@
                 <\/div>`;
         }).join('');
 
-        const externalDrivers = [
-            { plate: "外車-1", name: "外車 1" },
-            { plate: "外車-2", name: "外車 2" },
-            { plate: "外車-3", name: "外車 3" }
-        ];
+        const externalDrivers = getExternalDriversList();
 
         let subRowsHtml = externalDrivers.map(d => {
-            const currentLoad = dispatchAllTasks.filter(t => {
+            const matchedTasks = dispatchAllTasks.filter(t => {
                 const isMatched = (String(t.assignedDriver).trim() === d.name.trim() || String(t.vehicle) === d.plate);
                 const isFinished = (t.status && (t.status.includes('完成') || t.status.includes('送達') || t.status.includes('結案')));
-                return isMatched && !isFinished;
-            }).reduce((sum, tk) => sum + (Number(tk.weight) || 0), 0);
+                return isMatched && (!isFinished || t.isExternalDone);
+            });
+            const currentLoad = matchedTasks.reduce((sum, tk) => sum + (Number(tk.weight) || 0), 0);
+            const cnt = matchedTasks.length;
 
             return `
                 <div class="external-sub-row" onclick="handleDriverClick('${escapeHTML(d.plate)}','${escapeHTML(d.name)}')">
-                    <b>${escapeHTML(d.plate)}<\/b>
-                    <span style="color:#94a3b8; font-size:11px;">${currentLoad.toFixed(0)} kg<\/span>
+                    <b>${escapeHTML(d.plate)}${cnt > 0 ? `<span style="color:#d8b4fe; font-size:10px; margin-left:3px;">(${cnt}單)<\/span>` : ''}<\/b>
+                    <span style="color:${currentLoad > 0 ? '#e9d5ff' : '#94a3b8'}; font-size:11px; font-weight:${currentLoad > 0 ? '800' : '400'};">${currentLoad.toFixed(0)} kg<\/span>
                 <\/div>`;
         }).join('');
 
         const extH = `
-            <div class="driver-weight-card" style="padding:0; border-color:#a855f7; display:flex; flex-direction:column; min-width:135px; overflow:hidden;">
-                <div style="background:#a855f7; color:#fff; font-size:10px; font-weight:900; text-align:center; padding:2px 0;">外車<\/div>
-                ${subRowsHtml}
+            <div class="driver-weight-card" style="padding:0; border-color:#a855f7; display:flex; flex-direction:column; min-width:148px; overflow:hidden;">
+                <div style="background:#a855f7; color:#fff; font-size:11px; font-weight:900; display:flex; justify-content:space-between; align-items:center; padding:2px 8px;">
+                    <span>外車 (${externalCarCount}/10)<\/span>
+                    ${externalCarCount < 10 ? `<button type="button" onclick="addExternalCarSlot(event)" title="點擊新增外車欄位 (最多10台)" style="background:rgba(255,255,255,0.22); color:#fff; border:1px solid rgba(255,255,255,0.6); border-radius:4px; padding:0 6px; font-size:12px; font-weight:900; line-height:1.3; cursor:pointer;">＋<\/button>` : ''}
+                <\/div>
+                <div class="custom-scroll" style="max-height:115px; overflow-y:auto; display:flex; flex-direction:column;">
+                    ${subRowsHtml}
+                <\/div>
             <\/div>`;
 
         document.getElementById('driverLoadDashboard').innerHTML = (h + extH) || '<div style="color:#475569; padding:20px; text-align:center;">載入中...<\/div>';
@@ -1024,10 +1273,11 @@
                             ${t.shippingType ? `<span style="background:#f59e0b; color:#000; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:900; margin-left:4px;">${t.shippingType}<\/span>` : ''}
                             <button onclick="cancelDispatchAction('${t.id}'); document.getElementById('driverDispatchModal').remove();" style="background:var(--color-danger); color:#fff; border:none; padding:4px 10px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:11px;">撤回<\/button>
                         <\/div>
-                            <div style="display:flex; align-items:center; gap:10px; margin-left:38px;">
+                            <div style="display:flex; align-items:center; gap:10px; margin-left:38px; flex-wrap:wrap;">
                                 ${t.isBackYingge ? '<span style="background:var(--color-accent); color:#000; padding:1px 6px; border-radius:4px; font-weight:900; font-size:11px;">回鶯歌<\/span>' : ''}
 
                                 <span style="color:${getWeightColor(t.weight)}; font-weight:900; font-size:16px;">${t.weight.toFixed(0)} <span style="font-size:10px;">kg<\/span><\/span>
+                                ${renderTaskFreightBadge(t)}
                                 ${t.note ? `<span style="color: #fbbf24; font-weight:bold; font-size:11px; margin-left:4px; word-break:break-all;">${t.note}<\/span>` : ''}
                                 <div style="margin-left:auto;"><\/div>
                                 ${t.timeSlot ? `<span class="time-tag">${t.timeSlot}<\/span>` : ''}
@@ -1449,13 +1699,21 @@
                 <span style="color:#94a3b8; font-size:13px;">${escapeHTML(plate)} · ${currentLoad.toFixed(0)}kg<\/span>
             <\/div>`;
         }).join('');
-        const externalDrivers = [
-            { plate: "外車-1", name: "外車 1" }, { plate: "外車-2", name: "外車 2" }, { plate: "外車-3", name: "外車 3" }
-        ];
-        const extRows = externalDrivers.map(d => `<div onclick="handleMobileDriverTap('${d.plate}','${d.name}')" style="background:#0f172a; border:1px solid #a855f7; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
-            <b style="color:#a855f7; font-size:16px;">${d.name}<\/b><span style="color:#94a3b8; font-size:13px;">${d.plate}<\/span>
-        <\/div>`).join('');
-        listEl.innerHTML = rows + extRows;
+        const externalDrivers = getExternalDriversList();
+        const extRows = externalDrivers.map(d => {
+            const extLoad = dispatchAllTasks.filter(t => {
+                const isMatched = (String(t.assignedDriver).trim() === d.name.trim() || String(t.vehicle) === d.plate);
+                const isFinished = (t.status && (t.status.includes('完成') || t.status.includes('送達') || t.status.includes('結案')));
+                return isMatched && (!isFinished || t.isExternalDone);
+            }).reduce((sum, tk) => sum + (Number(tk.weight) || 0), 0);
+            return `<div onclick="handleMobileDriverTap('${d.plate}','${d.name}')" style="background:#0f172a; border:1px solid #a855f7; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;">
+                <b style="color:#a855f7; font-size:16px;">${d.name}<\/b><span style="color:#94a3b8; font-size:13px;">${d.plate} · ${extLoad.toFixed(0)}kg<\/span>
+            <\/div>`;
+        }).join('');
+        const addExtBtn = externalCarCount < 10
+            ? `<button type="button" onclick="addExternalCarSlot(event)" style="width:100%; background:rgba(168,85,247,0.18); color:#e9d5ff; border:1px dashed #a855f7; border-radius:10px; padding:12px; font-size:15px; font-weight:900; cursor:pointer;">＋ 新增外車欄位 (${externalCarCount}/10)<\/button>`
+            : '';
+        listEl.innerHTML = rows + extRows + addExtBtn;
     }
     function handleMobileDriverTap(n, name) {
         // 有勾選任務：快速指派，指派完直接收合回任務畫面 (V39.26 手機版req 2)
@@ -1495,6 +1753,7 @@
         const t = dispatchAllTasks.find(x => x.id === id);
         if (t) {
             t.isBackYingge = isB;
+            t.isSampleBack = isSampleDocClient(t) && (!!isB || !!t.sampleHome); // V43.52: 標/取消回鶯歌會讓樣品進出樣品分頁
             // 🔄 即時更新 UI，並在背景存檔
             google.script.run
                 .withSuccessHandler(res => {
@@ -1504,6 +1763,7 @@
                     showToast("❌ 伺服器錯誤: " + err);
                     // 失敗時恢復 UI 狀態
                     t.isBackYingge = !isB;
+                    t.isSampleBack = isSampleDocClient(t) && (!!t.isBackYingge || !!t.sampleHome);
                     applyFilters_V3();
                 })
                 .updateBackYinggeStatus_V3(id, "", isB, ATOKEN());
@@ -1528,7 +1788,7 @@
     // 先開預覽讓人看，按「套用」才真的寫入 (recordDispatch_V3，一司機一批)。
     function aiDispatchPlan_V41() {
         const dv = document.getElementById('filterDate').value;
-        const todo = dispatchAllTasks.filter(t => !t.assignedDriver && !t.vehicle && String(t.status || '').indexOf('退回') === -1 && (dv === 'all' || t.date === dv));
+        const todo = dispatchAllTasks.filter(t => !t.assignedDriver && !t.vehicle && !t.isSampleBack && String(t.status || '').indexOf('退回') === -1 && (dv === 'all' || t.date === dv)); // V43.52: 樣品回鶯歌另外在樣品分頁處理
         if (!todo.length) { showToast('✅ 沒有待指派的單'); return; }
         const fleet = dispatchDrivers.filter(d => d.plate && d.name && !/外車|回頭車/.test(d.plate + d.name));
         if (!fleet.length) { showToast('❌ 沒有可用車輛'); return; }
@@ -1903,12 +2163,14 @@
     function quickDispatch_V7(plate, name) {
         const tasks = Array.from(dispatchSelectedIds).map(id => dispatchAllTasks.find(x => x.id === id)).filter(Boolean);
         if (tasks.length === 0) return;
-        if (!confirm(`⚠️ 防呆確認\n\n確定要將已選取的 ${tasks.length} 筆訂單，指派給「${name}」嗎？\n\n(此確認用來防止原本訂單意外跑到同一個人身上)`)) return;
+        const isExt = String(plate || '').includes('外車') || String(name || '').includes('外車');
+        const extTip = isExt ? '\n📌 外車訂單將預設標記為「已完成」' : '';
+        if (!confirm(`⚠️ 防呆確認\n\n確定要將已選取的 ${tasks.length} 筆訂單，指派給「${name}」嗎？${extTip}\n\n(此確認用來防止原本訂單意外跑到同一個人身上)`)) return;
         showToast("分派中...");
         google.script.run.withSuccessHandler(() => {
             dispatchSelectedIds.clear();
             openDispatchModal_V3();
-            showToast("✅ 分派成功");
+            showToast(isExt ? "✅ 已分派外車並預設完成" : "✅ 分派成功");
         }).recordDispatch_V3(tasks, {
             plate: plate,
             name: name
@@ -1920,6 +2182,241 @@
             openDispatchModal_V3();
             showToast("✅ 已撤回");
         }).cancelDispatch_V3(id, ATOKEN());
+    }
+
+    /* ===== V43.55: 排車即時運費設定 / 報價與群組確認 ===== */
+    const DEFAULT_FREIGHT_REASONS = ['路線不順', '指定時間', '下貨條件多'];
+
+    function renderFreightReasonOptions(selectedReason) {
+        const sel = document.getElementById('fqReasonSelect');
+        const chipsBox = document.getElementById('fqSavedCustomChips');
+        if (!sel) return;
+        const merged = DEFAULT_FREIGHT_REASONS.slice();
+        (dispatchCustomReasons || []).forEach(r => {
+            const s = String(r || '').trim();
+            if (s && !merged.includes(s)) merged.push(s);
+        });
+        let html = '';
+        merged.forEach((r, i) => {
+            const prefix = i < 3 ? (i + 1) + '、' : '★ ';
+            html += `<option value="${escapeHTML(r)}">${prefix}${escapeHTML(r)}<\/option>`;
+        });
+        html += '<option value="__OTHER__">4、其它 (本次自行輸入)<\/option>';
+        html += '<option value="__ADD_MEMORY__">5、＋ 新增條件 (記憶功能，未來持續存在)<\/option>';
+        sel.innerHTML = html;
+
+        const cleanSelected = String(selectedReason || '').trim();
+        if (cleanSelected && merged.includes(cleanSelected)) {
+            sel.value = cleanSelected;
+        } else if (cleanSelected) {
+            sel.value = '__OTHER__';
+            const inp = document.getElementById('fqCustomReasonInput');
+            if (inp) inp.value = cleanSelected;
+        } else {
+            sel.value = merged[0] || '路線不順';
+        }
+        onFreightReasonSelectChange();
+
+        if (chipsBox) {
+            const customOnly = merged.filter(r => !DEFAULT_FREIGHT_REASONS.includes(r));
+            if (customOnly.length > 0) {
+                chipsBox.innerHTML = '<span style="font-size:11px; color:#94a3b8; align-self:center;">已記憶條件：<\/span>' +
+                    customOnly.map(r => `<span style="background:rgba(56,189,248,0.14); color:#7dd3fc; border:1px solid rgba(56,189,248,0.35); border-radius:999px; padding:2px 8px; font-size:11px; display:inline-flex; align-items:center; gap:5px;">${escapeHTML(r)}<b onclick="deleteCustomFreightReason('${escapeHTML(r)}')" title="刪除此記憶條件" style="cursor:pointer; color:#f87171; font-size:12px;">✕<\/b><\/span>`).join('');
+            } else {
+                chipsBox.innerHTML = '';
+            }
+        }
+    }
+
+    function onFreightReasonSelectChange() {
+        const sel = document.getElementById('fqReasonSelect');
+        const wrap = document.getElementById('fqCustomReasonWrap');
+        const inp = document.getElementById('fqCustomReasonInput');
+        const hint = document.getElementById('fqCustomReasonHint');
+        if (!sel || !wrap) return;
+        if (sel.value === '__OTHER__') {
+            wrap.style.display = 'flex';
+            if (inp) { inp.placeholder = '請輸入本次指定運費原因...'; inp.focus(); }
+            if (hint) hint.innerText = '此原因僅套用於本筆訂單，不會永久記憶。';
+        } else if (sel.value === '__ADD_MEMORY__') {
+            wrap.style.display = 'flex';
+            if (inp) { inp.value = ''; inp.placeholder = '請輸入要永久記憶的新條件名稱...'; inp.focus(); }
+            if (hint) hint.innerText = '✨ 儲存後將自動記住此條件，未來排車下拉選單會持續存在！';
+        } else {
+            wrap.style.display = 'none';
+        }
+    }
+
+    function deleteCustomFreightReason(reasonToRemove) {
+        const nextList = (dispatchCustomReasons || []).filter(r => r !== reasonToRemove);
+        dispatchCustomReasons = DEFAULT_FREIGHT_REASONS.slice();
+        nextList.forEach(r => { if (r && !dispatchCustomReasons.includes(r)) dispatchCustomReasons.push(r); });
+        renderFreightReasonOptions(document.getElementById('fqReasonSelect')?.value);
+        google.script.run.withSuccessHandler(res => {
+            if (res && res.reasons) dispatchCustomReasons = res.reasons;
+            renderFreightReasonOptions();
+            showToast('🗑️ 已刪除記憶條件：' + reasonToRemove);
+        }).saveCustomFreightReasons_V43(dispatchCustomReasons, ATOKEN());
+    }
+
+    function openFreightQuoteModal(e, taskId) {
+        if (e) e.stopPropagation();
+        const t = dispatchAllTasks.find(x => String(x.id) === String(taskId));
+        if (!t) { showToast('找不到該筆訂單'); return; }
+        currentFqTaskId = t.id;
+        const modal = document.getElementById('freightQuoteModal');
+        const sumEl = document.getElementById('fqOrderSummary');
+        const estEl = document.getElementById('fqEstFee');
+        const detEl = document.getElementById('fqEstDetail');
+        const inpEl = document.getElementById('fqAdjustedInput');
+        const rstBtn = document.getElementById('fqResetBtn');
+        const notifyLbl = document.getElementById('fqNotifyLabelText');
+        const notifyCb = document.getElementById('fqSendNotifyCb');
+
+        const brObj = getOrderTint(t.id, t.branch);
+        const displayId = formatDisplayOrderId(t.id, t.branch);
+        const drvText = t.assignedDriver ? `${t.assignedDriver} (${t.vehicle || ''})` : '尚未指派司機';
+        if (sumEl) {
+            sumEl.innerHTML = `<div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">` +
+                `<span style="background:${brObj.color}; color:${brObj.textColor}; padding:2px 7px; border-radius:4px; font-size:12px; font-weight:800;">${escapeHTML(displayId)}<\/span>` +
+                `<b style="color:#fff; font-size:15px;">${escapeHTML(t.customer)}<\/b>` +
+                `<span style="color:${getWeightColor(t.weight)}; font-weight:900; margin-left:auto;">${Math.round(t.weight || 0)} kg<\/span>` +
+                `<\/div>` +
+                `<div style="color:#94a3b8; font-size:12px;">📍 ${formatAddrWithCarrierTag(t.address)}<\/div>` +
+                `<div style="color:#a855f7; font-size:12px; margin-top:2px;">🚚 指派狀態：<b>${escapeHTML(drvText)}<\/b>${t.feeConfirmStatus ? ` ｜ 目前確認狀態：<b style="color:#fbbf24;">${escapeHTML(t.feeConfirmStatus)}<\/b>` : ''}<\/div>`;
+        }
+        const estFee = Number(t.estFee || 0);
+        if (estEl) estEl.innerText = '$' + estFee.toLocaleString();
+        if (detEl) detEl.innerText = t.freightDetail || '依系統重量與加成規則計算';
+        if (inpEl) inpEl.value = t.adjustedFee > 0 ? t.adjustedFee : estFee;
+        if (rstBtn) rstBtn.style.display = t.adjustedFee > 0 ? 'inline-block' : 'none';
+
+        const isHanhua = String(t.branch || '').indexOf('漢樺') !== -1;
+        if (notifyLbl) {
+            notifyLbl.innerHTML = isHanhua
+                ? `發送 <b style="color:#4ade80;">LINE 群組訊息<\/b> 請【${escapeHTML(t.branch || '漢樺')}】小姐確認運費（點連結「同意」即約定完成；點「不同意」將自動退回該筆訂單）`
+                : `發送 <b style="color:#38bdf8;">Telegram 群組訊息<\/b> 請【${escapeHTML(t.branch || '分公司')}】小姐確認運費（點按鈕「同意」即約定完成；點「不同意」將自動退回訂單並發 LINE 通知）`;
+        }
+        if (notifyCb) notifyCb.checked = true;
+
+        renderFreightReasonOptions(t.feeReason || '');
+        if (modal) modal.style.display = 'flex';
+        setTimeout(() => { if (inpEl) { inpEl.focus(); inpEl.select(); } }, 60);
+    }
+
+    function closeFreightQuoteModal() {
+        const modal = document.getElementById('freightQuoteModal');
+        if (modal) modal.style.display = 'none';
+        currentFqTaskId = null;
+    }
+
+    function adjustFqInputDelta(delta) {
+        const inp = document.getElementById('fqAdjustedInput');
+        if (!inp) return;
+        const cur = Number(inp.value || 0);
+        inp.value = Math.max(0, cur + delta);
+    }
+
+    function setFqInputToEst() {
+        const t = dispatchAllTasks.find(x => String(x.id) === String(currentFqTaskId));
+        const inp = document.getElementById('fqAdjustedInput');
+        if (t && inp) inp.value = Number(t.estFee || 0);
+    }
+
+    function submitFreightQuoteModal() {
+        const t = dispatchAllTasks.find(x => String(x.id) === String(currentFqTaskId));
+        if (!t) return;
+        const inp = document.getElementById('fqAdjustedInput');
+        const sel = document.getElementById('fqReasonSelect');
+        const customInp = document.getElementById('fqCustomReasonInput');
+        const notifyCb = document.getElementById('fqSendNotifyCb');
+        const saveBtn = document.getElementById('fqSaveBtn');
+
+        const newFee = parseFloat(inp ? inp.value : '');
+        if (isNaN(newFee) || newFee <= 0) {
+            showToast('⚠️ 請輸入大於 0 的指定報價運費');
+            return;
+        }
+        let reason = sel ? sel.value : '路線不順';
+        let rememberReason = false;
+        if (reason === '__OTHER__' || reason === '__ADD_MEMORY__') {
+            rememberReason = (reason === '__ADD_MEMORY__');
+            reason = String(customInp ? customInp.value : '').trim();
+            if (!reason) {
+                showToast('⚠️ 請輸入指定運費原因');
+                if (customInp) customInp.focus();
+                return;
+            }
+        }
+        const sendTelegram = !!(notifyCb && notifyCb.checked);
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.innerText = '⏳ 處理中...'; }
+
+        google.script.run
+            .withSuccessHandler(res => {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = '✅ 確認指定運費'; }
+                if (!res || !res.success) {
+                    showToast('❌ 設定失敗：' + ((res && res.error) || '未知錯誤'));
+                    return;
+                }
+                t.adjustedFee = res.adjustedFee;
+                t.feeReason = res.feeReason;
+                t.feeConfirmStatus = res.feeConfirmStatus || '';
+                if (Array.isArray(res.reasons)) dispatchCustomReasons = res.reasons;
+                closeFreightQuoteModal();
+                applyFilters_V3();
+                if (document.getElementById('driverDispatchModal') && window._dispatchModalDriverPlate) {
+                    showDriverDispatchList_V8(window._dispatchModalDriverPlate, window._dispatchModalDriverName);
+                }
+                showToast(res.message || '✅ 已設定指定運費 $' + newFee);
+            })
+            .withFailureHandler(err => {
+                if (saveBtn) { saveBtn.disabled = false; saveBtn.innerText = '✅ 確認指定運費'; }
+                showToast('❌ 連線錯誤：' + (err && err.message || err));
+            })
+            .setDispatchFreightQuote_V43({
+                taskId: t.id,
+                branch: t.branch,
+                adjustedFee: newFee,
+                reason: reason,
+                rememberReason: rememberReason,
+                sendTelegram: sendTelegram
+            }, ATOKEN());
+    }
+
+    function resetFreightQuoteToFormula() {
+        const t = dispatchAllTasks.find(x => String(x.id) === String(currentFqTaskId));
+        if (!t) return;
+        const rstBtn = document.getElementById('fqResetBtn');
+        if (rstBtn) { rstBtn.disabled = true; rstBtn.innerText = '處理中...'; }
+        google.script.run
+            .withSuccessHandler(res => {
+                if (rstBtn) { rstBtn.disabled = false; rstBtn.innerText = '↩️ 恢復公式'; }
+                if (!res || !res.success) {
+                    showToast('❌ 恢復失敗：' + ((res && res.error) || ''));
+                    return;
+                }
+                t.adjustedFee = 0;
+                t.feeReason = '';
+                t.feeConfirmStatus = '';
+                closeFreightQuoteModal();
+                applyFilters_V3();
+                if (document.getElementById('driverDispatchModal') && window._dispatchModalDriverPlate) {
+                    showDriverDispatchList_V8(window._dispatchModalDriverPlate, window._dispatchModalDriverName);
+                }
+                showToast('↩️ 已恢復為系統公式運費');
+            })
+            .withFailureHandler(err => {
+                if (rstBtn) { rstBtn.disabled = false; rstBtn.innerText = '↩️ 恢復公式'; }
+                showToast('❌ 連線錯誤：' + (err && err.message || err));
+            })
+            .setDispatchFreightQuote_V43({
+                taskId: t.id,
+                branch: t.branch,
+                adjustedFee: 0,
+                reason: '',
+                rememberReason: false,
+                sendTelegram: false
+            }, ATOKEN());
     }
 
     function escapeHTML(str) {

@@ -53,6 +53,16 @@ bigt.cc 外殼頁（`OS.html` 等）的 iframe 設 `height: calc(100% + 55px); m
 
 ---
 
+### 部署資料夾不可共用：每個 deploy.yml 只能寫自己的 server-dir（2026-10-20 事故）
+
+bigt.cc 的網頁檔案由各專案的 GitHub Actions（`SamKirkland/FTP-Deploy-Action`）用同一組 FTP 帳號傳上去。這個工具會在 `server-dir` 裡放 `.ftp-deploy-sync-state.json`，**下次部署時把「紀錄裡有、本機沒有」的檔案刪掉**。如果兩個專案都指向同一個資料夾，後推的專案會把對方的檔案刪光並放上自己的。
+
+- 2026-10-20：`客戶版機器人`(linebot) 的 `deploy.yml` 有一步 `server-dir: /tts/`，linebot 每推一次，`bigt.cc/tts/` 的 `OS.html`/`DRIVER.html`/`QC.html`… 全部 404，首頁變成別的專案。完整紀錄見 `PROGRESS.md` 的 10/20 事件。
+- **對照表（目前）**：`智慧物流系統(tts)` → `/tts/`；`客戶版機器人(linebot)` → `/line/`；`版面記錄神器` → `/ait/`；`每周匯報` → `/finance-alert/`；`高雅瓷網頁大平台` → `/web/`、`/admin/`。其餘專案的目標在 GitHub Secrets 的 `FTP_TARGET_DIR`。
+- **新增或修改任何專案的 `deploy.yml` 前**：先 `grep -rn "server-dir" */.github/workflows/` 確認沒有第二個專案指到同一個資料夾；不要把「順便傳到別的資料夾」的步驟留在 yml 裡。
+- **發生時復原**：GitHub `titankou2002/tts` → Actions → 最新一次部署 → Re-run all jobs（約 10 秒）；先確認造成覆蓋的那個專案已不會再推，不然會再被蓋掉。
+- **快速檢查**：`curl -s -o /dev/null -w "%{http_code}" https://bigt.cc/tts/OS.html` 應為 200。
+
 ---
 
 ## 1. 核心功能：LINE 結案分享 (LINE Share Logic)
@@ -164,5 +174,5 @@ function keepSystemAlive_V11() {
 - **間隔**：每 1 小時
 
 ---
-*最後更新日期：2026-05-14*
-*版本：V8.8.2 (Auth-Stability)*
+*最後更新日期：2026-10-28*
+*版本：V8.8.2 (Auth-Stability)；2026-10-28 新增「部署資料夾不可共用」*

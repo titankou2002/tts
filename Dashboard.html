@@ -143,12 +143,18 @@
 
         .fleet-panel {
             flex: 0 0 auto;
-            max-height: 45%;
-            background: transparent;
+            height: 350px;
+            max-height: min(350px, 46vh);
+            background: #0f172a;
+            border-top: 2px solid var(--primary);
             overflow-y: auto;
-            border-top: none;
-            padding: 0;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 2px 0 8px 0;
             margin: 0;
+            box-sizing: border-box;
+            -webkit-overflow-scrolling: touch;
         }
 
         /* V41.4: 夜間模式 —— OSM 圖磚反相成深色 (只作用於圖磚層，標記與線條不受影響) */
@@ -218,11 +224,13 @@
         .fleet-row {
             display: flex;
             align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 6px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             transition: 0.2s;
             background: rgba(255, 255, 255, 0.02);
             cursor: pointer;
+            gap: 14px;
+            box-sizing: border-box;
         }
 
         .fleet-row:hover {
@@ -251,11 +259,24 @@
 
         @media (max-width: 768px) {
             #map-container {
-                flex: 0 0 25%;
+                flex: 0 0 32vh !important;
+                height: 32vh !important;
+                min-height: 160px !important;
+                max-height: 38vh !important;
+                width: 100% !important;
             }
 
             .fleet-panel {
-                flex: 0 0 75%;
+                flex: 1 1 0 !important;
+                min-height: 0 !important;
+                height: auto !important;
+                max-height: none !important;
+                background: #0b1120 !important;
+                border-top: 2px solid var(--primary) !important;
+                overflow-y: auto !important;
+                overflow-x: hidden !important;
+                padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+                -webkit-overflow-scrolling: touch;
             }
 
             .header-right {
@@ -267,69 +288,76 @@
                 font-size: 11px !important;
             }
 
-            /* V41.13 手機版：四位司機並排成直欄，左右滑動看其他司機；每欄內站點由上往下排 */
+            /* 手機版：司機並排成直欄，左右滑動看其他司機；每欄內站點由上往下排 */
             #vehicleSpace {
                 display: flex !important;
                 flex-direction: row !important;
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                overflow-y: visible;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                overflow-y: visible !important;
                 scroll-snap-type: x mandatory;
                 -webkit-overflow-scrolling: touch;
                 align-items: flex-start;
+                min-height: 100%;
+                padding: 0 4px;
             }
 
             .fleet-row {
-                flex: 0 0 25% !important;
-                min-width: 150px;
-                max-width: 50%;
+                flex: 0 0 46vw !important;
+                min-width: 160px !important;
+                max-width: 220px !important;
                 flex-direction: column !important;
                 align-items: stretch !important;
                 scroll-snap-align: start;
-                border-right: 1px solid rgba(255, 255, 255, 0.08);
+                border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
                 border-bottom: none !important;
-                padding: 8px 6px !important;
-            }
-
-            .fleet-col-info {
-                flex: none !important;
-                width: 100% !important;
-                text-align: center;
-                margin-bottom: 6px;
-                padding-bottom: 6px;
-                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            }
-
-            .fleet-col-info > div:first-child { font-size: 15px !important; }
-
-            .fleet-col-itinerary {
-                display: flex !important;
-                flex-direction: column;
-                white-space: normal !important;
-                overflow: visible !important;
-                padding: 0 !important;
-                gap: 4px !important;
-                align-items: stretch !important;
-            }
-
-            .fleet-col-itinerary > .itin-arrow { display: none; }
-
-            .itinerary-point {
-                width: 100%;
-                min-width: 0 !important;
-                margin: 0 !important;
-                padding: 6px 7px !important;
-                background: rgba(255, 255, 255, 0.04);
-                border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                cursor: default !important;
+                padding: 0 6px 16px 6px !important;
                 box-sizing: border-box;
             }
 
-            .itinerary-point > div:first-child { font-size: 12px !important; white-space: normal; }
-            .itinerary-point > div:nth-child(2) { font-size: 11px !important; white-space: normal; }
-            .itinerary-point:hover { transform: none; }
+            .fleet-col-info {
+                position: sticky !important;
+                top: 0 !important;
+                z-index: 10 !important;
+                background: #0b1120 !important;
+                flex: none !important;
+                width: 100% !important;
+                text-align: center;
+                margin-bottom: 6px !important;
+                padding: 8px 4px 6px !important;
+                border-bottom: 1px solid rgba(56, 189, 248, 0.3) !important;
+                box-shadow: 0 3px 6px rgba(0, 0, 0, 0.4);
+            }
 
-            .fleet-panel { height: auto !important; max-height: none !important; overflow-y: auto; }
+            .fleet-col-info > div:first-child { font-size: 15px !important; font-weight: 900; }
+
+            .fleet-col-itinerary {
+                display: flex !important;
+                flex-direction: column !important;
+                white-space: normal !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                gap: 5px !important;
+                align-items: stretch !important;
+            }
+
+            .fleet-col-itinerary > .itin-arrow { display: none !important; }
+
+            .itinerary-point {
+                width: 100% !important;
+                min-width: 0 !important;
+                margin: 0 !important;
+                padding: 6px 8px !important;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                border-radius: 8px !important;
+                cursor: pointer !important;
+                box-sizing: border-box;
+            }
+
+            .itinerary-point > div:first-child { font-size: 12px !important; font-weight: bold; white-space: normal; line-height: 1.3; }
+            .itinerary-point > div:nth-child(2) { font-size: 11px !important; color: #94a3b8; white-space: normal; line-height: 1.3; margin-top: 2px; }
+            .itinerary-point:hover { transform: none; }
 
             /* V41.21: 提示訊息在手機上改顯示於畫面下方，避免被表頭蓋住 */
             #toast {
@@ -341,7 +369,39 @@
                 font-size: 14px !important;
                 padding: 12px 18px !important;
             }
-            .itinerary-point.next-target { margin-top: 10px !important; }
+            .itinerary-point.next-target {
+                margin-top: 10px !important;
+                border: 1.5px solid #38bdf8 !important;
+                background: rgba(56, 189, 248, 0.12) !important;
+            }
+
+            /* 手機版：地圖按鈕條固定於地圖右上角，不再被 header 遮蔽 */
+            .command-strip {
+                top: 8px !important;
+                right: 8px !important;
+                bottom: auto !important;
+                z-index: 1000 !important;
+                padding: 3px 5px !important;
+                gap: 4px !important;
+                border-radius: 8px !important;
+                background: rgba(15, 23, 42, 0.92) !important;
+            }
+            body.embedded-iframe .command-strip {
+                top: 8px !important;
+                bottom: auto !important;
+            }
+            .cmd-btn {
+                min-width: 44px !important;
+                height: 36px !important;
+                padding: 2px 4px !important;
+                font-size: 9px !important;
+            }
+            .cmd-btn svg { width: 14px !important; height: 14px !important; }
+            #batchDlMenu {
+                top: 48px !important;
+                bottom: auto !important;
+                right: 8px !important;
+            }
         }
 
         .branch-btn.active {
@@ -854,6 +914,15 @@
             overflow: hidden;
         }
 
+        /* V43.55: 進站時先「確認登入狀態」(約 2 秒)，這段時間只顯示標誌與提示，不顯示密碼框 / 系統解鎖 / Google 登入，
+           避免已登入的人看到登入畫面閃一下以為又要登入；確認沒登入才拿掉 .checking 顯示登入框 */
+        #loginOverlay.checking .input-group,
+        #loginOverlay.checking .login-btn,
+        #loginOverlay.checking #gLoginSlot { display: none !important; }
+        #loginOverlay #loginChecking { display: none; margin: 16px 0 30px; color: #7dd3fc; font-size: 13px; font-weight: 700; letter-spacing: 2px; text-align: center; animation: loginCheckingPulse 1.2s ease-in-out infinite; }
+        #loginOverlay.checking #loginChecking { display: block; }
+        @keyframes loginCheckingPulse { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+
         #loginOverlay canvas {
             position: absolute;
             inset: 0;
@@ -1148,8 +1217,8 @@
             position: absolute;
             top: 15px;
             left: 15px;
-            right: 320px;
-            /* 極大化避讓空間 */
+            right: 395px;
+            /* V43.39: 原 320px 會與右上角 5 顆按鈕條 (約 360px+15px) 產生重疊遮蔽，改為 395px 徹底消除遮擋 */
             height: 54px;
             background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(20px);
@@ -1162,6 +1231,30 @@
             z-index: 5000;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
             gap: 10px;
+        }
+
+        @media (min-width: 769px) and (max-width: 1280px) {
+            .header {
+                right: 385px;
+                padding: 0 10px;
+                gap: 6px;
+            }
+            .header-kpi-bar {
+                margin-left: 10px;
+                padding-left: 10px;
+                gap: 8px;
+            }
+            .header-view-switcher {
+                margin-left: 8px;
+            }
+            .btn-rounded-outline {
+                padding: 4px 6px !important;
+                font-size: 11px !important;
+            }
+            #targetCar {
+                margin-right: 4px !important;
+                font-size: 12px !important;
+            }
         }
 
         /* 轉址內嵌 iframe 時自動向下微調，防止被 negative margin 推移剪裁 */
@@ -1249,34 +1342,7 @@
             box-shadow: 0 0 10px #a855f7;
         }
 
-        /* V5.1: 底部車隊面板橫式樣式，高度提升顯示4司機 */
-        .fleet-panel {
-            height: 330px;
-            background: #0f172a;
-            border-top: 2px solid var(--primary);
-            overflow-y: auto;
-            flex-shrink: 0;
-            display: flex;
-            flex-direction: column;
-        }
 
-        .fleet-row {
-            display: flex;
-            align-items: center;
-            padding: 10px 20px;
-            border-bottom: 1px solid #1e293b;
-            cursor: pointer;
-            transition: 0.2s;
-            gap: 20px;
-        }
-
-        .fleet-row:hover {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .fleet-row.active {
-            background: rgba(59, 130, 246, 0.1);
-        }
 
         .fleet-col-info {
             width: 120px;
@@ -2321,11 +2387,11 @@
             border-radius: 8px;
             background: rgba(56, 189, 248, 0.08);
             animation: neonPulse 1.4s ease-in-out infinite;
-            margin-top: 8px;
+            margin-top: 6px;
         }
         .itinerary-point.next-target::before {
             content: '下一站';
-            position: absolute; top: -9px; left: 8px;
+            position: absolute; top: -8px; left: 8px;
             background: #38bdf8; color: #020617;
             font-size: 9px; font-weight: 900; letter-spacing: 1px;
             padding: 1px 6px; border-radius: 6px; line-height: 1.3;
@@ -2351,7 +2417,13 @@
             position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
             background: rgba(2, 10, 18, 0.9); border: 1.5px solid; border-radius: 8px;
             padding: 4px 8px; white-space: nowrap; text-align: left; line-height: 1.25;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.6); pointer-events: none; min-width: 96px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.6); pointer-events: auto !important; min-width: 96px;
+            cursor: pointer; transition: transform 0.15s, z-index 0.15s, box-shadow 0.15s;
+        }
+        .car-card:hover {
+            z-index: 9999 !important;
+            box-shadow: 0 0 16px rgba(56, 189, 248, 0.8) !important;
+            transform: translateX(-50%) scale(1.03);
         }
         .car-card::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px; background: inherit; border-right: 1.5px solid; border-bottom: 1.5px solid; border-color: inherit; transform: translateX(-50%) rotate(45deg); }
         .car-card-name { font-size: 12px; font-weight: 900; color: #fff; display: flex; align-items: center; gap: 5px; }
@@ -2481,6 +2553,27 @@
         #tempModal #tFreightEstBox { padding: 5px 10px !important; font-size: 12px !important; }
         #tempModal .modal-body > div:last-child { margin-top: 10px !important; margin-bottom: 0 !important; }
         #tempModal .modal-body > div:last-child .btn { padding-top: 7px; padding-bottom: 7px; font-size: 13px; }
+        /* V43.50: 掃描原圖對照面板 — 與表單同一排 (表單左、原圖右)，高度對齊表單，圖可縮放、可捲動 */
+        #tempModal { gap: 14px; }
+        #tempModal .modal-body { margin-left: 0 !important; margin-right: 0 !important; flex: 0 0 auto; } /* V43.51: margin:auto 會把右側面板推到最右邊，離表單太遠 */
+        #tScanPanel { display: none; flex-direction: column; width: min(600px, calc(100vw - 480px)); min-width: 280px; max-height: calc(100vh - 71px); background: #0f172a; border: 1px solid rgba(56,189,248,0.45); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden; }
+        #tScanPanel.open { display: flex; resize: both; min-height: 220px; }
+        #tScanPanel.floating { position: fixed; z-index: 100001; max-height: none; }
+        #tScanPanel .tsp-head { cursor: move; user-select: none; touch-action: none; }
+        #tScanPanel .tsp-body { cursor: grab; }
+        #tScanPanel .tsp-body.panning { cursor: grabbing; }
+        #tScanPanel .tsp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: rgba(56,189,248,0.08); border-bottom: 1px solid rgba(56,189,248,0.2); }
+        #tScanPanel .tsp-title { color: #38bdf8; font-weight: 800; font-size: 13px; }
+        #tScanPanel .tsp-actions { display: inline-flex; gap: 6px; }
+        #tScanPanel .tsp-actions button { background: rgba(255,255,255,0.06); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 3px 9px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        #tScanPanel .tsp-actions button:last-child { color: #f87171; border-color: rgba(248,113,113,0.4); }
+        #tScanPanel .tsp-body { flex: 1; overflow: auto; background: #000; }
+        #tScanPanel img { display: block; width: 100%; height: auto; }
+        #tScanInfo.tsi-link { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-weight: 800; }
+        @media (max-width: 1000px) {
+            /* 視窗太窄放不下並排：改成蓋在表單上方 */
+            #tScanPanel { position: fixed; top: 63px; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: none; z-index: 100; }
+        }
 
         .input-group label {
             display: block;
@@ -2529,33 +2622,7 @@
             }
         }
 
-        /* 手機版適配：取消反轉 */
-        @media (max-width: 768px) {
-            body {
-                flex-direction: column;
-            }
 
-            .header {
-                right: 15px;
-                /* 手機版不留天氣空間 */
-                height: auto;
-                padding: 10px;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: 50vh;
-                border-right: none;
-                border-top: 2px solid #334155;
-            }
-
-            #map-container {
-                height: 50vh;
-                flex: none !important;
-            }
-        }
 
         #lasso-selection-rect {
             position: fixed;
@@ -2608,7 +2675,30 @@
         /* V43.4 手機版上方列重新排版：原本左右兩塊都不換行，加上登入者後整列被擠出螢幕、右邊按鈕按不到。
            改成 第一行 標誌＋司機/分公司＋統計、第二行 登入者、第三行 按鈕 (放不下自動換行，全部按得到) */
         @media (max-width: 768px) {
-            .header { left: 8px; right: 8px; padding: 8px 10px; flex-direction: column; align-items: stretch; gap: 6px; }
+            .header {
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                width: 100% !important;
+                box-sizing: border-box !important;
+                border-radius: 0 0 12px 12px !important;
+                border-top: none !important;
+                border-left: none !important;
+                border-right: none !important;
+                padding: 8px 10px !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 6px !important;
+                height: auto !important;
+                flex-shrink: 0 !important;
+                z-index: 5000 !important;
+            }
+            body.embedded-iframe .header {
+                top: 0 !important;
+                margin-top: 55px !important;
+                padding-top: 8px !important;
+            }
             .header-left { flex-wrap: wrap; white-space: normal; gap: 8px; min-width: 0; }
             .header-left > svg { width: 30px; height: 20px; }
             #header-clock { display: none; }
@@ -2626,7 +2716,7 @@
 <body>
     <div id="lasso-selection-rect"></div>
     <!-- V35.4: V2 Digital Rain Login Overlay -->
-    <div id="loginOverlay">
+    <div id="loginOverlay" class="checking">
         <canvas id="rainCanvas"></canvas>
         <div class="center-glow"></div>
         <div class="h-scan"></div>
@@ -2648,6 +2738,7 @@
             <div class="brand-sub">INTELLIGENT LOGISTICS CENTER</div>
             <div class="divider"></div>
             <div id="welcomeText">WELCOME</div>
+            <div id="loginChecking">正在確認登入狀態…</div>
 
             <div class="input-group">
                 <input type="password" id="adminPwdInput" class="login-input" placeholder="ACCESS CODE"
@@ -2748,6 +2839,17 @@
     <div id="tempModal" class="modal"
         style="display:none; justify-content:center; align-items:flex-start; padding-top:2vh;">
         <div class="modal-body">
+            <!-- V43.49: 掃描訂單 (一次一張)：辨識後自動帶入下方欄位；業務只帶白名單「業務」，小姐(行政)不帶 -->
+            <div id="tScanRow" style="display:flex; align-items:center; gap:10px;">
+                <button type="button" id="tScanBtn" onclick="document.getElementById('tScanFile').click()"
+                    style="display:inline-flex; align-items:center; gap:6px; flex-shrink:0; padding:5px 12px; background:rgba(56,189,248,0.12); color:#38bdf8; border:1px solid rgba(56,189,248,0.45); border-radius:8px; font-size:13px; font-weight:800; cursor:pointer;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                    <span id="tScanBtnTxt">掃描訂單</span>
+                </button>
+                <input type="file" id="tScanFile" accept="image/*" style="display:none" onchange="scanTempOrder(event)">
+                <span id="tScanInfo" style="font-size:11px; color:#64748b; line-height:1.3;">一次一張，辨識後自動帶入欄位</span>
+            </div>
+
             <!-- 第一行：分公司 & 客戶名稱 -->
             <div style="display:flex; gap:10px; margin-bottom:8px;">
                 <div class="input-group" style="flex:1;">
@@ -2856,11 +2958,11 @@
 
             <div style="display:flex; gap:10px; margin-bottom:8px;">
                 <div class="input-group" style="flex:1;">
-                    <label>指派業務</label>
-                    <input id="tSalesAssign" type="text" list="datalist-sales" placeholder="(不指派)"
-                        oninput="handleSalesAssignChange()"
+                    <label>指派業務 <span style="font-weight:400; color:#64748b;">(依分公司，只列白名單「業務」)</span></label>
+                    <select id="tSalesAssign" onchange="handleSalesAssignChange()"
                         style="width:100%; padding:6px; background:#0f172a; border:1px solid #334155; border-radius:8px; color:white; font-size:14px;">
-                    <datalist id="datalist-sales"></datalist>
+                        <option value="">(不指派)</option>
+                    </select>
                 </div>
             </div>
 
@@ -2890,6 +2992,19 @@
                 <button id="submitTempBtn" class="btn btn-primary" onclick="submitTemp()" style="transition: all 0.3s ease; border: 2.5px solid #38bdf8;">提交任務</button>
                 <button class="btn btn-danger" onclick="closeModal()" style="width:100px;">取消</button>
             </div>
+        </div>
+        <!-- V43.50: 掃描原圖對照面板 (點右上角單號開啟)：圖在右、輸入框在左，一左一右比對內容 -->
+        <div id="tScanPanel">
+            <div class="tsp-head">
+                <span id="tScanPanelTitle" class="tsp-title">掃描原圖</span>
+                <span class="tsp-actions">
+                    <button type="button" onclick="zoomTScan(-0.25)" title="縮小">－</button>
+                    <button type="button" id="tScanZoomLbl" onclick="zoomTScan(0)" title="符合寬度">100%</button>
+                    <button type="button" onclick="zoomTScan(0.25)" title="放大">＋</button>
+                    <button type="button" onclick="toggleTScanPanel(false)" title="關閉對照">關閉</button>
+                </span>
+            </div>
+            <div id="tScanPanelBody" class="tsp-body"><img id="tScanPanelImg" alt="掃描原圖"></div>
         </div>
     </div>
     <div id="newFeatureGuideModal" style="display:none; position:fixed; inset:0; background:rgba(2,6,23,0.92); backdrop-filter:blur(8px); z-index:100050; align-items:center; justify-content:center; padding:15px;">
@@ -3410,7 +3525,22 @@
     </div>
 
     <div id="toast"
-        style="position:fixed; top:15px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.95); color:white; padding:12px 28px; border-radius:30px; display:none; z-index:100000; box-shadow:0 8px 25px rgba(0,0,0,0.5); font-weight:bold; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.2); white-space:nowrap;">
+        style="position:fixed; top:15px; left:50%; transform:translateX(-50%); background:rgba(15,23,42,0.95); color:white; padding:12px 28px; border-radius:30px; display:none; z-index:100000; box-shadow:0 8px 25px rgba(0,0,0,0.5); font-weight:bold; backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.2); white-space:pre-line; max-width:90vw; text-align:center; line-height:1.5;">
+    </div>
+
+    <!-- P1: 全局自訂對話框 (保證 Iframe 宿主下 100% 互動，替代被瀏覽器阻擋的 window.alert/prompt) -->
+    <div id="appDialogOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); z-index:100030; align-items:center; justify-content:center;">
+        <div style="background:#0f172a; border:1px solid #334155; border-radius:16px; padding:24px; max-width:460px; width:90%; box-shadow:0 20px 40px rgba(0,0,0,0.6); color:white; box-sizing:border-box;">
+            <div id="appDialogTitle" style="font-size:16px; font-weight:700; margin-bottom:12px; display:flex; align-items:center; gap:8px; color:#f8fafc;"></div>
+            <div id="appDialogText" style="font-size:14px; color:#cbd5e1; line-height:1.6; white-space:pre-line; margin-bottom:16px; max-height:60vh; overflow-y:auto;"></div>
+            <div id="appDialogInputWrap" style="display:none; margin-bottom:16px;">
+                <input id="appDialogInput" type="text" readonly style="width:100%; padding:10px 12px; background:#1e293b; border:1px solid #475569; border-radius:8px; color:#38bdf8; font-size:13px; font-family:monospace; box-sizing:border-box; outline:none;">
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button id="appDialogCopyBtn" type="button" style="display:none; padding:8px 16px; background:#0284c7; color:white; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">📋 複製內容</button>
+                <button id="appDialogOkBtn" type="button" style="padding:8px 20px; background:#3b82f6; color:white; border:none; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer;">確認</button>
+            </div>
+        </div>
     </div>
 
     <!-- V35.2: Premium AI Scan Overlay (全面升級版) -->
@@ -4187,6 +4317,7 @@
         function showLoginOverlay() {
             const overlay = document.getElementById('loginOverlay');
             if (!overlay) return;
+            overlay.classList.remove('checking'); // V43.55: 確定要登入才顯示登入框
             if (window.TTSGoogle) TTSGoogle.autoLine({ app: 'admin', onSuccess: function (res) { setAdminToken(res.token); showMeBar(res); hideLoginOverlayAndStart(); } });
             overlay.style.display = '';
             overlay.style.opacity = '1';
@@ -4261,6 +4392,7 @@
             initMatrixRain();
             refreshData();
             setInterval(refreshData, 30000);
+            document.addEventListener('visibilitychange', function () { if (!document.hidden) refreshData(); });
             window.isDirty = false;
             window.lastClickedTaskId = null; // 追蹤最後點擊的任務 ID
             window.itineraryViewMode = 'driver'; // V36.7: 預設司機別檢視
@@ -4443,6 +4575,8 @@
                     .withSuccessHandler(r => { if (r && r.valid) { if (r.renewed) setAdminToken(r.renewed); showMeBar(r); hideLoginOverlayAndStart(true); } else { setAdminToken(''); showLoginOverlay(); } })
                     .withFailureHandler(() => showLoginOverlay())
                     .checkAdminSession(tok);
+                // V43.55: 超過 8 秒還沒確認完 (網路慢)：先把登入框顯示出來，確認有效了仍會自動收起
+                setTimeout(() => { const ov = document.getElementById('loginOverlay'); if (ov && ov.classList.contains('checking') && !window.__mainStarted) showLoginOverlay(); }, 8000);
             } else {
                 showLoginOverlay();
             }
@@ -4472,12 +4606,18 @@
                 return;
             }
 
+            // V43.56: 背景分頁不輪詢；上一次請求還沒回來(45 秒內)不再疊加新請求，避免後端變慢時越堆越多
+            if (!force && document.hidden) return;
+            if (!force && window.__rdBusy && Date.now() - window.__rdBusy < 45000) return;
             if (force) showToast("🔄 正在從試算表強制同步最新資料...");
             if (!ATOKEN()) { showLoginOverlay(); return; }
+            window.__rdBusy = Date.now();
 
             google.script.run.withFailureHandler(err => {
+                window.__rdBusy = 0;
                 if (!handleAuthError(err)) console.error('getWarRoomData_V11 failed:', err);
             }).withSuccessHandler(res => {
+                window.__rdBusy = 0;
                 if (!res || !res.success) { if (res && res.error) handleAuthError(res.error); return; }
                 allTasks = Array.isArray(res.tasks) ? res.tasks : [];
                 vehicles = Array.isArray(res.vehicles) ? res.vehicles : [];
@@ -4816,16 +4956,16 @@
                             navigator.clipboard.writeText(res.paramUrl)
                                 .then(() => showToast(`✅ 已複製 ${name} 的連結！`))
                                 .catch(() => {
-                                    prompt(`📋 請手動複製 ${name} 的連結：`, res.paramUrl);
+                                    showAppPrompt(`請複製下方 ${name} 的專屬連結：`, res.paramUrl);
                                 });
                         } else {
-                            prompt(`📋 請手動複製 ${name} 的連結：`, res.paramUrl);
+                            showAppPrompt(`請複製下方 ${name} 的專屬連結：`, res.paramUrl);
                         }
                     } else if (res && res.error) {
-                        alert("❌ 產生失敗: " + res.error);
+                        showAppAlert("產生失敗: " + res.error, "❌ 錯誤");
                     }
                 })
-                .withFailureHandler(err => alert("❌ 系統錯誤: " + err))
+                .withFailureHandler(err => showAppAlert("系統錯誤: " + err, "❌ 系統錯誤"))
                 .generateParamUrlForDriver(name, ATOKEN());
         }
 
@@ -4876,7 +5016,7 @@
 
         function selectCar(name, opts) {
             if (window.isDirty) {
-                alert("⚠️ 尚有未儲存的排序，請先儲存或重新載入");
+                showToast("⚠️ 尚有未儲存的排序，請先儲存或重新載入");
                 return;
             }
             // V41.22: 「再點同一列 = 取消選取」改由呼叫端明確告知 (setTimeout 內沒有全域 event)
@@ -4895,6 +5035,14 @@
 
             if (selectedCar) {
                 showRoute(selectedCar);
+                // V43.39: 將選中的車輛標記提升至最上層
+                if (carMarkers && carMarkers.length) {
+                    carMarkers.forEach(cm => {
+                        if (cm && cm.setZIndexOffset) {
+                            cm.setZIndexOffset(cm.__vehicle === selectedCar ? 1000 : 0);
+                        }
+                    });
+                }
                 // V5.1.11: 點擊車輛改為對焦「任務群集」而非「車輛位置」(除非無任務)
                 const carTasks = allTasks.filter(t => t.vehicle === selectedCar && t.status !== '已完成' && t.lat && t.lng);
                 if (carTasks.length > 0) {
@@ -4905,6 +5053,9 @@
                     if (pos && pos.lat && pos.lng) map.setView([pos.lat, pos.lng], 15);
                 }
             } else {
+                if (carMarkers && carMarkers.length) {
+                    carMarkers.forEach(cm => { if (cm && cm.setZIndexOffset) cm.setZIndexOffset(0); });
+                }
                 if (routeLine) map.removeLayer(routeLine);
                 if (arrowsLayer) map.removeLayer(arrowsLayer);
                 if (traceLine) map.removeLayer(traceLine);
@@ -5279,7 +5430,7 @@
             const maxWeight = parseFloat(v.capacity) || 0;
 
             if (maxWeight > 0 && currentLoad + taskWeight > maxWeight) {
-                alert(`❌ 指派失敗：超過防呆載重限制！\n\n🚛 車輛耐重：${maxWeight} kg\n📦 目前已載：${currentLoad.toFixed(0)} kg\n➕ 此單重量：${taskWeight} kg`);
+                showAppAlert(`🚛 車輛耐重：${maxWeight} kg\n📦 目前已載：${currentLoad.toFixed(0)} kg\n➕ 此單重量：${taskWeight} kg\n\n⚠️ 總重達 ${(currentLoad + taskWeight).toFixed(0)} kg，已超重！`, "❌ 指派失敗：超過防呆載重限制！");
                 return;
             }
 
@@ -5391,7 +5542,7 @@
             showToast('取消指派中...');
             const t = allTasks.find(x => x.id === id);
             const branch = t ? t.branch : "";
-            if (!branch) { alert("❌ 無法取得分公司資訊，取消失敗"); return; }
+            if (!branch) { showToast("❌ 無法取得分公司資訊，取消失敗"); return; }
             google.script.run
                 .withFailureHandler(err => showToast("❌ 取消失敗: " + err.message))
                 .withSuccessHandler(res => {
@@ -5760,18 +5911,53 @@
             });
 
             if (layerShowsVehicles) {
+                // V43.39: 為同地點或極近距離 (如總倉) 的車輛群組分層，以階梯式垂直向上偏移，徹底避免車輛卡片互相重疊遮蔽
+                const posGroups = {};
                 carPositions.forEach(p => {
                     if (!p.lat || !p.lng) return;
-
-                    // ⚡️ V5.6.8: 只要有訊號就顯示（司機登入即可），不限制配送狀態
-                    // 沒有時間、時間無效、或超過 240 分鐘 (4 小時) 沒回報 → 地圖上不顯示這台車
                     const posAge = carPosAge_(p, nowTime);
                     if (!posAge.updTime || posAge.ageMin > 240) return;
                     p.__ageMin = posAge.ageMin;
 
+                    let groupKey = null;
+                    for (const k of Object.keys(posGroups)) {
+                        const [gLat, gLng] = k.split(',').map(Number);
+                        if (Math.abs(p.lat - gLat) < 0.00045 && Math.abs(p.lng - gLng) < 0.00045) {
+                            groupKey = k;
+                            break;
+                        }
+                    }
+                    if (!groupKey) {
+                        groupKey = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                        posGroups[groupKey] = [];
+                    }
+                    posGroups[groupKey].push(p);
+                });
+
+                // P3: 對每個同點車輛群組進行確定性排序 (依車牌/車輛代號固定排序)，防範 GPS 邊界小幅漂移或輪詢順序變動導致卡片階梯層次抖動
+                Object.keys(posGroups).forEach(k => {
+                    posGroups[k].sort((a, b) => String(a.vehicle || '').localeCompare(String(b.vehicle || '')));
+                });
+
+                carPositions.forEach(p => {
+                    if (!p.lat || !p.lng || p.__ageMin === undefined) return;
+
                     const carColor = getCarColor(p.vehicle);
                     const v = vehicles.find(vh => vh.name === p.vehicle);
                     const driverName = v ? v.driver : p.vehicle;
+
+                    // 計算在同地點群組中的順序，以階梯式垂直向上偏移，避免遮蔽
+                    const groupKey = Object.keys(posGroups).find(k => posGroups[k].includes(p));
+                    const group = groupKey ? posGroups[groupKey] : [p];
+                    const groupIdx = group.indexOf(p);
+                    const groupTotal = group.length;
+
+                    let cardOffsetStyle = '';
+                    if (groupTotal > 1) {
+                        const bottomOffset = 14 + (groupIdx * 54);
+                        const xOffset = groupTotal > 2 ? ((groupIdx % 2 === 0 ? -1 : 1) * 16) : 0;
+                        cardOffsetStyle = `bottom:${bottomOffset}px !important; transform:translateX(calc(-50% + ${xOffset}px)) !important; z-index:${10 + groupIdx};`;
+                    }
 
                     // V41.13: 標記卡 — 名字 + 進度(已送/總站) + 下一站路名 + 預估分鐘；訊號超過 20 分鐘變灰並標示
                     const todayList = allTasks.filter(t => t.vehicle === p.vehicle && (t.date === dToday || !t.date) && t.status !== '已取消');
@@ -5802,7 +5988,7 @@
                         : (stopsAll.size && doneCnt >= stopsAll.size ? '<span style="color:#22c55e;">✓ 今日完成<\/span>' : '<span style="color:#64748b;">待出發<\/span>');
                     const icon = L.divIcon({
                         className: 'car-icon',
-                        html: `<div class="car-card${stale ? ' stale' : ''}" style="border-color:${carColor};">
+                        html: `<div class="car-card${stale ? ' stale' : ''}" style="border-color:${carColor}; ${cardOffsetStyle}">
                                  <div class="car-card-name"><span class="car-card-dot" style="background:${carColor}; box-shadow:0 0 8px ${carColor};"><\/span>${escapeHTML(driverName)} <span class="car-card-prog" title="已完成站數 / 總站數 (同地點多單算一站)">${doneCnt}/${stopsAll.size}<\/span><\/div>
                                  <div class="car-card-next">${nextLine}<\/div>
                                  ${lost ? `<div class="car-card-age" style="color:#f87171;font-weight:900;">📵 ${ageMin} 分鐘沒定位<\/div>` : stale ? `<div class="car-card-age">最後回報 ${ageMin} 分前<\/div>` : ''}
@@ -5860,6 +6046,10 @@
 
                         showETABubble(`<div style="line-height:1.6;"><b>🚚 車輛：${p.vehicle}<\/b><br>司機：${driverName}<br>${targetActionDesc}${etaInfo}${updateDesc}<\/div>`);
                     });
+                    m.__vehicle = p.vehicle;
+                    if (selectedCar && p.vehicle === selectedCar) {
+                        m.setZIndexOffset(1000);
+                    }
                     carMarkers.push(m);
                 });
             }
@@ -5876,15 +6066,15 @@
 
 
         function doDispatch() {
-            if (!selectedCar) return alert("請先挑選車輛");
+            if (!selectedCar) return showToast("⚠️ 請先挑選車輛");
             const checks = Array.from(document.querySelectorAll('input[name="tCheck"]:checked'));
             // P1: 批次指派也加入狀態快照，供樂觀鎖檢查
             const tasksData = checks.map(c => {
                 const t = allTasks.find(x => x.id === c.value);
                 return { id: c.value, branch: t ? t.branch : "", v: t ? (t.vehicle || "") : "", s: t ? t.status : "", r: t ? t.rowIndex : -1 };
             });
-            if (tasksData.some(tk => !tk.branch)) return alert("❌ 錯誤：有勾選單據缺少分公司資訊，請重整頁面。");
-            if (tasksData.length === 0) return alert("請勾選任務");
+            if (tasksData.some(tk => !tk.branch)) return showAppAlert("有勾選單據缺少分公司資訊，請重整頁面後再試。", "❌ 錯誤");
+            if (tasksData.length === 0) return showToast("⚠️ 請勾選任務");
 
             // 批次超重檢查 (V11.12.3)
             const v = vehicles.find(vh => vh.name === selectedCar);
@@ -5920,10 +6110,10 @@
             });
             setLoading(true);
             google.script.run
-                .withFailureHandler(err => { setLoading(false); alert("❌ 排序失敗: " + err.message); })
+                .withFailureHandler(err => { setLoading(false); showToast("❌ 排序失敗: " + err.message); })
                 .withSuccessHandler(res => {
                     setLoading(false);
-                    alert(res);
+                    showToast(res);
                     window.isDragging = false;
                     window.isDirty = false;
                     refreshData();
@@ -6033,6 +6223,7 @@
                 boxes: document.getElementById('tBoxes').value,
                 notes: document.getElementById('tNotes').value,
                 assignedSales: document.getElementById('tSalesAssign') ? document.getElementById('tSalesAssign').value : "",
+                orderId: _tScanOrderId, // V43.49: 掃描帶入的單號 (沒掃描就空白，後端自動編 T 開頭臨時單號)
                 items: JSON.stringify(collectTItems())
             };
 
@@ -6091,6 +6282,7 @@
 
         function openModal() {
             document.getElementById('tempModal').style.display = 'flex';
+            _tScanOrderId = ''; _tScanImg = ''; resetTScanPanelPos(); setTScanInfo('一次一張，辨識後自動帶入欄位', '#64748b');
             resetTItems();
             const dlVehicles = document.getElementById('datalist-vehicles');
             if (dlVehicles) {
@@ -6110,28 +6302,29 @@
             if (tSalesSel) tSalesSel.value = "";
         }
 
-        // 🌟 動態依分公司填充業務選單 (增強型模糊比對)
+        // 🌟 動態依分公司填充業務選單 (後端 branchSalesMap 只含白名單身分類型=業務；增強型模糊比對)
         function updateSalesAssignDropdown() {
             const branch = document.getElementById('tBranch').value;
-            const dlSales = document.getElementById('datalist-sales');
-            if (!dlSales) return;
-            dlSales.innerHTML = '';
+            const sel = document.getElementById('tSalesAssign');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">(不指派)<\/option>';
 
-            if (!window.branchSalesMap) return;
-
-            // 嘗試各種可能的匹配模式：精準配對、包含分公司字眼、或是被包含
-            let list = window.branchSalesMap[branch] || [];
-            if (list.length === 0) {
-                const keys = Object.keys(window.branchSalesMap);
-                const matchedKey = keys.find(k => k.indexOf(branch) !== -1 || branch.indexOf(k) !== -1);
-                if (matchedKey) list = window.branchSalesMap[matchedKey];
+            if (window.branchSalesMap) {
+                // 嘗試各種可能的匹配模式：精準配對、包含分公司字眼、或是被包含
+                let list = window.branchSalesMap[branch] || [];
+                if (list.length === 0) {
+                    const keys = Object.keys(window.branchSalesMap);
+                    const matchedKey = keys.find(k => k.indexOf(branch) !== -1 || branch.indexOf(k) !== -1);
+                    if (matchedKey) list = window.branchSalesMap[matchedKey];
+                }
+                list.forEach(name => {
+                    const o = document.createElement('option');
+                    o.value = name; o.textContent = name;
+                    sel.appendChild(o);
+                });
             }
-
-            list.forEach(name => {
-                dlSales.innerHTML += `<option value="${escapeHTML(name)}"><\/option>`;
-            });
             // 預設不指派
-            document.getElementById('tSalesAssign').value = "";
+            sel.value = "";
             handleSalesAssignChange();
         }
 
@@ -6148,7 +6341,195 @@
                 tVeh.style.opacity = 1;
             }
         }
-        function closeModal() { document.getElementById('tempModal').style.display = 'none'; }
+        // ===== V43.49: 新增任務視窗「掃描訂單」(一次一張) =====
+        let _tScanOrderId = '', _tScanImg = '', _tScanZoom = 1;
+        function setTScanInfo(text, color, clickable) {
+            const el = document.getElementById('tScanInfo');
+            if (!el) return;
+            el.textContent = text; el.style.color = color || '#64748b';
+            el.classList.toggle('tsi-link', !!clickable);
+            el.onclick = clickable ? () => toggleTScanPanel() : null;
+            el.title = clickable ? '點擊對照掃描原圖' : '';
+        }
+        // 對照面板：圖在右、表單在左，高度跟表單對齊
+        function toggleTScanPanel(force) {
+            const panel = document.getElementById('tScanPanel');
+            if (!panel) return;
+            const open = (typeof force === 'boolean') ? force : !panel.classList.contains('open');
+            if (open && !_tScanImg) return;
+            if (open) {
+                initTScanPanelDrag();
+                const body = document.querySelector('#tempModal .modal-body');
+                if (!panel.classList.contains('floating')) panel.style.height = body ? Math.min(body.offsetHeight, window.innerHeight - 71) + 'px' : '';
+                document.getElementById('tScanPanelImg').src = _tScanImg;
+                document.getElementById('tScanPanelTitle').textContent = '掃描原圖' + (_tScanOrderId ? '　' + _tScanOrderId : '');
+                _tScanZoom = 1; applyTScanZoom();
+            }
+            panel.classList.toggle('open', open);
+        }
+        // V43.51: 對照面板可用標題列拖到任意位置 (拖了就變浮動視窗)，圖放大後可直接按住拖動平移
+        let _tScanDragInit = false;
+        function initTScanPanelDrag() {
+            if (_tScanDragInit) return;
+            const panel = document.getElementById('tScanPanel');
+            if (!panel) return;
+            _tScanDragInit = true;
+            const head = panel.querySelector('.tsp-head');
+            let drag = null;
+            head.addEventListener('pointerdown', e => {
+                if (e.target.closest('button')) return;
+                const r = panel.getBoundingClientRect();
+                panel.classList.add('floating');
+                panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px';
+                panel.style.width = r.width + 'px'; panel.style.height = r.height + 'px';
+                drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+                try { head.setPointerCapture(e.pointerId); } catch (err) { }
+                e.preventDefault();
+            });
+            head.addEventListener('pointermove', e => {
+                if (!drag) return;
+                // 上緣至少 63px：外殼頁 iframe 上推 55px，標題列不能被拖到看不到的地方
+                const x = Math.min(Math.max(-panel.offsetWidth + 80, e.clientX - drag.dx), window.innerWidth - 80);
+                const y = Math.min(Math.max(63, e.clientY - drag.dy), window.innerHeight - 40);
+                panel.style.left = x + 'px'; panel.style.top = y + 'px';
+            });
+            const end = () => { drag = null; };
+            head.addEventListener('pointerup', end); head.addEventListener('pointercancel', end);
+
+            const body = document.getElementById('tScanPanelBody');
+            let pan = null;
+            body.addEventListener('pointerdown', e => {
+                pan = { x: e.clientX, y: e.clientY, sl: body.scrollLeft, st: body.scrollTop };
+                body.classList.add('panning');
+                try { body.setPointerCapture(e.pointerId); } catch (err) { }
+            });
+            body.addEventListener('pointermove', e => {
+                if (!pan) return;
+                body.scrollLeft = pan.sl - (e.clientX - pan.x); body.scrollTop = pan.st - (e.clientY - pan.y);
+            });
+            const endPan = () => { pan = null; body.classList.remove('panning'); };
+            body.addEventListener('pointerup', endPan); body.addEventListener('pointercancel', endPan);
+        }
+        function resetTScanPanelPos() {
+            const panel = document.getElementById('tScanPanel');
+            if (!panel) return;
+            panel.classList.remove('floating', 'open');
+            ['left', 'top', 'width', 'height'].forEach(k => { panel.style[k] = ''; });
+        }
+        function applyTScanZoom() {
+            document.getElementById('tScanPanelImg').style.width = Math.round(_tScanZoom * 100) + '%';
+            document.getElementById('tScanZoomLbl').textContent = Math.round(_tScanZoom * 100) + '%';
+        }
+        function zoomTScan(delta) {
+            _tScanZoom = delta === 0 ? 1 : Math.min(4, Math.max(0.5, _tScanZoom + delta));
+            applyTScanZoom();
+        }
+        function scanTempOrder(ev) {
+            const input = ev.target;
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const btn = document.getElementById('tScanBtn');
+            const txt = document.getElementById('tScanBtnTxt');
+            const done = () => { btn.disabled = false; btn.style.opacity = 1; txt.textContent = '掃描訂單'; input.value = ''; };
+            btn.disabled = true; btn.style.opacity = 0.6; txt.textContent = '辨識中…';
+            setTScanInfo('辨識中，請稍候…', '#38bdf8');
+            const reader = new FileReader();
+            reader.onerror = () => { done(); setTScanInfo('❌ 讀取圖片失敗', '#ef4444'); };
+            reader.onload = function (evt) {
+                const img = new Image();
+                img.onerror = () => { done(); setTScanInfo('❌ 圖片格式無法辨識', '#ef4444'); };
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width, h = img.height;
+                    const max = 1200;
+                    if (w > max || h > max) {
+                        if (w > h) { h = Math.round(h * max / w); w = max; }
+                        else { w = Math.round(w * max / h); h = max; }
+                    }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    const scanDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const b64 = scanDataUrl.split(',')[1];
+                    google.script.run
+                        .withSuccessHandler(res => {
+                            done();
+                            if (!res || !res.success) {
+                                const msg = (res && res.error) || '辨識失敗';
+                                setTScanInfo('❌ ' + msg, '#ef4444'); showToast('❌ 辨識失敗: ' + msg);
+                                return;
+                            }
+                            _tScanImg = scanDataUrl;
+                            fillTempFormFromOcr(res.data || {});
+                        })
+                        .withFailureHandler(err => {
+                            done();
+                            setTScanInfo('❌ 伺服器通訊錯誤', '#ef4444'); showToast('❌ 伺服器通訊錯誤: ' + (err && err.message ? err.message : err));
+                        })
+                        .processVisionOcr_Backend(b64, document.getElementById('tBranch').value, ATOKEN());
+                };
+                img.src = evt.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+        // 把辨識結果帶入表單；業務只帶「白名單業務」(後端已驗證 assignedSales)，小姐/對不到的不帶並提示
+        function fillTempFormFromOcr(d) {
+            const $ = id => document.getElementById(id);
+            // 分公司 (連動重建業務下拉)
+            const br = String(d.branch || '').trim();
+            if (br) {
+                const opt = Array.from($('tBranch').options).find(o => o.value === br || br.indexOf(o.value) !== -1 || o.value.indexOf(br) !== -1);
+                if (opt) $('tBranch').value = opt.value;
+            }
+            updateSalesAssignDropdown();
+
+            $('tCust').value = d.customerName || '';
+            $('tAddr').value = d.address || '';
+            $('tContact').value = d.contactName || '';
+            $('tPhone').value = d.phone || '';
+            $('tTimeSlot').value = d.etaTime || '';
+            $('tWeight').value = d.weight || 0;
+            $('tSize').value = d.size || '';
+            const bx = parseInt(String(d.boxes || '').replace(/\D/g, ''), 10);
+            $('tBoxes').value = bx > 0 ? bx : 1;
+            $('tNotes').value = d.note || '';
+            $('tType').value = '送貨';
+            const fa = $('tForceArrive');
+            if (fa && fa.checked) { fa.checked = false; toggleForceArrive('tForceArrive', 'tForceArriveWrap'); }
+
+            // 品項明細
+            resetTItems();
+            const items = Array.isArray(d.items) ? d.items : [];
+            items.forEach((it, i) => {
+                if (i >= 3) addTItemRow();
+                const codes = document.querySelectorAll('.t-item-code'), qtys = document.querySelectorAll('.t-item-qty');
+                if (codes[i]) codes[i].value = it.code || '';
+                if (qtys[i]) qtys[i].value = it.qty || '';
+            });
+
+            // 單號：沿用單據上的單號 (後端會補分公司後綴；沒讀到就留空 → 自動編臨時單號)
+            _tScanOrderId = String(d.orderId || '').trim();
+
+            // 業務：只帶白名單業務
+            const sales = String(d.assignedSales || '').trim();
+            const sel = $('tSalesAssign');
+            if (sales && sel) {
+                sel.value = sales;
+                if (sel.value !== sales) { // 名單裡沒有 (理論上不會發生)：補一個選項
+                    const o = document.createElement('option'); o.value = sales; o.textContent = sales; sel.appendChild(o); sel.value = sales;
+                }
+                handleSalesAssignChange();
+            } else if (d.salesName) {
+                showToast('單據業務「' + d.salesName + '」不是白名單業務，未帶入指派');
+            }
+
+            updateTempFreightEstimate();
+            // 右上角只秀單號 (沒單號就顯示「查看原圖」)，點了開啟右側對照面板
+            setTScanInfo(_tScanOrderId ? '單號 ' + _tScanOrderId : '查看原圖', '#22c55e', true);
+            const panel = document.getElementById('tScanPanel');
+            if (panel && panel.classList.contains('open')) toggleTScanPanel(true); // 面板已開著：換成新的一張
+        }
+
+        function closeModal() { document.getElementById('tempModal').style.display = 'none'; _tScanOrderId = ''; _tScanImg = ''; resetTScanPanelPos(); setTScanInfo('一次一張，辨識後自動帶入欄位', '#64748b'); }
         function closePickCar() { document.getElementById('pickCarModal').style.display = 'none'; }
 
         let _tItemCount = 3;
@@ -6188,6 +6569,42 @@
             document.getElementById('tItemsAddBtn').style.display = '';
         }
 
+        // P1: 全局自訂對話框與 Toast 模組 (保證 Iframe 環境 100% 互動，絕不遭瀏覽器攔截)
+        function showAppAlert(msg, title) {
+            const overlay = document.getElementById('appDialogOverlay');
+            if (!overlay) { showToast(msg); return; }
+            document.getElementById('appDialogTitle').innerText = title || '⚠️ 系統提示';
+            document.getElementById('appDialogText').innerText = msg;
+            document.getElementById('appDialogInputWrap').style.display = 'none';
+            document.getElementById('appDialogCopyBtn').style.display = 'none';
+            overlay.style.display = 'flex';
+            document.getElementById('appDialogOkBtn').onclick = () => { overlay.style.display = 'none'; };
+        }
+
+        function showAppPrompt(msg, defaultVal, title) {
+            const overlay = document.getElementById('appDialogOverlay');
+            if (!overlay) { showToast(msg); return; }
+            document.getElementById('appDialogTitle').innerText = title || '📋 專屬連結';
+            document.getElementById('appDialogText').innerText = msg;
+            const inpWrap = document.getElementById('appDialogInputWrap');
+            const inp = document.getElementById('appDialogInput');
+            const copyBtn = document.getElementById('appDialogCopyBtn');
+            inpWrap.style.display = 'block';
+            inp.value = defaultVal || '';
+            copyBtn.style.display = 'inline-block';
+            overlay.style.display = 'flex';
+            copyBtn.onclick = () => {
+                inp.select();
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(inp.value).then(() => showToast('✅ 已複製到剪貼簿！'));
+                } else {
+                    document.execCommand('copy');
+                    showToast('✅ 已複製到剪貼簿！');
+                }
+            };
+            document.getElementById('appDialogOkBtn').onclick = () => { overlay.style.display = 'none'; };
+        }
+
         // V11.12: Toast 通知 (非阻斷式提示)
         function showToast(msg) {
             // V41: 後端任何回傳含 AUTH_REQUIRED 的訊息 → 自動回到登入畫面 (避免每個呼叫點各自處理)
@@ -6197,10 +6614,10 @@
                 if (String(msg).indexOf('AUTH_REQUIRED') !== -1) { handleAuthError(msg); return; }
             }
             const t = document.getElementById('toast');
-            if (!t) { alert(msg); return; }
+            if (!t) return;
             t.innerText = msg;
             t.style.display = 'block';
-            setTimeout(() => t.style.display = 'none', 3000);
+            setTimeout(() => t.style.display = 'none', 3500);
         }
 
         // V11.12: AI 規劃模式切換
@@ -6554,7 +6971,7 @@
                     showToast("✅ 文字解析成功！已加入下方列表。");
                     updateBatchBtnStatus(); // 更新按鈕狀態
                 } else {
-                    alert("解析失敗: 無法識別訂單結構，請檢查內容格式。");
+                    showAppAlert("無法識別訂單結構，請檢查內容格式。", "❌ 文字解析失敗");
                 }
             }).parseOcrToOrder_V2(cleanText, currentBranch);
         }
@@ -6601,7 +7018,7 @@
                                 appendOcrResultToTable(res.data, thumbB64, res.rawText, fullB64);
                             } else {
                                 // V5.2.9: 提升錯誤顯示等級，讓使用者看到具體原因 (如同 API Key 遺失或配額問題)
-                                alert("❌ 辨識失敗 (" + file.name + "): " + res.error);
+                                showToast("❌ 辨識失敗 (" + file.name + "): " + res.error);
                                 markAiScanDone(currentIdx);
                             }
                             ocrInFlight--;
@@ -6609,7 +7026,7 @@
                         })
                         .withFailureHandler(err => {
                             console.error("Backend Error: " + err.message);
-                            alert("❌ 伺服器通訊錯誤 (" + file.name + "): " + err.message);
+                            showToast("❌ 伺服器通訊錯誤 (" + file.name + "): " + err.message);
                             markAiScanDone(currentIdx);
                             ocrInFlight--;
                             setTimeout(processNextInQueue, 120);
@@ -6727,7 +7144,7 @@
                         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:3px;">
                             <button class="btn" id="${rowId}-salesBtn" title="業務" style="background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); color:var(--text-tertiary); padding:3px 0; font-size:10px; border-radius:4px; cursor:pointer;" onclick="toggleSalesModeUI('${rowId}')" data-active="false">業務<\/button>
                             <button class="btn" style="background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); color:var(--text-tertiary); padding:3px 0; font-size:10px; border-radius:4px; cursor:pointer;" onclick="showRawOcrText('${rowId}')">原文<\/button>
-                            <button class="btn" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#ef4444; padding:3px 0; font-size:10px; border-radius:4px; font-weight:700; cursor:pointer;" onclick="removeOcrRow('${rowId}')">移除<\/button>
+                            <button class="btn" style="background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.4); color:#ef4444; padding:3px 0; font-size:10px; border-radius:4px; font-weight:700; cursor:pointer;" onclick="deleteRowAiOcr('${rowId}')">移除<\/button>
                         <\/div>
                     <\/div>
                 <\/td>
@@ -7007,7 +7424,7 @@
             const addr = (document.getElementById('loc-address')?.value || '').trim();
 
             if (!sName || !addr) {
-                return alert('⚠️ 請填寫指送簡稱與完整地址！');
+                return showToast('⚠️ 請填寫指送簡稱與完整地址！');
             }
 
             const btn = document.getElementById('saveLocBtn');
@@ -7020,19 +7437,19 @@
                     btn.disabled = false;
                     btn.innerText = origText;
                     if (res && res.success) {
-                        alert('✅ ' + res.message);
+                        showToast('✅ ' + res.message);
                         document.getElementById('loc-short').value = '';
                         document.getElementById('loc-fullname').value = '';
                         document.getElementById('loc-address').value = '';
                         closeAddLocationModal();
                     } else {
-                        alert('⚠️ 寫入失敗：' + ((res && res.error) || '未知錯誤'));
+                        showAppAlert('寫入失敗：' + ((res && res.error) || '未知錯誤'), '⚠️ 儲存失敗');
                     }
                 })
                 .withFailureHandler(function (err) {
                     btn.disabled = false;
                     btn.innerText = origText;
-                    alert('⚠️ 系統錯誤：' + err.message);
+                    showAppAlert('系統錯誤：' + err.message, '⚠️ 連線異常');
                 })
                 .addCommonLocation_V41(sName, fName, addr, ATOKEN());
         }
@@ -7273,7 +7690,7 @@
             };
 
             if (!data.orderId || !data.customerName || !data.address) {
-                return alert("請填寫必要欄位：單號、客戶名稱、地址");
+                return showToast("⚠️ 請填寫必要欄位：單號、客戶名稱、地址");
             }
 
             // 🌟 按鈕端點特效啟用
@@ -7313,7 +7730,7 @@
                                     btn.innerHTML = originalHTML;
                                     btn.style.background = originalBg;
                                 }
-                                alert("儲存失敗：" + res.error);
+                                showAppAlert("儲存失敗：" + res.error, "⚠️ 儲存失敗");
                             }
                         })
                         .withFailureHandler(err => {
@@ -7322,7 +7739,7 @@
                                 btn.innerHTML = originalHTML;
                                 btn.style.background = originalBg;
                             }
-                            alert("❌ 系統連線異常: " + err);
+                            showAppAlert("系統連線異常: " + err, "❌ 連線異常");
                         })
                         .upsertOrderFromOcr_V2(data, ATOKEN());
                 }

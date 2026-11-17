@@ -937,8 +937,11 @@
 
         .driver-img-shell {
             width: min(96vw, 920px);
-            height: min(92vh, 92vh);
-            margin: 0 auto;
+            /* V43.44: 外殼頁 iframe 上推 55px，擁有者登入時頁面頂端 55px 在螢幕外 → 上方留 63px，標題列(重置/關閉)才看得到 */
+            /* V43.47: 高度跟著圖片比例 (橫式銷貨單矮、直式簽收單高)，上限不超出畫面 */
+            max-height: calc(100vh - 83px);
+            max-height: calc(100dvh - 83px);
+            margin: auto;
             background: #0f172a;
             border: 1px solid rgba(56, 189, 248, 0.35);
             border-radius: 16px;
@@ -949,7 +952,8 @@
         }
 
         .driver-img-stage {
-            flex: 1;
+            flex: none;
+            height: 40vh; /* 圖片載入前的預設，載入後由 fitDriverImageStage 依圖片比例設定 */
             position: relative;
             overflow: hidden;
             background: #000;
@@ -999,8 +1003,8 @@
         .driver-img-btn {
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 8px;
-            padding: 6px 10px;
-            font-size: 12px;
+            padding: 9px 16px;
+            font-size: 14px;
             font-weight: 900;
             cursor: pointer;
         }
@@ -1244,6 +1248,10 @@
             align-items: stretch;
             box-shadow: 0 10px 40px rgba(0,0,0,0.4);
         }
+        /* V43.42: 遲到原因彈窗 (超過指定到貨時間 30 分鐘才跳出) */
+        .late-reason-btn { width: 100%; padding: 13px 12px; margin-top: 8px; border-radius: 12px; border: 1.5px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: var(--text-primary); font-size: 15px; font-weight: 700; text-align: left; cursor: pointer; }
+        .late-reason-btn.sel { border-color: #ef4444; background: rgba(239,68,68,0.18); color: #fff; }
+        .late-reason-btn:active { transform: scale(0.97); }
         .sign-confirm-title { font-size: 17px; font-weight: 900; color: var(--text-primary); text-align: center; }
         .sign-confirm-hint { font-size: 13px; color: var(--text-tertiary); margin-top: 14px; text-align: center; }
         .sign-choice-btn.armed.sign-choice-yes {
@@ -2304,6 +2312,18 @@
             </div>
         </div>
 
+        <!-- V43.42: 遲到超過 30 分鐘必須選原因才能送出 (同址只問一次) -->
+        <div id="late-reason-overlay" class="sign-confirm-overlay">
+            <div class="sign-confirm-box" style="padding:20px 14px;">
+                <div class="sign-confirm-title" id="lateReasonTitle">已超過指定時間</div>
+                <div class="sign-confirm-hint" style="margin-top:6px;">請選擇遲到原因</div>
+                <div id="lateReasonList"></div>
+                <input id="lateReasonOther" type="text" maxlength="40" placeholder="請輸入原因" style="display:none; margin-top:8px; width:100%; box-sizing:border-box; padding:12px; border-radius:12px; border:1.5px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.25); color:#fff; font-size:15px;">
+                <button type="button" id="lateReasonOk" class="btn-submit" style="margin-top:14px;" onclick="confirmLateReason()">確認並送出</button>
+                <button type="button" class="btn-cancel" style="margin-top:6px;" onclick="closeLateReason()">取消，我再檢查一下</button>
+            </div>
+        </div>
+
         <!-- V6.6: Next Station Selection Overlay -->
         <div id="next-station-overlay" class="overlay">
             <div class="ov-head">✅ 配送完成！</div>
@@ -2351,7 +2371,7 @@
         </div>
 
         <!-- Driver Image Preview Overlay -->
-        <div id="driver-img-overlay" class="overlay" style="z-index:10020; display:none;" onclick="closeImgOverlay(event)">
+        <div id="driver-img-overlay" class="overlay" style="z-index:10020; display:none; padding-top:63px;" onclick="closeImgOverlay(event)">
             <div class="driver-img-shell" onclick="event.stopPropagation()">
                 <div class="driver-img-toolbar">
                     <div class="title">簽收圖片</div>
@@ -2764,6 +2784,32 @@
         };
 
         // ===== V41 司機端 Session =====
+        // V43.48: 任務快取鍵帶「台北日期」，隔天不會先顯示昨天的單；並清掉舊日期的快取
+        function taskCacheKey(filter) {
+            var ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
+            return 'v43_tasks_' + (currentCar || '') + '_' + (filter || currentDateFilter || 'today') + '_' + ymd;
+        }
+        function purgeOldTaskCaches() {
+            try {
+                var ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
+                for (var i = localStorage.length - 1; i >= 0; i--) {
+                    var k = localStorage.key(i);
+                    if (k && k.indexOf('v43_tasks_') === 0 && k.slice(-8) !== ymd) localStorage.removeItem(k);
+                }
+            } catch (e) { }
+        }
+        // V43.48: 結案(含同址合併單)後，本機任務標為已完成並存快取。
+        // 修正：原本讀未宣告的 currentTask / 不存在的 payload.id → ReferenceError，結案成功畫面出不來
+        function markTasksCompletedLocal(payload) {
+            var ids = [String((payload && payload.orderId) || '')];
+            ((payload && payload.batchTasks) || []).forEach(function (b) { ids.push(String(b && b.id)); });
+            var changed = false;
+            allTasks.forEach(function (t) { if (ids.indexOf(String(t.id)) !== -1) { t.status = '已完成'; changed = true; } });
+            if (changed) {
+                App.sortTasks();
+                try { localStorage.setItem(taskCacheKey(), JSON.stringify(allTasks)); } catch (e) { }
+            }
+        }
         function DTOKEN() { try { return localStorage.getItem('titan_driver_token') || ''; } catch (e) { return ''; } }
         /** 後端回傳 🔒 AUTH_REQUIRED（token 失效）時：清除本機登入資訊並回到選人畫面。回傳 true 代表已處理 */
         function handleDriverAuthError(msgOrErr) {
@@ -2838,7 +2884,20 @@
             currentDateFilter = d;
             document.getElementById('tab-today').classList.toggle('active', d === 'today');
             document.getElementById('tab-tmr').classList.toggle('active', d === 'tmr');
-            App.refreshTasks(true);
+            // V43.41: 點擊日期分頁秒開！先從 localStorage 讀取快取任務卡片立即呈現
+            try {
+                const cacheKey = taskCacheKey(d);
+                const cached = localStorage.getItem(cacheKey);
+                if (!cached) { allTasks = []; } // V43.48: 該分頁沒有快取時不要沿用另一個分頁的單
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        allTasks = parsed;
+                        App.renderTasks();
+                    }
+                }
+            } catch (e) { }
+            App.refreshTasks(true, allTasks.length > 0);
         }
 
         // V37.18: iOS IndexedDB 保險庫憑證儲存 (解決 iOS LIFF / Safari 頻繁自動登出與清除 localStorage 問題)
@@ -3191,6 +3250,8 @@
                 document.getElementById('layer3-main').style.display = 'block';
 
                 currentCar = car;
+                loadLateReasons(); // V43.42: 背景抓試算表上的遲到原因選項
+                purgeOldTaskCaches(); // V43.48
                 currentDriverName = name; // V2632.15: 記住司機姓名，用於加油/保養回報支援
 
                 // V4.4: 行政與管理者不用顯示姓名，司機顯示
@@ -3216,21 +3277,41 @@
                         void wrap.offsetWidth; // 強制 reflow，讓動畫可以重新觸發
                         wrap.classList.add('car-switch-flash');
                     }
+                    // V43.41: 切換車輛時立即載入該車快取，達成 0 秒換車體驗
+                    try {
+                        const cacheKey = taskCacheKey();
+                        const cached = localStorage.getItem(cacheKey);
+                        if (cached) {
+                            allTasks = JSON.parse(cached) || [];
+                            App.renderTasks();
+                        }
+                    } catch (e) { }
                     App.checkAttendance();
-                    App.refreshTasks();
+                    App.refreshTasks(true, true);
                 };
 
-                // V42.53: 出勤核對跟任務清單本來就互不依賴，卻被寫成先等出勤核對完才去抓任務清單，
-                // 平白多等一次網路來回。改成同時發出兩個請求，縮短第一次看到任務清單的時間。
+                // V43.41: 0ms 瞬間渲染！進畫面先從 localStorage 讀取快取任務卡片立即呈現
+                try {
+                    const cacheKey = taskCacheKey();
+                    const cached = localStorage.getItem(cacheKey);
+                    if (cached) {
+                        const parsed = JSON.parse(cached);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            allTasks = parsed;
+                            App.renderTasks();
+                        }
+                    }
+                } catch (e) { console.warn("Task cache read error:", e); }
+
+                // V43.41: 出勤核對與任務清單全面背景非同步並行，不再阻塞介面
                 this.checkAttendance();
-                this.refreshTasks();
+                this.refreshTasks(allTasks.length > 0, allTasks.length > 0);
             },
             checkAttendance() {
                 if (!currentCar) { document.getElementById('taskList').innerHTML = '<div style="padding:40px;text-align:center">請先選擇車牌<\/div>'; return; }
-                setLoading(true, '資料核對中...');
+                // V43.41: 打卡核對改為純背景非同步，移除全頁 loading 旋轉遮罩，讓司機進來能立刻看單
                 google.script.run
                     .withSuccessHandler(function(res) {
-                        setLoading(false);
                         if (res && res.error) {
                             console.error("Attendance Check Error:", res.error);
                         }
@@ -3240,20 +3321,22 @@
                         const txt = document.getElementById('clockBtnTxt');
                         const sub = document.getElementById('clockBtnSub');
 
-                        btn.style.display = 'flex'; // 確保按鈕永遠顯示
+                        if (btn) btn.style.display = 'flex'; // 確保按鈕永遠顯示
 
-                        if (hasClockedIn && hasClockedOut) {
-                            txt.innerText = '收工回家'; sub.innerText = '';
-                            btn.classList.add('clock-active');
-                            btn.style.background = 'var(--text-tertiary)';
-                            btn.style.borderColor = 'var(--text-tertiary)';
-                            btn.disabled = true;
-                        } else if (hasClockedIn) {
-                            txt.innerText = '收工回家'; sub.innerText = '';
-                            btn.classList.add('clock-active');
-                        } else {
-                            txt.innerText = '發車登記'; sub.innerText = '';
-                            btn.classList.remove('clock-active');
+                        if (btn && txt && sub) {
+                            if (hasClockedIn && hasClockedOut) {
+                                txt.innerText = '收工回家'; sub.innerText = '';
+                                btn.classList.add('clock-active');
+                                btn.style.background = 'var(--text-tertiary)';
+                                btn.style.borderColor = 'var(--text-tertiary)';
+                                btn.disabled = true;
+                            } else if (hasClockedIn) {
+                                txt.innerText = '收工回家'; sub.innerText = '';
+                                btn.classList.add('clock-active');
+                            } else {
+                                txt.innerText = '發車登記'; sub.innerText = '';
+                                btn.classList.remove('clock-active');
+                            }
                         }
                         // 儲存起始資訊供收隊時自動帶入 (V35.9)
                         if (res && res.startMileage) {
@@ -3263,30 +3346,69 @@
                         if (res && res.startTime) {
                             localStorage.setItem('v11_clock_time', res.startTime);
                         }
-                        // V42.53: 任務清單改由呼叫端(enterMain/切換車輛)並行呼叫，這裡不再重複觸發
                     }).withFailureHandler(function(err) {
-                        setLoading(false);
-                        webAlert('網路異常，無法核對打卡狀態。');
+                        console.warn('Attendance check network error:', err);
                     }).checkTodayAttendance(currentCar, DTOKEN());
+            },
+            sortTasks() {
+                allTasks.sort(function (a, b) {
+                    if (a.status === '已完成' && b.status !== '已完成') return 1;
+                    if (a.status !== '已完成' && b.status === '已完成') return -1;
+                    return (Number(a.seq) || 99) - (Number(b.seq) || 99);
+                });
             },
             redoTask(e, id, branch) {
                 if (e) { e.preventDefault(); e.stopPropagation(); }
                 showConfirm('【確定要重新回報任務嗎？】<br><br><span style="font-size:13px;font-weight:400;color:var(--text-secondary)">狀態將恢復為配送中，您可以重新拍照或更改資訊。<\/span>', function (yes) {
                     if (!yes) return;
+                    // V43.41: 樂觀即時響應，先將本機狀態改為配送中並即時排序渲染
+                    const t = allTasks.find(x => String(x.id) === String(id));
+                    if (t) {
+                        t.status = '配送中';
+                        App.sortTasks();
+                        App.renderTasks();
+                        try {
+                            const cacheKey = taskCacheKey();
+                            localStorage.setItem(cacheKey, JSON.stringify(allTasks));
+                        } catch (e) { }
+                    }
                     setLoading(true, '處理中...');
                     google.script.run
                         .withSuccessHandler(function(res) {
                             setLoading(false);
-                            webAlert('✅ ' + (res.message || res));
-                            App.refreshTasks();
+                            if (typeof showToast === 'function') showToast('✅ ' + (res.message || res));
+                            else webAlert('✅ ' + (res.message || res));
+                            App.refreshTasks(true, true);
                         })
-                        .withFailureHandler(err => { setLoading(false); webAlert('重設失敗: ' + err); })
+                        .withFailureHandler(err => {
+                            setLoading(false);
+                            webAlert('重設失敗: ' + err);
+                            App.refreshTasks(false, false);
+                        })
                         .driverRedoTask(id, branch, DTOKEN());
                 });
             },
             refreshTasks(silent = false, background = false) {
                 if (!currentCar) return;
-                if (!background) {
+                const cacheKey = taskCacheKey();
+                // 若記憶體內無任務，先嘗試由 localStorage 秒開
+                if (!allTasks.length) {
+                    try {
+                        const cached = localStorage.getItem(cacheKey);
+                        if (cached) {
+                            const parsed = JSON.parse(cached);
+                            if (Array.isArray(parsed) && parsed.length > 0) {
+                                allTasks = parsed;
+                                App.renderTasks();
+                                silent = true;
+                                background = true;
+                            }
+                        }
+                    } catch (e) { }
+                }
+
+                // 只有在畫面上完全沒有卡片時才顯示讀取旋轉，避免畫面閃爍清空
+                if (!background && !allTasks.length) {
                     if (silent) {
                         document.getElementById('taskList').innerHTML = `
                             <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 0; gap:12px;">
@@ -3307,17 +3429,27 @@
                         if (badge) badge.style.display = 'none';
                     }
                     allTasks = tasks || [];
+                    App.sortTasks();
+                    try {
+                        localStorage.setItem(cacheKey, JSON.stringify(allTasks));
+                    } catch (e) { }
                     App.renderTasks();
                     App.enrichTaskItems();
                 }).withFailureHandler(err => {
                     if (!background && !silent) setLoading(false);
                     if (handleDriverAuthError(err)) return;
-                    if (!background) {
+                    if (!background && !allTasks.length) {
                         webAlert("⚠️ 系統讀取失敗: " + err);
+                    } else {
+                        console.warn("Tasks refresh error (background):", err);
                     }
                 }).getTodayTasks(currentCar, currentDateFilter, DTOKEN());
             },
             enrichTaskItems() {
+                // V43.41: getTodayTasks 後端已內建產品主檔預先解析換算。
+                // 只有在仍有品項缺少尺寸規格時才發送網路請求，省去冗餘的全表二度掃描！
+                const needsEnrich = allTasks.some(t => t && t.id && t.id !== 'DEBUG' && t.items && t.items.some(it => typeof it === 'object' && !it.pcsPerBox && !it.size));
+                if (!needsEnrich) return;
                 const ids = allTasks
                     .filter(t => t && t.id && t.id !== 'DEBUG' && t.items && t.items.length)
                     .map(t => String(t.id));
@@ -3427,8 +3559,8 @@
 html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end;">';
                     if (hasSeal) html += '<span style="background:rgba(34,197,94,0.14); color:#22c55e; border:1px solid rgba(34,197,94,0.32); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">膠膜<\/span>';
                     // V41.52: 有填指定到貨時間 → 紅色閃爍「⏰ 14:00! 務必準時!」；只有計費旗標 (備註寫限時/指定、沒填時間) → 一樣紅色閃爍，提醒看備註
-                    if (t.specifiedArrive) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰<\/span><span>' + escapeHTML_V11(t.specifiedArrive) + '!<\/span><span style="color:#fca5a5;">務必準時!<\/span><\/span>';
-                    else if (t.isTimed) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span style="font-size:16px; line-height:1;">⏰<\/span><span>指定時間<\/span><span style="color:#fca5a5;">看備註!<\/span><\/span>';
+                    if (t.specifiedArrive) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span>' + escapeHTML_V11(t.specifiedArrive) + '!<\/span><span style="color:#fca5a5;">務必準時!<\/span><\/span>';
+                    else if (t.isTimed) html += '<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(239,68,68,0.18); color:#fff; border:1.5px solid #ef4444; padding:4px 12px; border-radius:999px; font-weight:900; font-size:13px; animation:blink-deadline 0.9s infinite; box-shadow:0 0 12px rgba(239,68,68,0.55);"><span>指定時間<\/span><span style="color:#fca5a5;">看備註!<\/span><\/span>';
                     html += dateChip ? '<span style="background:' + brTheme.bg + '; color:' + brTheme.color + '; border:1px solid ' + brTheme.chip + '33; padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + dateChip + '<\/span>' : '';
                     html += '<span class="tc-amber-chip" style="background:rgba(251,191,36,0.1); color:#fbbf24; border:1px solid rgba(251,191,36,0.25); padding:2px 8px; border-radius:999px; font-weight:900; font-size:11px;">' + arrivalText + '<\/span>';
                     html += '    <\/div>';
@@ -3492,10 +3624,31 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 const branch = t ? (t.branch || '') : '';
                 showConfirm('確定要取消這筆任務嗎？<br><span style="font-size:12px;color:var(--text-tertiary)">取消後將從您的清單移除。<\/span>', function(yes) {
                     if (!yes) return;
+                    // V43.41: 樂觀立即移除卡片，0ms 體感即時反應
+                    const prevTasks = [...allTasks];
+                    allTasks = allTasks.filter(x => String(x.id) !== String(id));
+                    App.renderTasks();
+                    try {
+                        const cacheKey = taskCacheKey();
+                        localStorage.setItem(cacheKey, JSON.stringify(allTasks));
+                    } catch (e) { }
+
                     setLoading(true, '取消任務中...');
                     google.script.run
-                        .withSuccessHandler(function(res) { setLoading(false); webAlert(res); App.refreshTasks(); })
-                        .withFailureHandler(function(err) { setLoading(false); webAlert('取消失敗: ' + err); })
+                        .withSuccessHandler(function(res) {
+                            setLoading(false);
+                            if (typeof showToast === 'function') showToast('✅ 任務已成功取消');
+                            else webAlert(res);
+                            App.refreshTasks(true, true);
+                        })
+                        .withFailureHandler(function(err) {
+                            setLoading(false);
+                            // 失敗時回滾
+                            allTasks = prevTasks;
+                            App.renderTasks();
+                            webAlert('取消失敗: ' + err);
+                            App.refreshTasks(false, false);
+                        })
                         .adminCancelTaskV2(id, branch, DTOKEN());
                 });
             },
@@ -3793,6 +3946,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             document.getElementById('isDamaged').value = '否'; document.getElementById('damageGrp').style.display = 'none';
             document.getElementById('signType').value = ''; document.getElementById('finalNote').value = '';
             resetIssueChips();
+            _lateReason = ''; _lateReasonDone = false; // V43.42
             document.getElementById('report-overlay').style.display = 'block';
         }
 
@@ -3853,6 +4007,10 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             _signConfirmArmed = null;
             document.getElementById('confirmYesBtn').classList.remove('armed');
             document.getElementById('confirmNoBtn').classList.remove('armed');
+            document.getElementById('confirmYesBtn').classList.remove('confirmed');
+            document.getElementById('confirmNoBtn').classList.remove('confirmed');
+            // V43.46: 每次重開都要把提示文字還原，不然第二張單起會殘留上一張的「已確認，送出中...」，司機以為卡住
+            var _h = document.getElementById('signConfirmHint'); if (_h) _h.textContent = '點一下選取，再點同一顆才會送出';
             document.getElementById('sign-confirm-overlay').style.display = 'flex';
         }
         function closeSignConfirm() {
@@ -3870,7 +4028,12 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 setTimeout(function () {
                     closeSignConfirm();
                     btnEl.classList.remove('confirmed');
-                    doFinalSubmitFlow();
+                    try { doFinalSubmitFlow(); } catch (flowErr) {
+                        // V43.46: 結案流程任何一步丟例外，都要讓司機看到原因並解除鎖定，不能默默卡住
+                        console.error('doFinalSubmitFlow error:', flowErr);
+                        try { resetSubmitBtn(); setLoading(false); } catch (e2) { }
+                        webAlert('結案發生錯誤：' + (flowErr && flowErr.message ? flowErr.message : flowErr) + '\n請再按一次「完成配送結案」，仍失敗請截圖給管理員。');
+                    }
                 }, 350);
             } else {
                 // 第一次點：先亮燈，不送出
@@ -3943,7 +4106,76 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             openSignConfirmModal();
         }
 
+        // V43.42: 遲到判定 (指定到貨時間 vs 現在，超過 30 分鐘 → 先選原因；與後端 LATE_NOTIFY_MIN 一致)
+        var LATE_NOTIFY_MIN = 30;
+        var LATE_ASK_MIN = LATE_NOTIFY_MIN - 2; // 手機端提早 2 分鐘問原因：後端用稍晚的時間判斷，邊界不會出現「超過 30 分卻沒問原因」
+        var LATE_REASONS = ['前一站耽誤／卸貨太久', '塞車／路況', '倉庫出貨太晚', '客戶現場等候／改時間', '電梯管制／找不到地點']; // 預設值；實際選項來自試算表《遲到原因選項》
+        try { var _lr = JSON.parse(localStorage.getItem('late_reasons_v1') || 'null'); if (Array.isArray(_lr) && _lr.length) LATE_REASONS = _lr; } catch (e) { }
+        function loadLateReasons() {
+            google.script.run.withSuccessHandler(function (list) {
+                if (Array.isArray(list) && list.length) { LATE_REASONS = list; try { localStorage.setItem('late_reasons_v1', JSON.stringify(list)); } catch (e) { } }
+            }).withFailureHandler(function () { }).getLateReasons_V43(localStorage.getItem('titan_driver_token') || '');
+        }
+        var _lateReason = '', _lateReasonDone = false, _lateSelected = '';
+        function _lateMinOfTask(t) {
+            if (!t || !t.specifiedArrive) return 0;
+            var ms = String(t.specifiedArrive).match(/\d{1,2}:\d{2}/g);
+            if (!ms || !ms.length) return 0;
+            var today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei' }).format(new Date()).replace(/-/g, '');
+            if (t.date && String(t.date).replace(/\D/g, '').slice(0, 8) !== today) return 0;
+            var dl = ms[ms.length - 1].split(':');
+            var np = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()).split(':');
+            return Math.max(0, (parseInt(np[0], 10) % 24) * 60 + parseInt(np[1], 10) - (parseInt(dl[0], 10) * 60 + parseInt(dl[1], 10)));
+        }
+        function _maxLateMinNow() {
+            var ids = [document.getElementById('orderId').value];
+            (window.batchTasks || []).forEach(function (b) { ids.push(b.id); });
+            var worst = 0;
+            ids.forEach(function (id) {
+                var t = allTasks.find(function (x) { return String(x.id) === String(id); });
+                worst = Math.max(worst, _lateMinOfTask(t));
+            });
+            return worst;
+        }
+        function openLateReasonModal(lateMin) {
+            _lateSelected = '';
+            document.getElementById('lateReasonTitle').textContent = '已超過指定時間 ' + lateMin + ' 分鐘';
+            document.getElementById('lateReasonOther').style.display = 'none';
+            document.getElementById('lateReasonOther').value = '';
+            var _opts = LATE_REASONS.concat(['其他']);
+            document.getElementById('lateReasonList').innerHTML = _opts.map(function (r, i) {
+                return '<button type="button" class="late-reason-btn" data-i="' + i + '" onclick="pickLateReason(' + i + ')">' + escapeHTML_V11(r) + '<\/button>';
+            }).join('');
+            document.getElementById('late-reason-overlay').style.display = 'flex';
+        }
+        function pickLateReason(i) {
+            _lateSelected = LATE_REASONS.concat(['其他'])[i];
+            document.querySelectorAll('#lateReasonList .late-reason-btn').forEach(function (b) { b.classList.toggle('sel', b.getAttribute('data-i') === String(i)); });
+            var other = document.getElementById('lateReasonOther');
+            other.style.display = (_lateSelected === '其他') ? 'block' : 'none';
+            if (_lateSelected === '其他') other.focus();
+        }
+        function closeLateReason() { document.getElementById('late-reason-overlay').style.display = 'none'; }
+        function confirmLateReason() {
+            if (!_lateSelected) return webAlert('請先選擇遲到原因');
+            var reason = _lateSelected;
+            if (reason === '其他') {
+                var txt = document.getElementById('lateReasonOther').value.trim();
+                if (!txt) return webAlert('請輸入原因');
+                reason = '其他：' + txt;
+            }
+            _lateReason = reason; _lateReasonDone = true;
+            closeLateReason();
+            doFinalSubmitFlow();
+        }
+
         function doFinalSubmitFlow() {
+            if (!_lateReasonDone) {
+                var _lm = _maxLateMinNow();
+                if (_lm > LATE_ASK_MIN) { openLateReasonModal(_lm); return; }
+                _lateReason = '';
+            }
+            _lateReasonDone = false;
             const isDmg = document.getElementById('isDamaged').value === '是';
             window._isSubmittingFinal = true;
             var submitBtn = document.querySelector('.btn-submit');
@@ -3972,6 +4204,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     car: currentCar, signType: _signType, isDamaged: _isDamaged,
                     note: document.getElementById('finalNote').value, lat: 0, lng: 0,
                     driverIssue: getSelectedIssues(), // V40: 司機狀況回報
+                    lateReason: _lateReason, finishedAt: Date.now(), // V43.42: 遲到原因 + 實際按下時間 (離線補傳時後端據此判斷遲到)
                     photo_sign: beautifiedPhoto || files.sign, photo_damage: files.damage, hasBack: '否',
                     nextDest: nextTask ? nextTask.address : '本日行程已結束',
                     driverName: currentDriverName, type: '配送成功',
@@ -4018,14 +4251,14 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     _cx.font = '24px "Rajdhani", "Noto Sans TC", sans-serif'; _cx.fillStyle = '#64748b'; _cx.fillText(timeDisplay, 40, 135);
                     _cx.fillStyle = '#ffffff'; _cx.shadowColor = 'rgba(0,0,0,0.15)'; _cx.shadowBlur = 30; _cx.shadowOffsetY = 10;
                     _cx.beginPath(); _cx.roundRect(30, 180, 740, 1380, 30); _cx.fill(); _cx.shadowBlur = 0; _cx.shadowOffsetY = 0;
-                    var iW = 680, iH = 900, iX = 60, iY = 220;
+                    var iW = 680, iH = 820, iX = 60, iY = 220; /* V43.44: 照片縮 80px，地址折兩行時車牌才不會被切掉 */
                     _cx.save(); _cx.beginPath(); _cx.roundRect(iX, iY, iW, iH, 20); _cx.clip();
                     var ia = _im.width / _im.height;
                     if (ia < (iW/iH)) { var dH = iW/ia; _cx.drawImage(_im, iX, iY-(dH-iH)/2, iW, dH); }
                     else { var dW = iH*ia; _cx.drawImage(_im, iX-(dW-iW)/2, iY, dW, iH); }
                     _cx.restore();
                     _cx.fillStyle = tc; _cx.fillRect(30, iY+iH+5, 740, 15);
-                    var cY = 1180;
+                    var cY = 1100;
                     var dRow = function(lbl, val, y, isAlert) {
                         if (!val || val === "--" || val === "0") return y;
                         _cx.fillStyle = '#64748b'; _cx.font = 'bold 22px "Noto Sans TC", sans-serif'; _cx.textAlign = 'left'; _cx.fillText(lbl, 70, y);
@@ -4052,7 +4285,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                     var sealSub = isDmg ? 'DAMAGED' : (isNoSign ? 'UNATTENDED' : 'VERIFIED');
                     _cx.fillText(sealTitle, 0, -10); _cx.font='bold 18px "Rajdhani", sans-serif'; _cx.fillText(sealSub, 0, 30);
                     _cx.restore();
-                    callback({ contents: _cv.toDataURL('image/jpeg', 0.85), mimeType: 'image/jpeg' });
+                    callback({ contents: _cv.toDataURL('image/jpeg', 0.70), mimeType: 'image/jpeg' });
                 } catch(e) { console.error("buildBeautifiedCanvas:", e); callback(null); }
             };
             _im.onerror = function() { callback(null); };
@@ -4097,15 +4330,26 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 console.log('Server Response:', res);
                 setLoading(false);
                 if (res.success) {
-                    if (res.duplicated) { webAlert('此任務已結案，不會重複提交！'); closeOv('report-overlay'); App.refreshTasks(); }
-                    else { showSuccess(res); }
+                    // V43.41: 樂觀標記為已完成，移至下方並快取 (0ms 體感)
+                    markTasksCompletedLocal(payload);
+                    if (res.duplicated) {
+                        webAlert('此任務已結案，不會重複提交！');
+                        closeOv('report-overlay');
+                        App.renderTasks();
+                        App.refreshTasks(true, true);
+                    } else {
+                        showSuccess(res);
+                    }
                 } else webAlert('錯誤: ' + res.error);
             }).withFailureHandler(function(err) {
                 resetSubmitBtn();
                 setLoading(false);
                 OQ.add({ _fn: 'final', payload });
+                // V43.41: 離線狀態下亦樂觀標記為已完成，讓司機畫面順暢繼續下一單
+                    markTasksCompletedLocal(payload);
                 webAlert('目前無網路，已離線暫存，上樓後自動同步。');
                 closeOv('report-overlay');
+                App.renderTasks();
             }).submitFinalDelivery(payload);
         }
 
@@ -4170,7 +4414,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                         ctx.beginPath(); ctx.roundRect(cardMargin, cardY, cardW, cardH, 30); ctx.fill(); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
 
                         // 照片區域
-                        const imgW = 680, imgH = 900, imgX = 60, imgY = 220;
+                        const imgW = 680, imgH = 820, imgX = 60, imgY = 220;
                         ctx.save(); ctx.beginPath(); ctx.roundRect(imgX, imgY, imgW, imgH, 20); ctx.clip();
                         const imgAspect = img.width / img.height;
                         if (imgAspect < (imgW/imgH)) { const drawH = imgW / imgAspect; ctx.drawImage(img, imgX, imgY - (drawH - imgH) / 2, imgW, drawH); }
@@ -4182,7 +4426,7 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                         ctx.fillRect(cardMargin, imgY + imgH + 5, cardW, 15);
 
                         // 資訊細節區
-                        let currentY = 1180;
+                        let currentY = 1100;
                         const drawRow = (label, val, y) => {
                             if (!val || val === "--" || val === "0") return y; 
                             ctx.fillStyle = '#64748b'; ctx.font = 'bold 22px "Noto Sans TC", sans-serif'; ctx.textAlign = 'left'; ctx.fillText(label, 70, y);
@@ -4416,20 +4660,78 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 webAlert('您的瀏覽器不支援直接分享圖片，請長按圖片儲存後分享。');
             }
         }
-        function closeSuccess() { closeOv('success-overlay'); App.refreshTasks(); }
+        function closeSuccess() {
+            closeOv('success-overlay');
+            App.renderTasks();
+            App.refreshTasks(true, true);
+        }
 
-        // ===== PHOTO HANDLER =====
-        function handleFile(input, key) {
-            if (!input.files[0]) return; setLoading(true, '處理照片中...');
+        // ===== PHOTO HANDLER (V43.40: Client-side Image Compression) =====
+        // 通用客戶端圖片等比縮小與壓縮器 (防止 3~5MB 大圖灌爆雲端硬碟與上傳逾時)
+        function compressImage(file, maxDimension, quality, callback) {
+            if (!file) { callback(null); return; }
             const reader = new FileReader();
-            reader.onload = e => { const img = new Image(); img.onload = () => { const c = document.createElement('canvas'); let w = img.width, h = img.height, max = 1000; if (w > max || h > max) { if (w > h) { h *= max / w; w = max; } else { w *= max / h; h = max; } } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); const data = c.toDataURL('image/jpeg', .6); files[key] = { contents: data, mimeType: 'image/jpeg' }; const idMap = { sign: 'sign', damage: 'dmg', quick: 'temp', q_int: 'int', q_ext: 'ext', fuel: 'fuel' }; const k = idMap[key]; if (k) { const imgEl = document.getElementById('img-' + k); const txtEl = document.getElementById('txt-' + k); if (imgEl) { imgEl.src = data; imgEl.style.display = 'block'; } if (txtEl) txtEl.style.display = 'none'; } setLoading(false); }; img.src = e.target.result; };
-            reader.readAsDataURL(input.files[0]);
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const c = document.createElement('canvas');
+                    let w = img.width, h = img.height;
+                    const max = maxDimension || 1280;
+                    if (w > max || h > max) {
+                        if (w > h) {
+                            h = Math.round(h * (max / w));
+                            w = max;
+                        } else {
+                            w = Math.round(w * (max / h));
+                            h = max;
+                        }
+                    }
+                    c.width = w;
+                    c.height = h;
+                    const ctx = c.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const q = quality !== undefined ? quality : 0.65;
+                    const dataUrl = c.toDataURL('image/jpeg', q);
+                    callback({ contents: dataUrl, mimeType: 'image/jpeg' });
+                };
+                img.onerror = function() {
+                    callback({ contents: e.target.result, mimeType: file.type || 'image/jpeg' });
+                };
+                img.src = e.target.result;
+            };
+            reader.onerror = function() { callback(null); };
+            reader.readAsDataURL(file);
+        }
+
+        function handleFile(input, key) {
+            if (!input.files[0]) return;
+            setLoading(true, '處理照片中...');
+            compressImage(input.files[0], 1280, 0.65, function(res) {
+                setLoading(false);
+                if (!res) return;
+                files[key] = res;
+                const idMap = { sign: 'sign', damage: 'dmg', quick: 'temp', q_int: 'int', q_ext: 'ext', fuel: 'fuel' };
+                const k = idMap[key];
+                if (k) {
+                    const imgEl = document.getElementById('img-' + k);
+                    const txtEl = document.getElementById('txt-' + k);
+                    if (imgEl) { imgEl.src = res.contents; imgEl.style.display = 'block'; }
+                    if (txtEl) txtEl.style.display = 'none';
+                }
+            });
         }
         function handleMaintPhoto(input, num) {
             if (!input.files[0]) return;
-            const reader = new FileReader();
-            reader.onload = e => { maintFiles['m' + num] = { contents: e.target.result, mimeType: input.files[0].type }; const img = document.getElementById('img-m' + num); const txt = document.getElementById('txt-m' + num); if (img) { img.src = e.target.result; img.style.display = 'block'; } if (txt) txt.style.display = 'none'; };
-            reader.readAsDataURL(input.files[0]);
+            setLoading(true, '處理保養照片中...');
+            compressImage(input.files[0], 1280, 0.65, function(res) {
+                setLoading(false);
+                if (!res) return;
+                maintFiles['m' + num] = res;
+                const img = document.getElementById('img-m' + num);
+                const txt = document.getElementById('txt-m' + num);
+                if (img) { img.src = res.contents; img.style.display = 'block'; }
+                if (txt) txt.style.display = 'none';
+            });
         }
 
         // ===== REORDER =====
@@ -4570,6 +4872,23 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             }, { passive: false });
         }
 
+        // V43.47: 預覽框依圖片比例等比例縮放，完整顯示整張圖 (橫式銷貨單不再被拉成又長又黑的方框)
+        function fitDriverImageStage() {
+            var ov = document.getElementById('driver-img-overlay');
+            var stage = document.getElementById('driver-img-stage');
+            var img = document.getElementById('driver-img-preview');
+            var shell = ov && ov.querySelector('.driver-img-shell');
+            var bar = shell && shell.querySelector('.driver-img-toolbar');
+            if (!stage || !img || !shell || !img.naturalWidth || !img.naturalHeight) return;
+            var availW = shell.clientWidth - 2;
+            var availH = Math.max(160, window.innerHeight - 83 - (bar ? bar.offsetHeight : 54) - 2);
+            var scale = Math.min(availW / img.naturalWidth, availH / img.naturalHeight);
+            var dispW = Math.round(img.naturalWidth * scale), dispH = Math.round(img.naturalHeight * scale);
+            img.style.width = dispW + 'px';
+            stage.style.height = Math.max(dispH, 120) + 'px';
+        }
+        window.addEventListener('resize', function () { var o = document.getElementById('driver-img-overlay'); if (o && o.style.display === 'flex') fitDriverImageStage(); });
+
         function previewOrderImage(url) {
             if (!url) return;
             // V36.8: 自動將舊版 uc?id= 轉為更穩定的 lh3 格式
@@ -4587,8 +4906,11 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
                 return;
             }
             resetDriverImagePreview();
+            img.style.width = '100%';
+            img.onload = fitDriverImageStage;
             img.src = finalUrl;
             ov.style.display = 'flex';
+            fitDriverImageStage();
             setTimeout(initDriverImageGestures, 0);
         }
 
@@ -4702,6 +5024,24 @@ html += '  <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;
             document.getElementById('customConfirm').style.display = 'none';
             if (confirmCallback) confirmCallback(res);
             confirmCallback = null;
+        }
+
+        function showToast(msg, duration) {
+            var toast = document.getElementById('global-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'global-toast';
+                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(10px);background:rgba(15,23,42,0.92);color:#fff;padding:10px 20px;border-radius:999px;font-size:14px;font-weight:600;z-index:999999;box-shadow:0 8px 24px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.15);pointer-events:none;transition:opacity 0.25s, transform 0.25s;opacity:0;';
+                document.body.appendChild(toast);
+            }
+            toast.innerText = msg;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateX(-50%) translateY(0)';
+            clearTimeout(window._toastTimer);
+            window._toastTimer = setTimeout(function() {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(10px)';
+            }, duration || 2200);
         }
 
         // GPS Guide Functions

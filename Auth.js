@@ -350,7 +350,27 @@ function generateParamUrlForDriver_impl_(name, adminToken) {
 /**
  * 司機是否有權操作某台車：token 內的預設車牌相同、或該車在「車輛管理」對應到此司機、或白名單允許切換車輛。
  */
+/**
+ * V43.56: 外層加 10 分鐘快取 + 拒絕時留下記錄。
+ * 之前每次位置回報若車牌跟登入車不同，都會重讀管理資料 + 白名單 (2~5 秒/次)，司機一多就把並行數堆高；
+ * 拒絕時也完全沒有記錄，logDeparture 的失敗被 try/catch 吞掉，事後無從查起。
+ */
 function _driverMayUseCar_(ctx, car) {
+  if (!ctx) return false;
+  if (ctx.role === 'admin' || ctx.role === 'system') return true;
+  var want = cleanPlate_Core(car);
+  if (!want) return true;
+  if (cleanPlate_Core(ctx.car) === want) return true;
+  var ck = 'dmuc_' + String(ctx.name || '').trim() + '_' + want;
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); if (cache.get(ck) === '1') return true; } catch (e) { }
+  var ok = _driverMayUseCarCore_(ctx, car);
+  if (ok) { try { if (cache) cache.put(ck, '1', 600); } catch (e) { } }
+  else console.error('[CAR_DENIED] 司機=' + ctx.name + ' 登入車=' + ctx.car + ' 操作車=' + car);
+  return ok;
+}
+
+function _driverMayUseCarCore_(ctx, car) {
   if (!ctx) return false;
   if (ctx.role === 'admin' || ctx.role === 'system') return true;
   var want = cleanPlate_Core(car);

@@ -59,7 +59,15 @@ function getUnDispatchedTasks_V3(token) {
       wrapSeal: findH(headers, ['封膠膜', '膠膜', '封膜']),
       note: findH(headers, ['備註', '備註欄', '備註事項']),
       returnReason: findH(headers, ['退回原因', '退回備註']),
-      specifiedArrive: findH(headers, ['指定到貨時間']) // V39.30: 強制指定時間，供派車介面閃爍提示用
+      specifiedArrive: findH(headers, ['指定到貨時間']), // V39.30: 強制指定時間，供派車介面閃爍提示用
+      docTypeManual: headers.indexOf('單據類型(人工)'), // V43.52: 樣品判定 (人工優先)
+      backDone: headers.indexOf('已回到鶯歌'), backTime: headers.indexOf('回到鶯歌時間'), backBy: headers.indexOf('回到鶯歌確認人'), // V43.52
+      adjustedFee: headers.indexOf('調整後運費'),
+      feeReason: headers.indexOf('運費調整原因'),
+      feeConfirmStatus: headers.indexOf('運費確認狀態'),
+      carrierFlag: headers.indexOf('貨運行標示'),
+      carrierDiscount: headers.indexOf('貨運行折扣'),
+      isRemote: headers.indexOf('是否偏遠')
     };
 
     for (let n = 1; n <= 10; n++) {
@@ -83,13 +91,20 @@ function getUnDispatchedTasks_V3(token) {
         : '';
     const tz = Session.getScriptTimeZone();
     const todayStr = Utilities.formatDate(new Date(), tz, "yyyy/MM/dd");
+    const doneCutoff = Utilities.formatDate(new Date(Date.now() - 30 * 86400000), tz, "yyyy/MM/dd"); // V43.52
     for (let i = 1; i < data.length; i++) {
         const row = data[i];
         
         // 🔒 1. 狀態嚴格過濾
         const sStr = String(row[idx.status] || '').trim();
         const skipKeys = ['已完成', '已送達', '結案', '取消'];
-        if (skipKeys.some(k => sStr === k || sStr.includes(k))) continue;
+        // V43.52: 已完成的單先當「候選」：之後若是『樣品回鶯歌』且還沒確認已回到鶯歌，要留在排車的樣品分頁；其餘照舊不顯示
+        let doneCand = false;
+        if (skipKeys.some(k => sStr === k || sStr.includes(k))) {
+            if (sStr.includes('取消')) continue;
+            if (idx.backDone !== -1 && String(row[idx.backDone] || '').trim() !== '') continue; // 已完成且已確認回鶯歌 → 不再出現
+            doneCand = true;
+        }
 
         // 📅 2. 日期有效性
         let dVal = "";
@@ -109,7 +124,7 @@ function getUnDispatchedTasks_V3(token) {
             }
             dVal = dyY + '/' + dyM + '/' + dyD;
         }
-        if (dVal < todayStr) continue;
+        if (dVal < todayStr && !(doneCand && dVal >= doneCutoff)) continue; // V43.52: 已完成候選保留近 30 天
 
         // 🚛 3. 指派判定 (同步對標)
         let drv = String(row[idx.dispatchDriver] || '').trim();
@@ -150,6 +165,20 @@ function getUnDispatchedTasks_V3(token) {
             })(),
             returnReason: idx.returnReason !== -1 ? String(row[idx.returnReason] || '').trim() : '',
             specifiedArrive: idx.specifiedArrive !== -1 ? String(row[idx.specifiedArrive] || '').trim() : '', // V39.30
+            // V43.52: 樣品回鶯歌分頁用
+            docTypeManual: idx.docTypeManual !== -1 ? String(row[idx.docTypeManual] || '').trim() : '',
+            backDone: idx.backDone !== -1 && String(row[idx.backDone] || '').trim() !== '',
+            backTime: idx.backTime !== -1 ? (row[idx.backTime] instanceof Date ? Utilities.formatDate(row[idx.backTime], tz, "yyyy/MM/dd HH:mm") : String(row[idx.backTime] || '').trim()) : '',
+            backBy: idx.backBy !== -1 ? String(row[idx.backBy] || '').trim() : '',
+            completed: doneCand,
+            // V43.55: 排車即時運費與外車完成狀態
+            isExternalDone: doneCand && dVal >= todayStr && (plate.indexOf('外車') !== -1 || drv.indexOf('外車') !== -1),
+            adjustedFee: idx.adjustedFee !== -1 ? (parseFloat(row[idx.adjustedFee]) || 0) : 0,
+            feeReason: idx.feeReason !== -1 ? String(row[idx.feeReason] || '').trim() : '',
+            feeConfirmStatus: idx.feeConfirmStatus !== -1 ? String(row[idx.feeConfirmStatus] || '').trim() : '',
+            carrierFlag: idx.carrierFlag !== -1 ? String(row[idx.carrierFlag] || '').trim() : '',
+            carrierDiscount: idx.carrierDiscount !== -1 ? (parseFloat(row[idx.carrierDiscount]) || 1.0) : 1.0,
+            isRemoteVal: idx.isRemote !== -1 ? String(row[idx.isRemote] || '').trim() : '',
             items: (() => {
                 const arr = [];
                 const sizeArr = String(row[idx.size] || '').split(/[,，、；;\/]+/).map(s => String(s).trim()).filter(Boolean);
@@ -181,8 +210,81 @@ function getUnDispatchedTasks_V3(token) {
             })()
         });
     }
-    return { success: true, tasks: tasks };
+    // V43.52: 判定「樣品回鶯歌」(isSampleBack)：單據類型是樣品，而且 (排車人員標了『回鶯歌』 或 樣品送回公司/倉內調貨)。
+    // 判定沿用戰情室統計同一套 _annotateDocTypes_ (人工判定優先、銷售報表快取 6 小時)。已完成的單只有樣品回鶯歌才保留。
+    try { if (typeof _annotateDocTypes_ === 'function') _annotateDocTypes_(tasks); } catch (ae) { console.error('排車樣品判定失敗: ' + ae.message); }
+    const outTasks = [];
+    // 實際資料：樣品單的「送貨地址」常常只寫公司名 (例：喜悅納)，沒寫「指送」或倉庫地址 → 既有判定會當成送客戶；排車這邊視為要回鶯歌。
+    // 是不是樣品：人工指定的單據類型優先；否則 銷售報表/規則判成樣品，或 客戶名稱/備註有「樣品」(銷售報表若判成銷貨也不影響排車人員看到的「-樣品」單)。
+    const COMPANY_NAMES = ['安帝嘉', '喜悅納', '高雅瓷', '漢樺'];
+    tasks.forEach(t => {
+        const addrKey = String(t.address || '').replace(/\s/g, '');
+        const man = String(t.docTypeManual || '').trim();
+        let isSampleDoc;
+        if (man) isSampleDoc = (man === '樣品' || man === '樣品免費' || man === '樣品收費');
+        else isSampleDoc = (t.docType === '樣品') || /樣品/.test(String(t.customer || '') + ' ' + String(t.note || ''));
+        t.sampleHome = (t.sampleTo === 'home') || man === '樣品免費' || COMPANY_NAMES.indexOf(addrKey) !== -1;
+        t.isSampleBack = isSampleDoc && (!!t.isBackYingge || t.sampleHome);
+        if (t.completed && !t.isSampleBack && !t.isExternalDone) return;
+        // V43.55: 預先計算公式運費供排車主管檢視
+        try {
+            let cFlag = t.carrierFlag || '';
+            let cDisc = t.carrierDiscount || 1.0;
+            if (!cFlag && typeof _isCarrierAddress_ === 'function' && _isCarrierAddress_(t.address)) { cFlag = '貨運行集貨'; cDisc = 0.5; }
+            if (cDisc > 1.0) cDisc = cDisc / 100.0;
+            if (typeof FreightEngine !== 'undefined' && FreightEngine.calculateFreight) {
+                const fc = FreightEngine.calculateFreight(t.address, t.weight, {
+                    isTimedDeliver: (t.specifiedArrive && t.specifiedArrive !== '否') ? '是' : '否',
+                    isTimedReturn: (t.isReturn && String(t.note || '').indexOf('指定') !== -1) ? '是' : '否',
+                    isOvertimeWait: (String(t.note || '').indexOf('等候') !== -1 || String(t.note || '').indexOf('等待') !== -1) ? '是' : '否',
+                    isHeavyCarry: (String(t.note || '').indexOf('上樓') !== -1 || String(t.note || '').indexOf('搬運') !== -1) ? '是' : '否',
+                    carrierFlag: cFlag,
+                    carrierDiscount: cDisc,
+                    isRemoteVal: t.isRemoteVal
+                });
+                t.estFee = t.sampleHome ? 0 : (fc.estFee || 0);
+                t.freightDetail = t.sampleHome ? '樣品送回公司/內部單($0)' : (fc.detail || '');
+            }
+        } catch (fe) { t.estFee = 0; t.freightDetail = ''; }
+        outTasks.push(t);
+    });
+    const customReasons = (typeof getCustomFreightReasons_V43 === 'function') ? getCustomFreightReasons_V43() : ['路線不順', '指定時間', '下貨條件多'];
+    return { success: true, tasks: outTasks, customFreightReasons: customReasons };
   } catch (e) { return { success: false, error: e.message }; }
+}
+
+/** V43.52: 標記/取消「已回到鶯歌」(樣品回鶯歌分頁)。記錄 已回到鶯歌=是、時間、確認人；不改配送狀態。 */
+function markYinggeBack_V3_impl_(ids, done, token) {
+  var lock = LockService.getScriptLock();
+  try {
+    var ctx = _requireAdmin_(token);
+    if (!lock.tryLock(10000)) return { success: false, error: '系統忙碌中，請稍後再試' };
+    var list = (Array.isArray(ids) ? ids : [ids]).map(function (x) { return String(x || '').trim(); }).filter(Boolean);
+    if (!list.length) return { success: false, error: '沒有指定單號' };
+    var sheet = getSS().getSheetByName(CONFIG.SHEET_TASKS);
+    ensureHeaders_V11(sheet);
+    var data = sheet.getDataRange().getValues();
+    var headers = data[0].map(function (h) { return String(h).trim(); });
+    var cId = _findHeader(headers, ['單號']);
+    var cDone = headers.indexOf('已回到鶯歌'), cTime = headers.indexOf('回到鶯歌時間'), cBy = headers.indexOf('回到鶯歌確認人');
+    if (cId === -1 || cDone === -1 || cTime === -1 || cBy === -1) throw new Error('缺少「已回到鶯歌」相關欄位');
+    var want = {}; list.forEach(function (x) { want[x] = true; });
+    var now = Utilities.formatDate(new Date(), 'GMT+8', 'yyyy/MM/dd HH:mm');
+    var who = (ctx && ctx.name) || '';
+    var n = 0;
+    for (var i = 1; i < data.length; i++) {
+      if (!want[String(data[i][cId]).trim()]) continue;
+      sheet.getRange(i + 1, cDone + 1).setValue(done ? '是' : '');
+      sheet.getRange(i + 1, cTime + 1).setValue(done ? now : '');
+      sheet.getRange(i + 1, cBy + 1).setValue(done ? who : '');
+      n++;
+    }
+    return { success: true, count: n, time: done ? now : '', by: done ? who : '' };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) { }
+  }
 }
 
 /** 2. 取得司機 */
@@ -220,6 +322,9 @@ function recordDispatch_V3_impl_(tasks, config, token) {
     const cPla = h.findIndex(v => v === '車牌' || v === '車號'); // G
     const cSta = h.indexOf('狀態');        // H
     const cOrd = h.findIndex(v => v === '順序' || v === '趟次'); // AD
+    const cFin = h.findIndex(v => v === '配送完成時間' || v === '完成時間');
+    const isExtCar = /外車/.test(String(config.plate || '') + String(config.name || ''));
+    const nowFinStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm:ss");
 
     let curMax = 0;
     for (let i = 1; i < data.length; i++) {
@@ -241,18 +346,22 @@ function recordDispatch_V3_impl_(tasks, config, token) {
     const utilization = (tripTotalWeight / vMax * 100).toFixed(1) + "%";
 
     // V41.22: 只寫回「改到的列 × 改到的欄」(相鄰欄合併成一次呼叫)，不整表覆蓋，避免蓋掉司機同時間寫入的結案狀態
+    // V43.55: 外車指派預設直接標記為「已完成」並填入配送完成時間
     tasks.forEach(t => {
       let k0 = 0;
       for(let k=1; k<data.length; k++) { if(String(data[k][cId]) === String(t.id)) { k0 = k; break; } }
       if (k0) {
         if(cDrv !== -1) data[k0][cDrv] = config.name;
         if(cPla !== -1) data[k0][cPla] = config.plate;
-        if(cSta !== -1) data[k0][cSta] = '配送中';
+        if(cSta !== -1) data[k0][cSta] = isExtCar ? '已完成' : '配送中';
         if(cOrd !== -1) { curMax++; data[k0][cOrd] = curMax; }
-        _writeRowCells_(sheet, k0 + 1, data[k0], [cDrv, cPla, cSta, cOrd]);
+        const colsToWrite = [cDrv, cPla, cSta, cOrd];
+        if (isExtCar && cFin !== -1) { data[k0][cFin] = nowFinStr; colsToWrite.push(cFin); }
+        _writeRowCells_(sheet, k0 + 1, data[k0], colsToWrite);
       }
     });
     if (typeof _clearWarRoomCache_ === 'function') _clearWarRoomCache_();
+    if (isExtCar && typeof _clearDashboardCache_ === 'function') _clearDashboardCache_();
     
     // 一趟一列記錄，供地址群組型排車分析使用
     logDispatchHabit_V8(ss, {

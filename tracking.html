@@ -1503,6 +1503,7 @@
     function startAutoRefresh() {
       if (autoRefreshInterval) clearInterval(autoRefreshInterval);
       autoRefreshInterval = setInterval(() => {
+        if (document.hidden) return; // V43.56: 背景分頁不輪詢，降低後端並行數
         const dateInput = document.getElementById("deliveryDateInput");
         const selectedDate = dateInput ? dateInput.value : "";
         

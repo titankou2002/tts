@@ -214,6 +214,7 @@ var AUDIT_SPECS = {
   adminUpdateSequence_V11: { label: '調整配送順序（戰情室）', target: function (a) { return _aStr_(a[1]); }, detail: function (a) { return _aOrder_(_aSeq_(a[0])); } },
   adjustTaskSequence_V6: { label: '調整配送順序', target: function (a) { return _aStr_(a[0]) + ' / ' + _aStr_(a[1]); }, detail: function () { return ''; } },
   updateTaskOrder: { label: '司機調整配送順序', target: function (a) { return _aIdList_(_aSeq_(a[0])); }, detail: function (a) { return _aOrder_(_aSeq_(a[0])); } },
+  markYinggeBack_V3: { label: '已回到鶯歌紀錄', ids: function (a) { return _aIds_(a[0]); }, target: function (a) { return _aIdList_(_aIds_(a[0])); }, detail: function (a) { return _aIds_(a[0]).length + ' 張 ' + (a[1] ? '標記已回到鶯歌' : '取消已回到鶯歌'); } },
   updateBackYinggeStatus_V3: { label: '回鶯歌標記', ids: function (a) { return [_aStr_(a[0])]; }, target: function (a) { return _aStr_(a[0]); }, detail: function (a) { return a[2] ? '標記回鶯歌' : '取消回鶯歌'; } },
 
   // ── 訂單 ──
@@ -225,7 +226,11 @@ var AUDIT_SPECS = {
   setDocTypeOverride_V41: { label: '改單據類型', ids: function (a) { return [_aStr_(a[0])]; }, target: function (a) { return _aStr_(a[0]); }, detail: function (a) { return '改為「' + _aStr_(a[2]) + '」'; } },
   batchSetDocTypeOverride_V42: { label: '批次改單據類型', ids: function (a) { return _aIds_(a[0]); }, target: function (a) { return _aIdList_(_aIds_(a[0])); } },
   manualAdjustFreight_V11: { label: '手動調整運費', ids: function (a) { return [_aStr_(a[0])]; }, target: function (a) { return _aStr_(a[0]); }, detail: function (a) { return '運費改為 ' + _aStr_(a[2]); } },
+  setDispatchFreightQuote_V43: { label: '排車指定運費報價', ids: function (a) { return _aIds_(a[0]); }, target: function (a) { var p = a[0] || {}; return _aStr_(p.id); }, detail: function (a) { var p = a[0] || {}; return (p.newFee > 0 ? '指定運費 $' + p.newFee + (p.reason ? '（' + _aStr_(p.reason) + '）' : '') : '恢復公式運費'); } },
+  saveCustomFreightReasons_V43: { label: '儲存運費指定原因清單' },
+  decideFreightQuote_V43: { label: '分公司確認特殊運費', noArgs: true, target: function (a) { var pts = String(a[0] || '').split('~'); return _aStr_(pts[2] || a[0]); }, detail: function (a) { var pts = String(a[0] || '').split('~'); return (a[1] === 'approve' ? '同意運費 $' + _aStr_(pts[3]) : '不同意運費並退回訂單') + (a[3] ? '（' + _aStr_(a[3]) + '）' : ''); } },
   saveFreightSettings_V41: { label: '修改運費設定' },
+  saveMonthlyCost_V43: { label: '儲存月成本與配送獎金試算', target: function (a) { return _aStr_(a[0]); } },
   addCommonLocation_V41: { label: '新增指送地點', target: function (a) { return _aStr_(a[0]); }, detail: function (a) { return _aStr_(a[1]) + '｜' + _aStr_(a[2], 80); } },
 
   // ── 驗貨 ──
@@ -513,6 +518,7 @@ function adminUpdateSequence_V11() { return _audited_('adminUpdateSequence_V11',
 function adjustTaskSequence_V6() { return _audited_('adjustTaskSequence_V6', adjustTaskSequence_V6_impl_, arguments); }
 function updateTaskOrder() { return _audited_('updateTaskOrder', updateTaskOrder_impl_, arguments); }
 function updateBackYinggeStatus_V3() { return _audited_('updateBackYinggeStatus_V3', updateBackYinggeStatus_V3_impl_, arguments); }
+function markYinggeBack_V3() { return _audited_('markYinggeBack_V3', markYinggeBack_V3_impl_, arguments); }
 function adminAddTempTask() { return _audited_('adminAddTempTask', adminAddTempTask_impl_, arguments); }
 function upsertOrderFromOcr_V2() { return _audited_('upsertOrderFromOcr_V2', upsertOrderFromOcr_V2_impl_, arguments); }
 function adminCancelTaskV2() { return _audited_('adminCancelTaskV2', adminCancelTaskV2_impl_, arguments); }
@@ -521,7 +527,11 @@ function adminBatchReturnTasks_V11() { return _audited_('adminBatchReturnTasks_V
 function setDocTypeOverride_V41() { return _audited_('setDocTypeOverride_V41', setDocTypeOverride_V41_impl_, arguments); }
 function batchSetDocTypeOverride_V42() { return _audited_('batchSetDocTypeOverride_V42', batchSetDocTypeOverride_V42_impl_, arguments); }
 function manualAdjustFreight_V11() { return _audited_('manualAdjustFreight_V11', manualAdjustFreight_V11_impl_, arguments); }
+function setDispatchFreightQuote_V43() { return _audited_('setDispatchFreightQuote_V43', setDispatchFreightQuote_V43_impl_, arguments); }
+function saveCustomFreightReasons_V43() { return _audited_('saveCustomFreightReasons_V43', saveCustomFreightReasons_V43_impl_, arguments); }
+function decideFreightQuote_V43() { return _audited_('decideFreightQuote_V43', decideFreightQuote_V43_impl_, arguments); }
 function saveFreightSettings_V41() { return _audited_('saveFreightSettings_V41', saveFreightSettings_V41_impl_, arguments); }
+function saveMonthlyCost_V43() { return _audited_('saveMonthlyCost_V43', saveMonthlyCost_V43_impl_, arguments); }
 function addCommonLocation_V41() { return _audited_('addCommonLocation_V41', addCommonLocation_V41_impl_, arguments); }
 function verifyTask_V3() { return _audited_('verifyTask_V3', verifyTask_V3_impl_, arguments); }
 function undoVerifyTask_V3() { return _audited_('undoVerifyTask_V3', undoVerifyTask_V3_impl_, arguments); }

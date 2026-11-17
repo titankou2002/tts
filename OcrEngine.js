@@ -311,6 +311,7 @@ function parseOcrToOrder_V2(preprocessedText, loginBranch) {
     // V35.5: 先識別業務姓名，防止誤抓 (業務：214 謝博皓)
     var salesMatch = metadataText.match(/(?:業\s*務)[:：\s]*\s*(?:\d{1,4}\s*)?([\u4e00-\u9fa5]{2,4})/);
     var salesName = salesMatch ? salesMatch[1].trim() : "";
+    result.salesName = salesName; // V43.49: 單據上「業務」欄的名字 (原始 OCR；是否為白名單業務由 processVisionOcr_Backend 驗證)
 
     // V35.7: 嚴格搜尋範圍限制 - 電話前後 15 個字
     // 如果有電話，以電話為中心找；沒電話，禁用百家姓模糊搜索
@@ -780,6 +781,8 @@ function processVisionOcr_Backend(base64Image, loginBranch, token) {
 
         // 3. 規則引擎解析
         var parsed = parseOcrToOrder_V2(cleanText, loginBranch);
+        // V43.49: 單據上的業務名要對到「該分公司白名單身分類型=業務」才帶入指派；小姐(行政)或對不到的一律不帶
+        try { parsed.assignedSales = _matchSalesName_(parsed.salesName, parsed.branch || loginBranch); } catch (se) { parsed.assignedSales = ""; }
 
         // 4. 回傳給前端展示與確認 (不在此處直接寫入)
         return { success: true, data: parsed, rawText: rawText };
