@@ -229,8 +229,10 @@ function deliveryEtaQuery_(company, branch, dateStr, q) {
   var key = cleanCustName_V11(company), rawKey = company;
   var mine = tasks.filter(function (t) {
     if (branch && String(t.branch || '').trim() !== branch) return false;
-    var c = String(t.customer || '');
-    return c.length >= 2 && (c.indexOf(key) !== -1 || key.indexOf(c) !== -1 || c.indexOf(rawKey) !== -1);
+    // 2026-11-17：只認完全相同的客戶名稱（兩邊都先經 cleanCustName_V11 清洗）。原本雙向包含比對，
+    // 綁定的簡稱較短時會比到名稱裡含這幾個字的別家客戶，把別家的地址與到貨時間回到群組。
+    var c = cleanCustName_V11(String(t.customer || ''));
+    return key.length >= 2 && (c === key || String(t.customer || '').trim() === rawKey);
   });
   if (!mine.length) return { success: true, date: dateStr, isToday: isToday, total: 0, matches: [] };
 
