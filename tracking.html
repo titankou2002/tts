@@ -1117,6 +1117,7 @@
     body.is-free-grade .station.is-ours .station-content { box-shadow: none !important; background: rgba(var(--greenrgb), 0.05) !important; }
     body.is-free-grade .station.current .station-content, body.is-free-grade .station.is-ours.current .station-content { animation: none !important; }
     .btn-refresh, .btn-query-date, .vehicle-icon, .vehicle-icon i, .floating-truck, .station.completed .station-marker, .station.current .station-marker, .logo-badge { color: var(--card-bg) !important; }
+    @media (prefers-color-scheme: dark) { :root { --station-done: #74c08f; --station-current: #ddb25a; --station-pending: #4a443d; } }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
