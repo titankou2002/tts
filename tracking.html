@@ -2,6 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>派送進度查詢</title>
   <!-- ELITILE 鈦傳速高階專屬 3D 漸層 SVG 網頁圖標 (Favicon) -->
@@ -27,6 +28,32 @@
       --accent-amber: #b0720f;
       --accent-red: #b4412f;
       --glass-glow: 0 1px 3px rgba(31, 27, 22, 0.08), 0 0 0 1px rgba(31, 27, 22, 0.04);
+      --page-bg: #f6f4ef;
+      --tint: #f3f0e8;
+      --warn-ink: #8a5a0b;
+      --accent-blue: #2b6cb0;
+      --ink: 31, 27, 22;
+      --accrgb: 47, 90, 79;
+      --amberrgb: 176, 114, 15;
+      --greenrgb: 47, 122, 74;
+      --br-a: #2f7a4a; --br-e: #b03a72; --br-s: #2b6cb0; --br-w: #9a630c; --muted2: #8a8176;
+      color-scheme: light;
+    }
+    /* 深色模式：手機系統是深色就自動切換（2026-11-20，與查庫存頁同一套深色） */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-gradient: #151311; --page-bg: #151311;
+        --card-bg: #1f1c19; --bg-card: #1f1c19; --tint: #262320;
+        --card-border: rgba(255, 246, 232, 0.08);
+        --text-primary: #f2ede5; --text-secondary: #bdb4a8;
+        --accent-purple: #82bba6; --accent-indigo: #82bba6; --accent-green: #74c08f; --accent-amber: #ddb25a; --accent-red: #ec8a73; --accent-blue: #7fb0e0;
+        --warn-ink: #ddb25a;
+        --ink: 255, 246, 232; --accrgb: 130, 187, 166; --amberrgb: 221, 178, 90; --greenrgb: 116, 192, 143;
+        --glass-glow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 246, 232, 0.06);
+        --station-done: #74c08f; --station-current: #ddb25a; --station-pending: #4a443d;
+        --br-a: #74c08f; --br-e: #e58ab4; --br-s: #7fb0e0; --br-w: #ddb25a; --muted2: #9a9185;
+        color-scheme: dark;
+      }
     }
 
     * {
@@ -49,43 +76,43 @@
 
     /* 💡 客戶端 (FREE 等級) 特色樣式：專屬客戶的卡片用綠框，即將抵達的用黃色呼吸框 */
     body.is-free-grade .station.is-ours .station-content {
-      border: 1.5px solid #2f7a4a !important;
-      box-shadow: 0 0 12px rgba(47, 122, 74, 0.3) !important;
-      background: rgba(47, 122, 74, 0.04) !important;
+      border: 1.5px solid var(--accent-green) !important;
+      box-shadow: 0 0 12px rgba(var(--greenrgb), 0.3) !important;
+      background: rgba(var(--greenrgb), 0.04) !important;
     }
 
     body.is-free-grade .station.current .station-content {
-      border: 1.5px solid #b0720f !important;
-      background: rgba(176, 114, 15, 0.06) !important;
+      border: 1.5px solid var(--accent-amber) !important;
+      background: rgba(var(--amberrgb), 0.06) !important;
       animation: yellow-glow-pulse 2s ease-in-out infinite !important;
     }
 
     /* 💡 如果又是專屬又是即將抵達，則用呼吸綠色框，給予最顯眼的專屬通知！ */
     body.is-free-grade .station.is-ours.current .station-content {
-      border: 1.5px solid #2f7a4a !important;
-      background: rgba(47, 122, 74, 0.06) !important;
+      border: 1.5px solid var(--accent-green) !important;
+      background: rgba(var(--greenrgb), 0.06) !important;
       animation: green-glow-pulse 2s ease-in-out infinite !important;
     }
 
     @keyframes yellow-glow-pulse {
       0%, 100% {
-        border-color: rgba(176, 114, 15, 0.4);
-        box-shadow: 0 0 6px rgba(176, 114, 15, 0.15);
+        border-color: rgba(var(--amberrgb), 0.4);
+        box-shadow: 0 0 6px rgba(var(--amberrgb), 0.15);
       }
       50% {
-        border-color: rgba(176, 114, 15, 1);
-        box-shadow: 0 0 16px rgba(176, 114, 15, 0.5);
+        border-color: rgba(var(--amberrgb), 1);
+        box-shadow: 0 0 16px rgba(var(--amberrgb), 0.5);
       }
     }
 
     @keyframes green-glow-pulse {
       0%, 100% {
-        border-color: rgba(47, 122, 74, 0.4);
-        box-shadow: 0 0 6px rgba(47, 122, 74, 0.15);
+        border-color: rgba(var(--greenrgb), 0.4);
+        box-shadow: 0 0 6px rgba(var(--greenrgb), 0.15);
       }
       50% {
-        border-color: rgba(47, 122, 74, 1);
-        box-shadow: 0 0 16px rgba(47, 122, 74, 0.5);
+        border-color: rgba(var(--greenrgb), 1);
+        box-shadow: 0 0 16px rgba(var(--greenrgb), 0.5);
       }
     }
 
@@ -115,13 +142,13 @@
       font-weight: 700;
       letter-spacing: 1px;
       font-size: 0.85rem;
-      box-shadow: 0 0 15px rgba(47, 90, 79, 0.4);
+      box-shadow: 0 0 15px rgba(var(--accrgb), 0.4);
     }
 
     header h1 {
       font-size: 1.5rem;
       font-weight: 700;
-      background: linear-gradient(to right, #ffffff, #2f5a4f);
+      background: linear-gradient(to right, #ffffff, var(--accent-purple));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -168,7 +195,7 @@
     .status-icon {
       font-size: 2rem;
       color: var(--accent-purple);
-      text-shadow: 0 0 10px rgba(47, 90, 79, 0.4);
+      text-shadow: 0 0 10px rgba(var(--accrgb), 0.4);
     }
 
     /* Timeline Section */
@@ -185,7 +212,7 @@
       top: 5px;
       bottom: 5px;
       width: 2px;
-      background: rgba(31, 27, 22, 0.1);
+      background: rgba(var(--ink), 0.1);
     }
 
     .timeline-item {
@@ -204,8 +231,8 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #d6cfc3;
-      border: 3px solid #fffdf9;
+      background: var(--station-pending);
+      border: 3px solid var(--card-bg);
       transition: all 0.3s ease;
       z-index: 2;
     }
@@ -255,7 +282,7 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 1rem;
-      border-bottom: 1px solid rgba(31, 27, 22, 0.05);
+      border-bottom: 1px solid rgba(var(--ink), 0.05);
       padding-bottom: 0.75rem;
     }
 
@@ -265,8 +292,8 @@
     }
 
     .order-count {
-      background: rgba(47, 90, 79, 0.15);
-      color: #2f5a4f;
+      background: rgba(var(--accrgb), 0.15);
+      color: var(--accent-purple);
       padding: 0.2rem 0.6rem;
       border-radius: 9999px;
       font-size: 0.75rem;
@@ -280,8 +307,8 @@
     }
 
     .order-item {
-      background: rgba(31, 27, 22, 0.02);
-      border: 1px solid rgba(31, 27, 22, 0.04);
+      background: rgba(var(--ink), 0.02);
+      border: 1px solid rgba(var(--ink), 0.04);
       border-radius: 0.75rem;
       padding: 0.85rem;
       display: flex;
@@ -315,7 +342,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0.5rem;
-      background: #f3f0e8;
+      background: var(--tint);
       padding: 0.5rem;
       border-radius: 0.5rem;
       font-size: 0.75rem;
@@ -340,15 +367,15 @@
       font-weight: 600;
     }
 
-    .tag-pending { background: rgba(176, 114, 15, 0.15); color: #8a5a0b; }
-    .tag-transit { background: rgba(47, 90, 79, 0.15); color: #2f5a4f; }
-    .tag-finish { background: rgba(47, 122, 74, 0.15); color: #2f7a4a; }
+    .tag-pending { background: rgba(var(--amberrgb), 0.15); color: var(--warn-ink); }
+    .tag-transit { background: rgba(var(--accrgb), 0.15); color: var(--accent-purple); }
+    .tag-finish { background: rgba(var(--greenrgb), 0.15); color: var(--accent-green); }
 
     /* Photo preview */
     .photo-preview-btn {
       align-self: flex-end;
-      background: rgba(31, 27, 22, 0.05);
-      border: 1px solid rgba(31, 27, 22, 0.1);
+      background: rgba(var(--ink), 0.05);
+      border: 1px solid rgba(var(--ink), 0.1);
       color: var(--text-primary);
       padding: 0.35rem 0.75rem;
       border-radius: 0.5rem;
@@ -362,8 +389,8 @@
     }
 
     .photo-preview-btn:hover {
-      background: rgba(31, 27, 22, 0.1);
-      border-color: rgba(31, 27, 22, 0.2);
+      background: rgba(var(--ink), 0.1);
+      border-color: rgba(var(--ink), 0.2);
     }
 
     /* Modal for Photo */
@@ -385,7 +412,7 @@
       max-height: 80%;
       border-radius: 0.75rem;
       overflow: hidden;
-      border: 1px solid rgba(31, 27, 22, 0.1);
+      border: 1px solid rgba(var(--ink), 0.1);
     }
 
     .modal-content img {
@@ -422,7 +449,7 @@
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      box-shadow: 0 4px 15px rgba(47, 90, 79, 0.3);
+      box-shadow: 0 4px 15px rgba(var(--accrgb), 0.3);
       transition: all 0.2s ease;
     }
 
@@ -453,7 +480,7 @@
     .spinner {
       width: 48px;
       height: 48px;
-      border: 5px solid rgba(31, 27, 22, 0.05);
+      border: 5px solid rgba(var(--ink), 0.05);
       border-top-color: var(--accent-purple);
       border-radius: 50%;
       animation: spin 1s linear infinite;
@@ -563,9 +590,9 @@
       width: 100%;
       border-radius: 4px;
       background: linear-gradient(90deg, 
-        rgba(31, 27, 22, 0.03) 25%, 
-        rgba(31, 27, 22, 0.08) 50%, 
-        rgba(31, 27, 22, 0.03) 75%
+        rgba(var(--ink), 0.03) 25%, 
+        rgba(var(--ink), 0.08) 50%, 
+        rgba(var(--ink), 0.03) 75%
       );
       background-size: 200% 100%;
       animation: skeleton-loading 1.6s infinite;
@@ -605,7 +632,7 @@
 
     .progress-ring__circle-bg {
       fill: none;
-      stroke: rgba(31, 27, 22, 0.05);
+      stroke: rgba(var(--ink), 0.05);
       stroke-width: 6;
     }
 
@@ -631,7 +658,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
-      background: rgba(176, 114, 15, 0.15);
+      background: rgba(var(--amberrgb), 0.15);
       color: var(--accent-amber);
       padding: 0.2rem 0.5rem;
       border-radius: 0.25rem;
@@ -668,8 +695,8 @@
 
     .task-action-btn {
       flex: 1;
-      background: rgba(31, 27, 22, 0.03);
-      border: 1px solid rgba(31, 27, 22, 0.08);
+      background: rgba(var(--ink), 0.03);
+      border: 1px solid rgba(var(--ink), 0.08);
       color: var(--text-primary);
       padding: 0.5rem 0.75rem;
       border-radius: 0.5rem;
@@ -685,8 +712,8 @@
     }
 
     .task-action-btn:hover {
-      background: rgba(31, 27, 22, 0.08);
-      border-color: rgba(31, 27, 22, 0.15);
+      background: rgba(var(--ink), 0.08);
+      border-color: rgba(var(--ink), 0.15);
       transform: translateY(-1px);
     }
 
@@ -695,25 +722,25 @@
     }
 
     .task-action-btn.primary {
-      background: linear-gradient(135deg, rgba(47, 90, 79, 0.2), rgba(47, 90, 79, 0.2));
-      border-color: rgba(47, 90, 79, 0.3);
-      color: #2f5a4f;
+      background: linear-gradient(135deg, rgba(var(--accrgb), 0.2), rgba(var(--accrgb), 0.2));
+      border-color: rgba(var(--accrgb), 0.3);
+      color: var(--accent-purple);
     }
     
     .task-action-btn.primary:hover {
-      background: linear-gradient(135deg, rgba(47, 90, 79, 0.3), rgba(47, 90, 79, 0.3));
-      border-color: rgba(47, 90, 79, 0.5);
+      background: linear-gradient(135deg, rgba(var(--accrgb), 0.3), rgba(var(--accrgb), 0.3));
+      border-color: rgba(var(--accrgb), 0.5);
     }
 
     .task-action-btn.success {
-      background: linear-gradient(135deg, rgba(47, 122, 74, 0.2), rgba(47, 122, 74, 0.2));
-      border-color: rgba(47, 122, 74, 0.3);
-      color: #2f7a4a;
+      background: linear-gradient(135deg, rgba(var(--greenrgb), 0.2), rgba(var(--greenrgb), 0.2));
+      border-color: rgba(var(--greenrgb), 0.3);
+      color: var(--accent-green);
     }
 
     .task-action-btn.success:hover {
-      background: linear-gradient(135deg, rgba(47, 122, 74, 0.3), rgba(47, 122, 74, 0.3));
-      border-color: rgba(47, 122, 74, 0.5);
+      background: linear-gradient(135deg, rgba(var(--greenrgb), 0.3), rgba(var(--greenrgb), 0.3));
+      border-color: rgba(var(--greenrgb), 0.5);
     }
 
     /* --- METRO MAP STYLES EXTENSION --- */
@@ -740,7 +767,7 @@
     .stat-number {
       font-size: 1.75rem;
       font-weight: 700;
-      background: linear-gradient(135deg, #2f5a4f, #2f5a4f);
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -756,19 +783,19 @@
       gap: 1rem;
       margin-bottom: 1.25rem;
       padding-bottom: 0.85rem;
-      border-bottom: 1px solid rgba(31, 27, 22, 0.08);
+      border-bottom: 1px solid rgba(var(--ink), 0.08);
     }
 
     .vehicle-icon {
       width: 50px;
       height: 50px;
-      background: linear-gradient(135deg, #2f5a4f, #2f5a4f);
+      background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple));
       border-radius: 0.85rem;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 1.5rem;
-      box-shadow: 0 4px 12px rgba(47, 90, 79, 0.3);
+      box-shadow: 0 4px 12px rgba(var(--accrgb), 0.3);
     }
 
     .vehicle-details h3 {
@@ -815,14 +842,14 @@
       left: -2px;
       width: 28px;
       height: 28px;
-      background: linear-gradient(135deg, #2f5a4f 0%, #2f5a4f 100%);
+      background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple) 100%);
       color: white;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 0.75rem;
-      box-shadow: 0 0 10px rgba(47, 90, 79, 0.8);
+      box-shadow: 0 0 10px rgba(var(--accrgb), 0.8);
       z-index: 10;
       border: 2px solid var(--bg-card);
       animation: pulse-glow 1.2s infinite alternate, truck-scale-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -830,11 +857,11 @@
 
     @keyframes pulse-glow {
       0% {
-        box-shadow: 0 0 4px rgba(47, 90, 79, 0.4);
+        box-shadow: 0 0 4px rgba(var(--accrgb), 0.4);
         opacity: 0.85;
       }
       100% {
-        box-shadow: 0 0 14px rgba(47, 90, 79, 0.95), 0 0 22px rgba(47, 90, 79, 0.7);
+        box-shadow: 0 0 14px rgba(var(--accrgb), 0.95), 0 0 22px rgba(var(--accrgb), 0.7);
         opacity: 1;
       }
     }
@@ -875,7 +902,7 @@
       height: 36px;
       border-radius: 50%;
       border: 4px solid var(--station-pending);
-      background: #fffdf9;
+      background: var(--card-bg);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -896,7 +923,7 @@
       border-color: var(--station-current);
       background: var(--station-current);
       color: white;
-      box-shadow: 0 0 15px rgba(176, 114, 15, 0.5);
+      box-shadow: 0 0 15px rgba(var(--amberrgb), 0.5);
       animation: pulse 2s ease-in-out infinite;
     }
 
@@ -906,8 +933,8 @@
     }
 
     .station-content {
-      background: rgba(31, 27, 22, 0.02);
-      border: 1px solid rgba(31, 27, 22, 0.05);
+      background: rgba(var(--ink), 0.02);
+      border: 1px solid rgba(var(--ink), 0.05);
       border-radius: 0.85rem;
       padding: 0.85rem;
       min-height: 70px;
@@ -917,8 +944,8 @@
     }
 
     .station.current .station-content {
-      border-color: rgba(176, 114, 15, 0.3);
-      background: rgba(176, 114, 15, 0.08);
+      border-color: rgba(var(--amberrgb), 0.3);
+      background: rgba(var(--amberrgb), 0.08);
     }
 
     .station.completed .station-content {
@@ -935,7 +962,7 @@
     }
 
     .station.current .station-name {
-      color: #8a5a0b;
+      color: var(--warn-ink);
     }
 
     .station.completed .station-name {
@@ -967,8 +994,8 @@
       display: inline-flex;
       align-items: center;
       gap: 0.3rem;
-      background: rgba(47, 122, 74, 0.15);
-      color: #2f7a4a;
+      background: rgba(var(--greenrgb), 0.15);
+      color: var(--accent-green);
       padding: 0.25rem 0.5rem;
       border-radius: 0.35rem;
       font-size: 0.7rem;
@@ -981,7 +1008,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
-      background: rgba(31, 27, 22, 0.05);
+      background: rgba(var(--ink), 0.05);
       color: var(--text-secondary);
       padding: 0.15rem 0.4rem;
       border-radius: 0.25rem;
@@ -994,10 +1021,10 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      background: #fffdf9;
+      background: var(--card-bg);
       padding: 0.4rem 0.8rem;
       border-radius: 0.75rem;
-      border: 1px solid rgba(31, 27, 22, 0.08);
+      border: 1px solid rgba(var(--ink), 0.08);
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
     .date-label {
@@ -1008,8 +1035,8 @@
       gap: 0.25rem;
     }
     .date-input {
-      background: #fffdf9;
-      border: 1px solid rgba(31, 27, 22, 0.15);
+      background: var(--card-bg);
+      border: 1px solid rgba(var(--ink), 0.15);
       border-radius: 0.35rem;
       color: var(--text-primary);
       font-size: 0.85rem;
@@ -1021,7 +1048,7 @@
     }
     .date-input:focus {
       border-color: var(--accent-purple);
-      box-shadow: 0 0 8px rgba(47, 90, 79, 0.4);
+      box-shadow: 0 0 8px rgba(var(--accrgb), 0.4);
     }
     .btn-query-date {
       background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-indigo) 100%);
@@ -1036,59 +1063,60 @@
       align-items: center;
       gap: 0.25rem;
       transition: all 0.3s ease;
-      box-shadow: 0 2px 6px rgba(47, 90, 79, 0.2);
+      box-shadow: 0 2px 6px rgba(var(--accrgb), 0.2);
     }
     .btn-query-date:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(47, 90, 79, 0.4);
+      box-shadow: 0 4px 12px rgba(var(--accrgb), 0.4);
     }
     .btn-query-date:active {
       transform: translateY(1px);
     }
 
     /* ===== 2026-11-20 淺色主題（與查庫存頁同一套：米白底、墨綠主色，去掉漸層、光暈、毛玻璃） ===== */
-    body { background: #f6f4ef; padding: 1rem 1rem 2rem; }
+    body { background: var(--page-bg); padding: 1rem 1rem 2rem; }
     .card, .skeleton-card { backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; box-shadow: var(--glass-glow); border-radius: 14px; padding: 1.1rem; }
     header { padding: 0.5rem 0 0; gap: 0.35rem; }
-    header h1 { background: none; -webkit-text-fill-color: currentColor; color: #1f1b16; font-size: 1.25rem; letter-spacing: 0; }
-    .logo-badge { background: #2f5a4f; box-shadow: none; color: #fff; }
+    header h1 { background: none; -webkit-text-fill-color: currentColor; color: var(--text-primary); font-size: 1.25rem; letter-spacing: 0; }
+    .logo-badge { background: var(--accent-purple); box-shadow: none; color: #fff; }
     .status-icon { text-shadow: none; }
-    .status-banner, .progress-ring-card { border-left: 4px solid #2f5a4f; margin-bottom: 1rem; }
-    .stat-number { background: none !important; -webkit-text-fill-color: currentColor !important; color: #1f1b16; }
-    .stat-item:nth-child(2) .stat-number { color: #2f7a4a; }
-    .stat-item:nth-child(3) .stat-number { color: #b0720f; }
-    .progress-stats { background: #f3f0e8 !important; }
-    .vehicle-icon { background: #2f5a4f !important; box-shadow: none; border-radius: 12px; }
-    .vehicle-info { border-bottom-color: rgba(31, 27, 22, 0.08); }
-    .floating-truck { background: #b0720f; box-shadow: none; animation: truck-scale-in 0.4s ease forwards; border-color: #fffdf9; }
-    .station.current .station-marker { box-shadow: 0 0 0 4px rgba(176, 114, 15, 0.15); animation: none; }
-    .station-content { background: #fffdf9; border: 1px solid rgba(31, 27, 22, 0.08); }
-    .station.current .station-content { background: rgba(176, 114, 15, 0.05); border-color: rgba(176, 114, 15, 0.35); }
+    .status-banner, .progress-ring-card { border-left: 4px solid var(--accent-purple); margin-bottom: 1rem; }
+    .stat-number { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text-primary); }
+    .stat-item:nth-child(2) .stat-number { color: var(--accent-green); }
+    .stat-item:nth-child(3) .stat-number { color: var(--accent-amber); }
+    .progress-stats { background: var(--tint) !important; }
+    .vehicle-icon { background: var(--accent-purple) !important; box-shadow: none; border-radius: 12px; }
+    .vehicle-info { border-bottom-color: rgba(var(--ink), 0.08); }
+    .floating-truck { background: var(--accent-amber); box-shadow: none; animation: truck-scale-in 0.4s ease forwards; border-color: var(--card-bg); }
+    .station.current .station-marker { box-shadow: 0 0 0 4px rgba(var(--amberrgb), 0.15); animation: none; }
+    .station-content { background: var(--card-bg); border: 1px solid rgba(var(--ink), 0.08); }
+    .station.current .station-content { background: rgba(var(--amberrgb), 0.05); border-color: rgba(var(--amberrgb), 0.35); }
     .station.completed .station-content { opacity: 0.72; }
     .timeline-badge, .station-marker { box-shadow: none; }
-    .btn-refresh { background: #2f5a4f; box-shadow: none; border-radius: 12px; }
-    .btn-query-date { background: #2f5a4f; box-shadow: none; border-radius: 8px; padding: 0.4rem 0.8rem; }
+    .btn-refresh { background: var(--accent-purple); box-shadow: none; border-radius: 12px; }
+    .btn-query-date { background: var(--accent-purple); box-shadow: none; border-radius: 8px; padding: 0.4rem 0.8rem; }
     .btn-query-date:hover { box-shadow: none; transform: none; }
-    .date-selector-wrapper { background: #fffdf9; box-shadow: var(--glass-glow); border: 0; border-radius: 12px; padding: 0.5rem 0.75rem; }
-    .date-input { background: #f6f4ef; border: 1px solid rgba(31, 27, 22, 0.14); border-radius: 8px; padding: 0.35rem 0.5rem; color: #1f1b16; }
-    .date-input:focus { border-color: #2f5a4f; box-shadow: 0 0 0 3px rgba(47, 90, 79, 0.15); }
-    .task-action-btn { background: #fffdf9 !important; border: 1px solid rgba(31, 27, 22, 0.14) !important; color: #1f1b16 !important; border-radius: 10px !important; }
-    .task-action-btn:hover { transform: none; background: #f3f0e8 !important; }
-    .task-action-btn.primary { background: #2f5a4f !important; border-color: #2f5a4f !important; color: #fff !important; }
-    .task-action-btn.success { background: #2f7a4a !important; border-color: #2f7a4a !important; color: #fff !important; }
+    .date-selector-wrapper { background: var(--card-bg); box-shadow: var(--glass-glow); border: 0; border-radius: 12px; padding: 0.5rem 0.75rem; }
+    .date-input { background: var(--page-bg); border: 1px solid rgba(var(--ink), 0.14); border-radius: 8px; padding: 0.35rem 0.5rem; color: var(--text-primary); }
+    .date-input:focus { border-color: var(--accent-purple); box-shadow: 0 0 0 3px rgba(var(--accrgb), 0.15); }
+    .task-action-btn { background: var(--card-bg) !important; border: 1px solid rgba(var(--ink), 0.14) !important; color: var(--text-primary) !important; border-radius: 10px !important; }
+    .task-action-btn:hover { transform: none; background: var(--tint) !important; }
+    .task-action-btn.primary { background: var(--accent-purple) !important; border-color: var(--accent-purple) !important; color: var(--card-bg) !important; }
+    .task-action-btn.success { background: var(--accent-green) !important; border-color: var(--accent-green) !important; color: var(--card-bg) !important; }
     .task-action-btn:active, .btn-refresh:active, .btn-query-date:active { transform: scale(0.98); }
-    .order-count { background: rgba(47, 90, 79, 0.10); color: #2f5a4f; }
-    .order-item { background: #fffdf9; border: 1px solid rgba(31, 27, 22, 0.08); }
-    .eta-badge { background: rgba(176, 114, 15, 0.10); color: #8a5a0b; }
-    .completed-badge { background: rgba(47, 122, 74, 0.10); color: #2f7a4a; }
+    .order-count { background: rgba(var(--accrgb), 0.10); color: var(--accent-purple); }
+    .order-item { background: var(--card-bg); border: 1px solid rgba(var(--ink), 0.08); }
+    .eta-badge { background: rgba(var(--amberrgb), 0.10); color: var(--warn-ink); }
+    .completed-badge { background: rgba(var(--greenrgb), 0.10); color: var(--accent-green); }
     .offline-badge { animation: none; }
-    .spinner { border-color: rgba(31, 27, 22, 0.08); border-top-color: #2f5a4f; }
-    .skeleton-line { background: linear-gradient(90deg, #eeeae2 25%, #f6f4ef 50%, #eeeae2 75%); background-size: 200% 100%; }
-    .modal { background: rgba(31, 27, 22, 0.85); backdrop-filter: none; }
+    .spinner { border-color: rgba(var(--ink), 0.08); border-top-color: var(--accent-purple); }
+    .skeleton-line { background: linear-gradient(90deg, var(--tint) 25%, var(--page-bg) 50%, var(--tint) 75%); background-size: 200% 100%; }
+    .modal { background: rgba(var(--ink), 0.85); backdrop-filter: none; }
     .modal-content { border-color: transparent; }
-    footer a { color: #2f5a4f; }
-    body.is-free-grade .station.is-ours .station-content { box-shadow: none !important; background: rgba(47, 122, 74, 0.05) !important; }
+    footer a { color: var(--accent-purple); }
+    body.is-free-grade .station.is-ours .station-content { box-shadow: none !important; background: rgba(var(--greenrgb), 0.05) !important; }
     body.is-free-grade .station.current .station-content, body.is-free-grade .station.is-ours.current .station-content { animation: none !important; }
+    .btn-refresh, .btn-query-date, .vehicle-icon, .vehicle-icon i, .floating-truck, .station.completed .station-marker, .station.current .station-marker, .logo-badge { color: var(--card-bg) !important; }
     @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
@@ -2169,7 +2197,7 @@
 
           if (!isOurs) {
             // 💡 合作夥伴配送點簡化顯示 (展示完整地址，但不顯示客戶名稱，統一綠色配色)
-            const grayColor = "#8a8176"; // 優雅灰色，與自己的專屬單做視覺區隔
+            const grayColor = "var(--muted2)"; // 優雅灰色，與自己的專屬單做視覺區隔
             const grayBg = "rgba(148, 163, 184, 0.1)";
             
             // 💡 只秀路，後面巷弄門牌號都不要顯示 (維護他人訂單私密隱私)
@@ -2240,7 +2268,7 @@
               const mm = String(d.getMinutes()).padStart(2, "0");
               return `${hh}:${mm}`;
             };
-            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(31, 27, 22, 0.06); color: #4a433b; border: 0;"><i class="fa-solid fa-clock"><\/i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達<\/div>`;
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(var(--ink), 0.06); color: var(--text-secondary); border: 0;"><i class="fa-solid fa-clock"><\/i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達<\/div>`;
           }
 
           // 行動按鈕 (司機定位)
@@ -2322,15 +2350,15 @@
             // 💡 客戶端 (FREE等級) 看的時候，全數統一為綠色，不區分 AEWS 的顏色！
             brInfo = {
               code: brInfo.code,
-              color: "#2f7a4a", // 統一為綠色
-              bg: "rgba(47, 122, 74, 0.10)"
+              color: "var(--br-a)", // 統一為綠色
+              bg: "rgba(var(--greenrgb), 0.12)"
             };
           }
 
           let ownTaskBadgeHTML = "";
           if (isUserFreeGrade && isOwnDealerTask) {
             ownTaskBadgeHTML = `
-              <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: #2f5a4f; color: #fff; margin-left: 0.2rem;">
+              <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: var(--accent-purple); color: var(--card-bg); margin-left: 0.2rem;">
                 <i class="fa-solid fa-star" style="font-size: 0.65rem;"><\/i> 您的專屬單
               <\/span>
             `;
@@ -2346,7 +2374,7 @@
                   <div class="station-name" style="margin-bottom: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
                     <i class="fa-solid fa-location-dot" style="color: ${brInfo.color}; margin-right: 2px;"><\/i>
                     <span style="color: ${brInfo.color}; font-weight: 800; font-size: 1.02rem;">${t.customer} <span style="font-size: 0.85rem; font-weight: 500; opacity: 0.85;">(${streetName})<\/span><\/span>
-                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${brInfo.bg}; color: ${brInfo.color}; border: 1px solid ${brInfo.color}22; margin-left: 0.2rem;">${finalArrivalInfo}<\/span>
+                    <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${brInfo.bg}; color: ${brInfo.color}; border: 1px solid transparent; margin-left: 0.2rem;">${finalArrivalInfo}<\/span>
                     ${ownTaskBadgeHTML}
                   <\/div>
                   <i class="fa-solid fa-chevron-down toggle-icon" style="transition: transform 0.3s ease; color: var(--text-secondary); margin-left: 0.5rem; ${defaultExpanded ? 'transform: rotate(180deg);' : ''}"><\/i>
@@ -2440,48 +2468,48 @@
       
       // 1. 精準對應分公司欄位 (支援 A/E/S/W 英文及中文字串)
       if (bStr.includes("A") || bStr.includes("安") || bStr.includes("ANTIGRAVITY")) {
-        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
+        return { code: "A", color: "var(--br-a)", bg: "rgba(var(--greenrgb), 0.12)" };
       }
       if (bStr.includes("E") || bStr.includes("高") || bStr.includes("GAOYACI")) {
-        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
+        return { code: "E", color: "var(--br-e)", bg: "rgba(176, 58, 114, 0.12)" };
       }
       if (bStr.includes("S") || bStr.includes("喜") || bStr.includes("SHIYUENA")) {
-        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
+        return { code: "S", color: "var(--br-s)", bg: "rgba(43, 108, 176, 0.12)" };
       }
       if (bStr.includes("W") || bStr.includes("漢") || bStr.includes("HANHUA")) {
-        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
+        return { code: "W", color: "var(--br-w)", bg: "rgba(var(--amberrgb), 0.12)" };
       }
       
       // 2. 從單號字尾或後綴判定 (-安, -高, -喜, -漢 或 -A, -E, -S, -W)
       if (oStr.endsWith("安") || oStr.endsWith("-A") || oStr.includes("-安") || oStr.includes("-A")) {
-        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
+        return { code: "A", color: "var(--br-a)", bg: "rgba(var(--greenrgb), 0.12)" };
       }
       if (oStr.endsWith("高") || oStr.endsWith("-E") || oStr.includes("-高") || oStr.includes("-E")) {
-        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
+        return { code: "E", color: "var(--br-e)", bg: "rgba(176, 58, 114, 0.12)" };
       }
       if (oStr.endsWith("喜") || oStr.endsWith("-S") || oStr.includes("-喜") || oStr.includes("-S")) {
-        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
+        return { code: "S", color: "var(--br-s)", bg: "rgba(43, 108, 176, 0.12)" };
       }
       if (oStr.endsWith("漢") || oStr.endsWith("-W") || oStr.includes("-漢") || oStr.includes("-W")) {
-        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
+        return { code: "W", color: "var(--br-w)", bg: "rgba(var(--amberrgb), 0.12)" };
       }
       
       // 3. 從客戶名稱進行模糊匹配
       if (cStr.includes("安") || cStr.includes("ANTIGRAVITY")) {
-        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
+        return { code: "A", color: "var(--br-a)", bg: "rgba(var(--greenrgb), 0.12)" };
       }
       if (cStr.includes("高") || cStr.includes("GAOYACI")) {
-        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
+        return { code: "E", color: "var(--br-e)", bg: "rgba(176, 58, 114, 0.12)" };
       }
       if (cStr.includes("喜") || cStr.includes("SHIYUENA")) {
-        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
+        return { code: "S", color: "var(--br-s)", bg: "rgba(43, 108, 176, 0.12)" };
       }
       if (cStr.includes("漢") || cStr.includes("HANHUA")) {
-        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
+        return { code: "W", color: "var(--br-w)", bg: "rgba(var(--amberrgb), 0.12)" };
       }
       
       // 4. 預設兜底：一律歸屬為 高雅瓷 E (高雅瓷/粉色)，消除任何 OTHER 合作夥伴標籤
-      return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
+      return { code: "E", color: "var(--br-e)", bg: "rgba(176, 58, 114, 0.12)" };
     }
 
     // 💡 取得日期對應的週幾字串
