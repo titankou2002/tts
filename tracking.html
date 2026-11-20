@@ -15,24 +15,25 @@
   
   <style>
     :root {
-      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-      --card-bg: rgba(30, 41, 59, 0.7);
-      --card-border: rgba(255, 255, 255, 0.08);
-      --text-primary: #f8fafc;
-      --text-secondary: #94a3b8;
-      --accent-purple: #a855f7;
-      --accent-indigo: #6366f1;
-      --accent-green: #10b981;
-      --accent-amber: #f59e0b;
-      --accent-red: #ef4444;
-      --glass-glow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+      --bg-gradient: #f6f4ef;
+      --card-bg: #fffdf9;
+      --bg-card: #fffdf9;
+      --card-border: rgba(31, 27, 22, 0.08);
+      --text-primary: #1f1b16;
+      --text-secondary: #6b6257;
+      --accent-purple: #2f5a4f;
+      --accent-indigo: #2f5a4f;
+      --accent-green: #2f7a4a;
+      --accent-amber: #b0720f;
+      --accent-red: #b4412f;
+      --glass-glow: 0 1px 3px rgba(31, 27, 22, 0.08), 0 0 0 1px rgba(31, 27, 22, 0.04);
     }
 
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
     }
 
     body {
@@ -48,43 +49,43 @@
 
     /* 💡 客戶端 (FREE 等級) 特色樣式：專屬客戶的卡片用綠框，即將抵達的用黃色呼吸框 */
     body.is-free-grade .station.is-ours .station-content {
-      border: 1.5px solid #10b981 !important;
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.3) !important;
-      background: rgba(16, 185, 129, 0.04) !important;
+      border: 1.5px solid #2f7a4a !important;
+      box-shadow: 0 0 12px rgba(47, 122, 74, 0.3) !important;
+      background: rgba(47, 122, 74, 0.04) !important;
     }
 
     body.is-free-grade .station.current .station-content {
-      border: 1.5px solid #f59e0b !important;
-      background: rgba(245, 158, 11, 0.06) !important;
+      border: 1.5px solid #b0720f !important;
+      background: rgba(176, 114, 15, 0.06) !important;
       animation: yellow-glow-pulse 2s ease-in-out infinite !important;
     }
 
     /* 💡 如果又是專屬又是即將抵達，則用呼吸綠色框，給予最顯眼的專屬通知！ */
     body.is-free-grade .station.is-ours.current .station-content {
-      border: 1.5px solid #10b981 !important;
-      background: rgba(16, 185, 129, 0.06) !important;
+      border: 1.5px solid #2f7a4a !important;
+      background: rgba(47, 122, 74, 0.06) !important;
       animation: green-glow-pulse 2s ease-in-out infinite !important;
     }
 
     @keyframes yellow-glow-pulse {
       0%, 100% {
-        border-color: rgba(245, 158, 11, 0.4);
-        box-shadow: 0 0 6px rgba(245, 158, 11, 0.15);
+        border-color: rgba(176, 114, 15, 0.4);
+        box-shadow: 0 0 6px rgba(176, 114, 15, 0.15);
       }
       50% {
-        border-color: rgba(245, 158, 11, 1);
-        box-shadow: 0 0 16px rgba(245, 158, 11, 0.5);
+        border-color: rgba(176, 114, 15, 1);
+        box-shadow: 0 0 16px rgba(176, 114, 15, 0.5);
       }
     }
 
     @keyframes green-glow-pulse {
       0%, 100% {
-        border-color: rgba(16, 185, 129, 0.4);
-        box-shadow: 0 0 6px rgba(16, 185, 129, 0.15);
+        border-color: rgba(47, 122, 74, 0.4);
+        box-shadow: 0 0 6px rgba(47, 122, 74, 0.15);
       }
       50% {
-        border-color: rgba(16, 185, 129, 1);
-        box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+        border-color: rgba(47, 122, 74, 1);
+        box-shadow: 0 0 16px rgba(47, 122, 74, 0.5);
       }
     }
 
@@ -114,13 +115,13 @@
       font-weight: 700;
       letter-spacing: 1px;
       font-size: 0.85rem;
-      box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+      box-shadow: 0 0 15px rgba(47, 90, 79, 0.4);
     }
 
     header h1 {
       font-size: 1.5rem;
       font-weight: 700;
-      background: linear-gradient(to right, #ffffff, #c084fc);
+      background: linear-gradient(to right, #ffffff, #2f5a4f);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -167,7 +168,7 @@
     .status-icon {
       font-size: 2rem;
       color: var(--accent-purple);
-      text-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+      text-shadow: 0 0 10px rgba(47, 90, 79, 0.4);
     }
 
     /* Timeline Section */
@@ -184,7 +185,7 @@
       top: 5px;
       bottom: 5px;
       width: 2px;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(31, 27, 22, 0.1);
     }
 
     .timeline-item {
@@ -203,8 +204,8 @@
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      background: #475569;
-      border: 3px solid #0f172a;
+      background: #d6cfc3;
+      border: 3px solid #fffdf9;
       transition: all 0.3s ease;
       z-index: 2;
     }
@@ -254,7 +255,7 @@
       justify-content: space-between;
       align-items: center;
       margin-bottom: 1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(31, 27, 22, 0.05);
       padding-bottom: 0.75rem;
     }
 
@@ -264,8 +265,8 @@
     }
 
     .order-count {
-      background: rgba(99, 102, 241, 0.15);
-      color: #a5b4fc;
+      background: rgba(47, 90, 79, 0.15);
+      color: #2f5a4f;
       padding: 0.2rem 0.6rem;
       border-radius: 9999px;
       font-size: 0.75rem;
@@ -279,8 +280,8 @@
     }
 
     .order-item {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: rgba(31, 27, 22, 0.02);
+      border: 1px solid rgba(31, 27, 22, 0.04);
       border-radius: 0.75rem;
       padding: 0.85rem;
       display: flex;
@@ -314,7 +315,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 0.5rem;
-      background: rgba(0, 0, 0, 0.15);
+      background: #f3f0e8;
       padding: 0.5rem;
       border-radius: 0.5rem;
       font-size: 0.75rem;
@@ -339,15 +340,15 @@
       font-weight: 600;
     }
 
-    .tag-pending { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
-    .tag-transit { background: rgba(99, 102, 241, 0.15); color: #c7d2fe; }
-    .tag-finish { background: rgba(16, 185, 129, 0.15); color: #a7f3d0; }
+    .tag-pending { background: rgba(176, 114, 15, 0.15); color: #8a5a0b; }
+    .tag-transit { background: rgba(47, 90, 79, 0.15); color: #2f5a4f; }
+    .tag-finish { background: rgba(47, 122, 74, 0.15); color: #2f7a4a; }
 
     /* Photo preview */
     .photo-preview-btn {
       align-self: flex-end;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(31, 27, 22, 0.05);
+      border: 1px solid rgba(31, 27, 22, 0.1);
       color: var(--text-primary);
       padding: 0.35rem 0.75rem;
       border-radius: 0.5rem;
@@ -361,8 +362,8 @@
     }
 
     .photo-preview-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: rgba(255, 255, 255, 0.2);
+      background: rgba(31, 27, 22, 0.1);
+      border-color: rgba(31, 27, 22, 0.2);
     }
 
     /* Modal for Photo */
@@ -384,7 +385,7 @@
       max-height: 80%;
       border-radius: 0.75rem;
       overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(31, 27, 22, 0.1);
     }
 
     .modal-content img {
@@ -421,7 +422,7 @@
       align-items: center;
       justify-content: center;
       gap: 0.5rem;
-      box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+      box-shadow: 0 4px 15px rgba(47, 90, 79, 0.3);
       transition: all 0.2s ease;
     }
 
@@ -452,7 +453,7 @@
     .spinner {
       width: 48px;
       height: 48px;
-      border: 5px solid rgba(255, 255, 255, 0.05);
+      border: 5px solid rgba(31, 27, 22, 0.05);
       border-top-color: var(--accent-purple);
       border-radius: 50%;
       animation: spin 1s linear infinite;
@@ -562,9 +563,9 @@
       width: 100%;
       border-radius: 4px;
       background: linear-gradient(90deg, 
-        rgba(255, 255, 255, 0.03) 25%, 
-        rgba(255, 255, 255, 0.08) 50%, 
-        rgba(255, 255, 255, 0.03) 75%
+        rgba(31, 27, 22, 0.03) 25%, 
+        rgba(31, 27, 22, 0.08) 50%, 
+        rgba(31, 27, 22, 0.03) 75%
       );
       background-size: 200% 100%;
       animation: skeleton-loading 1.6s infinite;
@@ -604,7 +605,7 @@
 
     .progress-ring__circle-bg {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.05);
+      stroke: rgba(31, 27, 22, 0.05);
       stroke-width: 6;
     }
 
@@ -630,7 +631,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
-      background: rgba(245, 158, 11, 0.15);
+      background: rgba(176, 114, 15, 0.15);
       color: var(--accent-amber);
       padding: 0.2rem 0.5rem;
       border-radius: 0.25rem;
@@ -642,7 +643,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.3rem;
-      background: rgba(239, 68, 68, 0.15);
+      background: rgba(180, 65, 47, 0.15);
       color: var(--accent-red);
       padding: 0.2rem 0.6rem;
       border-radius: 9999px;
@@ -653,9 +654,9 @@
     }
 
     @keyframes pulse-red {
-      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-      70% { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      0% { box-shadow: 0 0 0 0 rgba(180, 65, 47, 0.4); }
+      70% { box-shadow: 0 0 0 5px rgba(180, 65, 47, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(180, 65, 47, 0); }
     }
 
     .task-actions {
@@ -667,8 +668,8 @@
 
     .task-action-btn {
       flex: 1;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(31, 27, 22, 0.03);
+      border: 1px solid rgba(31, 27, 22, 0.08);
       color: var(--text-primary);
       padding: 0.5rem 0.75rem;
       border-radius: 0.5rem;
@@ -684,8 +685,8 @@
     }
 
     .task-action-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(31, 27, 22, 0.08);
+      border-color: rgba(31, 27, 22, 0.15);
       transform: translateY(-1px);
     }
 
@@ -694,32 +695,32 @@
     }
 
     .task-action-btn.primary {
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(99, 102, 241, 0.2));
-      border-color: rgba(168, 85, 247, 0.3);
-      color: #c084fc;
+      background: linear-gradient(135deg, rgba(47, 90, 79, 0.2), rgba(47, 90, 79, 0.2));
+      border-color: rgba(47, 90, 79, 0.3);
+      color: #2f5a4f;
     }
     
     .task-action-btn.primary:hover {
-      background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(99, 102, 241, 0.3));
-      border-color: rgba(168, 85, 247, 0.5);
+      background: linear-gradient(135deg, rgba(47, 90, 79, 0.3), rgba(47, 90, 79, 0.3));
+      border-color: rgba(47, 90, 79, 0.5);
     }
 
     .task-action-btn.success {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(6, 199, 85, 0.2));
-      border-color: rgba(16, 185, 129, 0.3);
-      color: #a7f3d0;
+      background: linear-gradient(135deg, rgba(47, 122, 74, 0.2), rgba(47, 122, 74, 0.2));
+      border-color: rgba(47, 122, 74, 0.3);
+      color: #2f7a4a;
     }
 
     .task-action-btn.success:hover {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 199, 85, 0.3));
-      border-color: rgba(16, 185, 129, 0.5);
+      background: linear-gradient(135deg, rgba(47, 122, 74, 0.3), rgba(47, 122, 74, 0.3));
+      border-color: rgba(47, 122, 74, 0.5);
     }
 
     /* --- METRO MAP STYLES EXTENSION --- */
     :root {
-      --station-done: #10b981;
-      --station-current: #3b82f6;
-      --station-pending: #64748b;
+      --station-done: #2f7a4a;
+      --station-current: #b0720f;
+      --station-pending: #d6cfc3;
     }
 
     .progress-stats {
@@ -739,7 +740,7 @@
     .stat-number {
       font-size: 1.75rem;
       font-weight: 700;
-      background: linear-gradient(135deg, #a855f7, #6366f1);
+      background: linear-gradient(135deg, #2f5a4f, #2f5a4f);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -755,19 +756,19 @@
       gap: 1rem;
       margin-bottom: 1.25rem;
       padding-bottom: 0.85rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      border-bottom: 1px solid rgba(31, 27, 22, 0.08);
     }
 
     .vehicle-icon {
       width: 50px;
       height: 50px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      background: linear-gradient(135deg, #2f5a4f, #2f5a4f);
       border-radius: 0.85rem;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 1.5rem;
-      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+      box-shadow: 0 4px 12px rgba(47, 90, 79, 0.3);
     }
 
     .vehicle-details h3 {
@@ -814,14 +815,14 @@
       left: -2px;
       width: 28px;
       height: 28px;
-      background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%);
+      background: linear-gradient(135deg, #2f5a4f 0%, #2f5a4f 100%);
       color: white;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 0.75rem;
-      box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+      box-shadow: 0 0 10px rgba(47, 90, 79, 0.8);
       z-index: 10;
       border: 2px solid var(--bg-card);
       animation: pulse-glow 1.2s infinite alternate, truck-scale-in 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
@@ -829,11 +830,11 @@
 
     @keyframes pulse-glow {
       0% {
-        box-shadow: 0 0 4px rgba(168, 85, 247, 0.4);
+        box-shadow: 0 0 4px rgba(47, 90, 79, 0.4);
         opacity: 0.85;
       }
       100% {
-        box-shadow: 0 0 14px rgba(168, 85, 247, 0.95), 0 0 22px rgba(99, 102, 241, 0.7);
+        box-shadow: 0 0 14px rgba(47, 90, 79, 0.95), 0 0 22px rgba(47, 90, 79, 0.7);
         opacity: 1;
       }
     }
@@ -874,7 +875,7 @@
       height: 36px;
       border-radius: 50%;
       border: 4px solid var(--station-pending);
-      background: #0f172a;
+      background: #fffdf9;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -895,7 +896,7 @@
       border-color: var(--station-current);
       background: var(--station-current);
       color: white;
-      box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+      box-shadow: 0 0 15px rgba(176, 114, 15, 0.5);
       animation: pulse 2s ease-in-out infinite;
     }
 
@@ -905,8 +906,8 @@
     }
 
     .station-content {
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(31, 27, 22, 0.02);
+      border: 1px solid rgba(31, 27, 22, 0.05);
       border-radius: 0.85rem;
       padding: 0.85rem;
       min-height: 70px;
@@ -916,8 +917,8 @@
     }
 
     .station.current .station-content {
-      border-color: rgba(59, 130, 246, 0.3);
-      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(176, 114, 15, 0.3);
+      background: rgba(176, 114, 15, 0.08);
     }
 
     .station.completed .station-content {
@@ -934,7 +935,7 @@
     }
 
     .station.current .station-name {
-      color: #60a5fa;
+      color: #8a5a0b;
     }
 
     .station.completed .station-name {
@@ -966,8 +967,8 @@
       display: inline-flex;
       align-items: center;
       gap: 0.3rem;
-      background: rgba(16, 185, 129, 0.15);
-      color: #10b981;
+      background: rgba(47, 122, 74, 0.15);
+      color: #2f7a4a;
       padding: 0.25rem 0.5rem;
       border-radius: 0.35rem;
       font-size: 0.7rem;
@@ -980,7 +981,7 @@
       display: inline-flex;
       align-items: center;
       gap: 0.25rem;
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(31, 27, 22, 0.05);
       color: var(--text-secondary);
       padding: 0.15rem 0.4rem;
       border-radius: 0.25rem;
@@ -993,10 +994,10 @@
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      background: rgba(30, 41, 59, 0.4);
+      background: #fffdf9;
       padding: 0.4rem 0.8rem;
       border-radius: 0.75rem;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(31, 27, 22, 0.08);
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
     }
     .date-label {
@@ -1007,20 +1008,20 @@
       gap: 0.25rem;
     }
     .date-input {
-      background: rgba(15, 23, 42, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: #fffdf9;
+      border: 1px solid rgba(31, 27, 22, 0.15);
       border-radius: 0.35rem;
       color: var(--text-primary);
       font-size: 0.85rem;
       padding: 0.25rem 0.5rem;
       outline: none;
-      font-family: 'Outfit', 'Noto Sans TC', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
       cursor: pointer;
       transition: all 0.3s ease;
     }
     .date-input:focus {
       border-color: var(--accent-purple);
-      box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+      box-shadow: 0 0 8px rgba(47, 90, 79, 0.4);
     }
     .btn-query-date {
       background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-indigo) 100%);
@@ -1035,15 +1036,60 @@
       align-items: center;
       gap: 0.25rem;
       transition: all 0.3s ease;
-      box-shadow: 0 2px 6px rgba(168, 85, 247, 0.2);
+      box-shadow: 0 2px 6px rgba(47, 90, 79, 0.2);
     }
     .btn-query-date:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(168, 85, 247, 0.4);
+      box-shadow: 0 4px 12px rgba(47, 90, 79, 0.4);
     }
     .btn-query-date:active {
       transform: translateY(1px);
     }
+
+    /* ===== 2026-11-20 淺色主題（與查庫存頁同一套：米白底、墨綠主色，去掉漸層、光暈、毛玻璃） ===== */
+    body { background: #f6f4ef; padding: 1rem 1rem 2rem; }
+    .card, .skeleton-card { backdrop-filter: none; -webkit-backdrop-filter: none; border: 0; box-shadow: var(--glass-glow); border-radius: 14px; padding: 1.1rem; }
+    header { padding: 0.5rem 0 0; gap: 0.35rem; }
+    header h1 { background: none; -webkit-text-fill-color: currentColor; color: #1f1b16; font-size: 1.25rem; letter-spacing: 0; }
+    .logo-badge { background: #2f5a4f; box-shadow: none; color: #fff; }
+    .status-icon { text-shadow: none; }
+    .status-banner, .progress-ring-card { border-left: 4px solid #2f5a4f; }
+    .stat-number { background: none !important; -webkit-text-fill-color: currentColor !important; color: #1f1b16; }
+    .stat-item:nth-child(2) .stat-number { color: #2f7a4a; }
+    .stat-item:nth-child(3) .stat-number { color: #b0720f; }
+    .progress-stats { background: #f3f0e8 !important; }
+    .vehicle-icon { background: #2f5a4f !important; box-shadow: none; border-radius: 12px; }
+    .vehicle-info { border-bottom-color: rgba(31, 27, 22, 0.08); }
+    .floating-truck { background: #b0720f; box-shadow: none; animation: truck-scale-in 0.4s ease forwards; border-color: #fffdf9; }
+    .station.current .station-marker { box-shadow: 0 0 0 4px rgba(176, 114, 15, 0.15); animation: none; }
+    .station-content { background: #fffdf9; border: 1px solid rgba(31, 27, 22, 0.08); }
+    .station.current .station-content { background: rgba(176, 114, 15, 0.05); border-color: rgba(176, 114, 15, 0.35); }
+    .station.completed .station-content { opacity: 0.72; }
+    .timeline-badge, .station-marker { box-shadow: none; }
+    .btn-refresh { background: #2f5a4f; box-shadow: none; border-radius: 12px; }
+    .btn-query-date { background: #2f5a4f; box-shadow: none; border-radius: 8px; padding: 0.4rem 0.8rem; }
+    .btn-query-date:hover { box-shadow: none; transform: none; }
+    .date-selector-wrapper { background: #fffdf9; box-shadow: var(--glass-glow); border: 0; border-radius: 12px; padding: 0.5rem 0.75rem; }
+    .date-input { background: #f6f4ef; border: 1px solid rgba(31, 27, 22, 0.14); border-radius: 8px; padding: 0.35rem 0.5rem; color: #1f1b16; }
+    .date-input:focus { border-color: #2f5a4f; box-shadow: 0 0 0 3px rgba(47, 90, 79, 0.15); }
+    .task-action-btn { background: #fffdf9 !important; border: 1px solid rgba(31, 27, 22, 0.14) !important; color: #1f1b16 !important; border-radius: 10px !important; }
+    .task-action-btn:hover { transform: none; background: #f3f0e8 !important; }
+    .task-action-btn.primary { background: #2f5a4f !important; border-color: #2f5a4f !important; color: #fff !important; }
+    .task-action-btn.success { background: #2f7a4a !important; border-color: #2f7a4a !important; color: #fff !important; }
+    .task-action-btn:active, .btn-refresh:active, .btn-query-date:active { transform: scale(0.98); }
+    .order-count { background: rgba(47, 90, 79, 0.10); color: #2f5a4f; }
+    .order-item { background: #fffdf9; border: 1px solid rgba(31, 27, 22, 0.08); }
+    .eta-badge { background: rgba(176, 114, 15, 0.10); color: #8a5a0b; }
+    .completed-badge { background: rgba(47, 122, 74, 0.10); color: #2f7a4a; }
+    .offline-badge { animation: none; }
+    .spinner { border-color: rgba(31, 27, 22, 0.08); border-top-color: #2f5a4f; }
+    .skeleton-line { background: linear-gradient(90deg, #eeeae2 25%, #f6f4ef 50%, #eeeae2 75%); background-size: 200% 100%; }
+    .modal { background: rgba(31, 27, 22, 0.85); backdrop-filter: none; }
+    .modal-content { border-color: transparent; }
+    footer a { color: #2f5a4f; }
+    body.is-free-grade .station.is-ours .station-content { box-shadow: none !important; background: rgba(47, 122, 74, 0.05) !important; }
+    body.is-free-grade .station.current .station-content, body.is-free-grade .station.is-ours.current .station-content { animation: none !important; }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
   </style>
 </head>
 <body>
@@ -1106,7 +1152,7 @@
       <button class="modal-close" onclick="closePhotoModal()"><i class="fa-solid fa-xmark"></i></button>
       <div id="modalTitle" style="color: white; font-weight: 600; margin-bottom: 0.75rem; font-size: 0.95rem; text-align: center; letter-spacing: 1px;">照片預覽</div>
       <img id="modalImg" src="" alt="完工證明照片" style="max-height: 70vh; max-width: 100%; border-radius: 0.5rem; object-fit: contain; cursor: zoom-in;" onclick="window.open(this.src, '_blank')">
-      <button onclick="window.open(document.getElementById('modalImg').src, '_blank')" style="margin-top: 0.75rem; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4); transition: all 0.2s ease;">
+      <button onclick="window.open(document.getElementById('modalImg').src, '_blank')" style="margin-top: 0.75rem; background: linear-gradient(135deg, #2f5a4f 0%, #4f46e5 100%); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 10px; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(47, 90, 79, 0.4); transition: all 0.2s ease;">
         <i class="fa-solid fa-magnifying-glass-plus"></i> 點此在新分頁放大原圖 (支援縮放)
       </button>
     </div>
@@ -1114,12 +1160,12 @@
 
   <!-- 簽收證明單 (海報樣式) 預覽視窗 -->
   <div class="modal" id="receiptModal">
-    <div class="modal-content" style="position: relative; width: 90%; max-width: 420px; max-height: 92vh; overflow-y: auto; background: #f1f5f9; padding: 20px; border-radius: 28px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); color: #1e293b; font-family: 'Noto Sans TC', sans-serif; display: flex; flex-direction: column;">
-      <button class="modal-close" onclick="closeReceiptModal()" style="color: #64748b; background: rgba(0,0,0,0.06); border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; top: 12px; right: 12px; z-index: 10;"><i class="fa-solid fa-xmark"></i></button>
+    <div class="modal-content" style="position: relative; width: 90%; max-width: 420px; max-height: 92vh; overflow-y: auto; background: #f1f5f9; padding: 20px; border-radius: 28px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); color: #1f1b16; font-family: 'Noto Sans TC', sans-serif; display: flex; flex-direction: column;">
+      <button class="modal-close" onclick="closeReceiptModal()" style="color: #6b6257; background: rgba(0,0,0,0.06); border-radius: 50%; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; top: 12px; right: 12px; z-index: 10;"><i class="fa-solid fa-xmark"></i></button>
       
       <!-- 頂部標題 -->
       <div id="rcHeader" style="font-size: 1.3rem; font-weight: 900; line-height: 1.3; margin-top: 5px;"></div>
-      <div id="rcTime" style="font-size: 0.8rem; color: #64748b; font-family: 'Outfit', sans-serif; margin-top: 3px; margin-bottom: 12px;"></div>
+      <div id="rcTime" style="font-size: 0.8rem; color: #6b6257; font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', sans-serif; margin-top: 3px; margin-bottom: 12px;"></div>
       
       <!-- 主內卡片 -->
       <div style="background: #ffffff; border-radius: 20px; padding: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); position: relative; overflow: hidden; display: flex; flex-direction: column; flex-shrink: 0;">
@@ -1137,31 +1183,31 @@
         <!-- 資訊欄位區 -->
         <div style="margin-top: 10px; padding: 0 4px; display: flex; flex-direction: column; gap: 8px; z-index: 2;">
           <div>
-            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">收件客戶/案名</div>
-            <div id="rcCust" style="font-size: 1rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+            <div style="font-size: 0.7rem; color: #6b6257; font-weight: bold; letter-spacing: 0.5px;">收件客戶/案名</div>
+            <div id="rcCust" style="font-size: 1rem; font-weight: 900; color: #1f1b16; margin-top: 1px; border-bottom: 2.5px solid #1f1b16; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
           </div>
           <div>
-            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">到貨日期</div>
-            <div id="rcArrival" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+            <div style="font-size: 0.7rem; color: #6b6257; font-weight: bold; letter-spacing: 0.5px;">到貨日期</div>
+            <div id="rcArrival" style="font-size: 0.95rem; font-weight: 900; color: #1f1b16; margin-top: 1px; border-bottom: 2.5px solid #1f1b16; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
           </div>
           <div>
-            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">送貨地址</div>
-            <div id="rcAddr" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; line-height: 1.3; letter-spacing: 0.5px;"></div>
+            <div style="font-size: 0.7rem; color: #6b6257; font-weight: bold; letter-spacing: 0.5px;">送貨地址</div>
+            <div id="rcAddr" style="font-size: 0.95rem; font-weight: 900; color: #1f1b16; margin-top: 1px; border-bottom: 2.5px solid #1f1b16; padding-bottom: 3px; line-height: 1.3; letter-spacing: 0.5px;"></div>
           </div>
           <div>
-            <div style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">連絡人/電話</div>
-            <div id="rcContact" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; border-bottom: 2.5px solid #f8fafc; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+            <div style="font-size: 0.7rem; color: #6b6257; font-weight: bold; letter-spacing: 0.5px;">連絡人/電話</div>
+            <div id="rcContact" style="font-size: 0.95rem; font-weight: 900; color: #1f1b16; margin-top: 1px; border-bottom: 2.5px solid #1f1b16; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
           </div>
           <div>
-            <div id="rcCarLabel" style="font-size: 0.7rem; color: #64748b; font-weight: bold; letter-spacing: 0.5px;">車牌號碼 / 載重</div>
-            <div id="rcCar" style="font-size: 0.95rem; font-weight: 900; color: #1e293b; margin-top: 1px; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
+            <div id="rcCarLabel" style="font-size: 0.7rem; color: #6b6257; font-weight: bold; letter-spacing: 0.5px;">車牌號碼 / 載重</div>
+            <div id="rcCar" style="font-size: 0.95rem; font-weight: 900; color: #1f1b16; margin-top: 1px; padding-bottom: 3px; letter-spacing: 0.5px;"></div>
           </div>
         </div>
         
         <!-- 蓋章 (已送達 VERIFIED) -->
         <div id="rcStamp" style="position: absolute; bottom: 8px; right: 8px; width: 76px; height: 76px; border: 3px solid; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: rotate(-12deg); z-index: 1; pointer-events: none; opacity: 0.85;">
           <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">已送達</span>
-          <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">VERIFIED</span>
+          <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', sans-serif;">VERIFIED</span>
         </div>
       </div>
     </div>
@@ -1354,11 +1400,11 @@
       const errorEl = document.getElementById("errorScreen");
       if (errorEl) {
         errorEl.classList.remove("hidden");
-        document.getElementById("errorTitle").innerText = "🔑 外部瀏覽器安全驗證";
+        document.getElementById("errorTitle").innerText = "外部瀏覽器安全驗證";
         document.getElementById("errorMessage").innerHTML = `
           為了確保您的經銷商資安，請點選下方按鈕，跳轉至 LINE 安全授權中心：<br><br>
           <a href="https://liff.line.me/${CONFIG.LIFF_ID}" target="_top" style="display:inline-block; background:#06C755; color:#fff; padding:12px 28px; border-radius:30px; text-decoration:none; font-weight:bold; margin-top:10px; box-shadow:0 4px 15px rgba(6,199,85,0.4); font-size:16px; transition:all 0.3s ease;">
-            🟢 點此登入 LINE 查貨
+            點此登入 LINE 查貨
           <\/a>
         `;
       }
@@ -1456,7 +1502,7 @@
       
       try {
         if (testParam && (testParam.toLowerCase() === 'free' || testParam.toLowerCase() === 'true')) {
-          showNotificationTip(`🔮 模擬載入 ${selectedDate} 日期之配送資訊`);
+          showNotificationTip(`模擬載入 ${selectedDate} 日期之配送資訊`);
           // 稍微延遲 600ms，讓載入動畫有感，增加真實度！
           await new Promise(resolve => setTimeout(resolve, 600));
           const mockData = getMockDataForDate(selectedDate, MOCK_FREE_DATA);
@@ -1466,7 +1512,7 @@
             // 傳入 false 確保非靜默加載，必定觸發載入狀態
             await fetchDealerData(cachedUserId, false, selectedDate);
           } else {
-            showNotificationTip("⚠️ 尚未取得身分驗證，將在連線成功後自動查詢");
+            showNotificationTip("尚未取得身分驗證，將在連線成功後自動查詢");
           }
         }
       } catch (e) {
@@ -1526,7 +1572,7 @@
       if (!mainContainer) return;
       
       mainContainer.innerHTML = `
-        <div class="skeleton-card" style="border-left: 5px solid rgba(255,255,255,0.05);">
+        <div class="skeleton-card" style="border-left: 5px solid rgba(31,27,22,0.05);">
           <div class="skeleton-line short"><\/div>
           <div class="skeleton-line"><\/div>
         <\/div>
@@ -1629,14 +1675,14 @@
       tip.style.left = "50%";
       tip.style.transform = "translateX(-50%)";
       tip.style.background = "rgba(15, 23, 42, 0.95)";
-      tip.style.color = "#f8fafc";
+      tip.style.color = "#1f1b16";
       tip.style.padding = "0.6rem 1.2rem";
       tip.style.borderRadius = "9999px";
       tip.style.fontSize = "0.8rem";
       tip.style.fontWeight = "600";
       tip.style.zIndex = "9999";
       tip.style.boxShadow = "0 8px 32px rgba(0,0,0,0.5)";
-      tip.style.border = "1px solid rgba(255,255,255,0.08)";
+      tip.style.border = "1px solid rgba(31,27,22,0.08)";
       tip.innerText = msg;
       
       document.body.appendChild(tip);
@@ -1689,7 +1735,7 @@
             const cached = loadFromCache();
             if (cached) {
               renderDashboard(cached.data, true);
-              showNotificationTip("🔌 網路異常，已為您載入離線暫存數據");
+              showNotificationTip("網路異常，已為您載入離線暫存數據");
             } else {
               showError("後端資料同步失敗", "無法成功連線至鈦傳速物流資料庫，且無本機暫存，請稍後再試。");
             }
@@ -1790,15 +1836,15 @@
       const finishedOurTasks = ourTasks.filter(t => t.status === "已完成" || t.status === "已送達").length;
       const inTransitOurTasks = ourTasks.filter(t => t.status === "配送中" || t.status === "已上車" || t.status === "已指派").length;
       
-      let bannerTitle = "📦 倉庫配貨準備中";
+      let bannerTitle = "倉庫配貨準備中";
       let bannerDesc = `今日您共有 ${totalOurTasks} 筆貨物，正等待裝車`;
       
       if (totalOurTasks > 0) {
         if (finishedOurTasks === totalOurTasks) {
-          bannerTitle = "🎉 今日貨物已全數送達！";
+          bannerTitle = "今日貨物已全數送達！";
           bannerDesc = `您的 ${totalOurTasks} 筆專屬貨物已全數安全簽收。`;
         } else if (finishedOurTasks > 0 || inTransitOurTasks > 0) {
-          bannerTitle = "🚛 司機配送進行中";
+          bannerTitle = "司機配送進行中";
           bannerDesc = `您專屬的貨物已送達 ${finishedOurTasks} 筆，還有 ${totalOurTasks - finishedOurTasks} 筆正在路上！`;
         }
       }
@@ -2010,7 +2056,7 @@
         // 渲染此車次的 Header 與站數統計
         let metroHTML = `
           <div class="vehicle-info" style="margin-bottom:0.85rem;">
-            <div class="vehicle-icon" style="background: linear-gradient(135deg, #a855f7, #6366f1);">
+            <div class="vehicle-icon" style="background: linear-gradient(135deg, #2f5a4f, #2f5a4f);">
               <i class="fa-solid fa-truck-fast" style="color: white;"><\/i>
             <\/div>
             <div class="vehicle-details" style="flex: 1;">
@@ -2020,17 +2066,17 @@
           <\/div>
 
           <!-- 獨立車次的捷運風格數據統計 -->
-          <div class="progress-stats" style="margin-bottom: 1.25rem; background: rgba(0,0,0,0.12); padding: 0.6rem; border-radius: 0.75rem;">
+          <div class="progress-stats" style="margin-bottom: 1.25rem; background: #f3f0e8; padding: 0.6rem; border-radius: 0.75rem;">
             <div class="stat-item">
               <div class="stat-number" style="font-size:1.35rem;">${totalStations}<\/div>
               <div class="stat-label">此路線總站<\/div>
             <\/div>
             <div class="stat-item">
-              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #10b981, #34d399); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${completedStations}<\/div>
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #2f7a4a, #2f7a4a); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${completedStations}<\/div>
               <div class="stat-label">已送達<\/div>
             <\/div>
             <div class="stat-item">
-              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #f59e0b, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${remainingStations}<\/div>
+              <div class="stat-number" style="font-size:1.35rem; background: linear-gradient(135deg, #b0720f, #b0720f); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">${remainingStations}<\/div>
               <div class="stat-label">剩餘站<\/div>
             <\/div>
           <\/div>
@@ -2123,7 +2169,7 @@
 
           if (!isOurs) {
             // 💡 合作夥伴配送點簡化顯示 (展示完整地址，但不顯示客戶名稱，統一綠色配色)
-            const grayColor = "#94A3B8"; // 優雅灰色，與自己的專屬單做視覺區隔
+            const grayColor = "#8a8176"; // 優雅灰色，與自己的專屬單做視覺區隔
             const grayBg = "rgba(148, 163, 184, 0.1)";
             
             // 💡 只秀路，後面巷弄門牌號都不要顯示 (維護他人訂單私密隱私)
@@ -2148,7 +2194,7 @@
                     <i class="fa-solid fa-location-dot" style="color: ${grayColor}; margin-right: 2px;"><\/i>
                     <span style="color: ${grayColor}; font-weight: 700; font-size: 1.02rem;">
                       ${displayAddress}
-                      ${isReturnTask ? '<span style="color:#ef4444; font-weight:900; margin-left:4px; font-size:0.85rem;">(收退貨)<\/span>' : ''}
+                      ${isReturnTask ? '<span style="color:#b4412f; font-weight:900; margin-left:4px; font-size:0.85rem;">(收退貨)<\/span>' : ''}
                     <\/span>
                     <span style="font-size: 0.75rem; font-weight: 700; padding: 0.12rem 0.35rem; border-radius: 4px; background: ${grayBg}; color: ${grayColor}; border: 1px solid rgba(148, 163, 184, 0.15); margin-left: 0.2rem;">${finalArrivalInfo}<\/span>
                   <\/div>
@@ -2194,7 +2240,7 @@
               const mm = String(d.getMinutes()).padStart(2, "0");
               return `${hh}:${mm}`;
             };
-            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(99, 102, 241, 0.1); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.2);"><i class="fa-solid fa-clock"><\/i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達<\/div>`;
+            etaBadgeHTML = `<div class="eta-badge" style="margin-top: 0.5rem; background: rgba(31, 27, 22, 0.06); color: #4a433b; border: 0;"><i class="fa-solid fa-clock"><\/i> 預計 ${formatTimeStr(estimatedArrivals[i])} 抵達<\/div>`;
           }
 
           // 行動按鈕 (司機定位)
@@ -2219,14 +2265,14 @@
           if (t.thumbnails && t.thumbnails.length > 0) {
             if (t.thumbnails.length === 1) {
               photoButtonsHTML += `
-                <button class="task-action-btn" onclick="openPhotoModal('${t.thumbnails[0]}', '銷貨單預覽')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
+                <button class="task-action-btn" onclick="openPhotoModal('${t.thumbnails[0]}', '銷貨單預覽')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(31,27,22,0.06); border: 1px solid rgba(31,27,22,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
                   <i class="fa-solid fa-file-invoice"><\/i> 檢視銷貨單
                 <\/button>
               `;
             } else {
               t.thumbnails.forEach((thumb, idx) => {
                 photoButtonsHTML += `
-                  <button class="task-action-btn" onclick="openPhotoModal('${thumb}', '銷貨單預覽 ${idx + 1}')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
+                  <button class="task-action-btn" onclick="openPhotoModal('${thumb}', '銷貨單預覽 ${idx + 1}')" style="flex: 1; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: rgba(31,27,22,0.06); border: 1px solid rgba(31,27,22,0.12); color: var(--text-primary); cursor: pointer; border-radius: 0.35rem;">
                     <i class="fa-solid fa-file-invoice"><\/i> 檢視銷貨單 ${idx + 1}
                   <\/button>
                 `;
@@ -2241,10 +2287,10 @@
               const refLabel = refIds.length > 1 ? `單號：${refIds.join(' / ')}` : `單號：${refIds[0] || ''}`;
               return `
                 <div style="display:flex; flex-direction:column; gap:0.15rem; width:100%;">
-                  <button class="task-action-btn success" onclick="triggerReceiptCard('${refIds[0]}')" style="width: 100%; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; cursor: pointer; border-radius: 0.35rem; text-align:left;">
+                  <button class="task-action-btn success" onclick="triggerReceiptCard('${refIds[0]}')" style="width: 100%; min-width: 120px; font-size: 0.8rem; padding: 0.4rem 0.5rem; background: linear-gradient(135deg, #2f7a4a 0%, #2f7a4a 100%); color: #fff; border: none; cursor: pointer; border-radius: 0.35rem; text-align:left;">
                     <i class="fa-solid fa-camera"><\/i> 檢視簽收照 ${t.signPhotos.length > 1 ? idx + 1 : ''}
                   <\/button>
-                  <div style="font-size: 0.72rem; color: #cbd5e1; padding-left: 0.15rem; line-height: 1.3;">${refLabel}<\/div>
+                  <div style="font-size: 0.72rem; color: var(--text-secondary); padding-left: 0.15rem; line-height: 1.3;">${refLabel}<\/div>
                 <\/div>
               `;
             }).join('');
@@ -2276,15 +2322,15 @@
             // 💡 客戶端 (FREE等級) 看的時候，全數統一為綠色，不區分 AEWS 的顏色！
             brInfo = {
               code: brInfo.code,
-              color: "#10B981", // 統一為綠色
-              bg: "rgba(16, 185, 129, 0.15)"
+              color: "#2f7a4a", // 統一為綠色
+              bg: "rgba(47, 122, 74, 0.10)"
             };
           }
 
           let ownTaskBadgeHTML = "";
           if (isUserFreeGrade && isOwnDealerTask) {
             ownTaskBadgeHTML = `
-              <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); color: #fff; box-shadow: 0 0 6px rgba(168, 85, 247, 0.4); margin-left: 0.2rem; animation: pulse-glow 1.2s infinite alternate;">
+              <span style="font-size: 0.75rem; font-weight: 800; padding: 0.12rem 0.35rem; border-radius: 4px; background: #2f5a4f; color: #fff; margin-left: 0.2rem;">
                 <i class="fa-solid fa-star" style="font-size: 0.65rem;"><\/i> 您的專屬單
               <\/span>
             `;
@@ -2358,7 +2404,7 @@
           if (icon) icon.classList.remove("spinning");
           const mockData = getMockDataForDate(selectedDate, MOCK_FREE_DATA);
           renderDashboard(mockData);
-          showNotificationTip("✨ 測試數據更新成功");
+          showNotificationTip("測試數據更新成功");
         }, 800);
       } else {
         if (cachedUserId) {
@@ -2394,48 +2440,48 @@
       
       // 1. 精準對應分公司欄位 (支援 A/E/S/W 英文及中文字串)
       if (bStr.includes("A") || bStr.includes("安") || bStr.includes("ANTIGRAVITY")) {
-        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
       }
       if (bStr.includes("E") || bStr.includes("高") || bStr.includes("GAOYACI")) {
-        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
       }
       if (bStr.includes("S") || bStr.includes("喜") || bStr.includes("SHIYUENA")) {
-        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
       }
       if (bStr.includes("W") || bStr.includes("漢") || bStr.includes("HANHUA")) {
-        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
       }
       
       // 2. 從單號字尾或後綴判定 (-安, -高, -喜, -漢 或 -A, -E, -S, -W)
       if (oStr.endsWith("安") || oStr.endsWith("-A") || oStr.includes("-安") || oStr.includes("-A")) {
-        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
       }
       if (oStr.endsWith("高") || oStr.endsWith("-E") || oStr.includes("-高") || oStr.includes("-E")) {
-        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
       }
       if (oStr.endsWith("喜") || oStr.endsWith("-S") || oStr.includes("-喜") || oStr.includes("-S")) {
-        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
       }
       if (oStr.endsWith("漢") || oStr.endsWith("-W") || oStr.includes("-漢") || oStr.includes("-W")) {
-        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
       }
       
       // 3. 從客戶名稱進行模糊匹配
       if (cStr.includes("安") || cStr.includes("ANTIGRAVITY")) {
-        return { code: "A", color: "#10B981", bg: "rgba(16, 185, 129, 0.15)" };
+        return { code: "A", color: "#2f7a4a", bg: "rgba(47, 122, 74, 0.10)" };
       }
       if (cStr.includes("高") || cStr.includes("GAOYACI")) {
-        return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+        return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
       }
       if (cStr.includes("喜") || cStr.includes("SHIYUENA")) {
-        return { code: "S", color: "#3B82F6", bg: "rgba(59, 130, 246, 0.15)" };
+        return { code: "S", color: "#2b6cb0", bg: "rgba(43, 108, 176, 0.09)" };
       }
       if (cStr.includes("漢") || cStr.includes("HANHUA")) {
-        return { code: "W", color: "#F59E0B", bg: "rgba(245, 158, 11, 0.15)" };
+        return { code: "W", color: "#9a630c", bg: "rgba(176, 114, 15, 0.10)" };
       }
       
       // 4. 預設兜底：一律歸屬為 高雅瓷 E (高雅瓷/粉色)，消除任何 OTHER 合作夥伴標籤
-      return { code: "E", color: "#FF69B4", bg: "rgba(255, 105, 180, 0.15)" };
+      return { code: "E", color: "#b03a72", bg: "rgba(176, 58, 114, 0.09)" };
     }
 
     // 💡 取得日期對應的週幾字串
@@ -2532,7 +2578,7 @@
         brInfo = {
           code: brInfo.code,
           color: "#10B981", // 統一為綠色
-          bg: "rgba(16, 185, 129, 0.15)"
+          bg: "rgba(47, 122, 74, 0.15)"
         };
       }
       let themeColor = brInfo.color;
@@ -2550,13 +2596,13 @@
         statusText = "已取消";
         stampText = "已取消";
         stampSub = "CANCELLED";
-        themeColor = "#ef4444"; // 強制紅色
+        themeColor = "#b4412f"; // 強制紅色
       } else if (st.includes("配送中") || st.includes("已上車") || st.includes("運送中") || st.includes("已指派")) {
         statusStr = "配送中";
         statusText = "配送中";
         stampText = "配送中";
         stampSub = "IN TRANSIT";
-        themeColor = "#3b82f6"; // 強制藍色
+        themeColor = "#2f5a4f"; // 強制藍色
       }
       
       // 3. 寫入文字與屬性
@@ -2618,7 +2664,7 @@
       stamp.style.color = themeColor;
       stamp.innerHTML = `
         <span style="font-size: 0.9rem; font-weight: 900; letter-spacing: 1px; line-height: 1;">${stampText}<\/span>
-        <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: 'Outfit', sans-serif;">${stampSub}<\/span>
+        <span style="font-size: 0.5rem; font-weight: 900; letter-spacing: 0.5px; margin-top: 2px; font-family: -apple-system, BlinkMacSystemFont, 'PingFang TC', sans-serif;">${stampSub}<\/span>
       `;
       
       // 顯示 Modal
